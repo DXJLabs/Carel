@@ -11,7 +11,6 @@ import {
 import {
   constants,
   num,
-  validateAndParseAddress,
   walletV6,
   WalletAccountV6,
 } from "starknet";
@@ -20,7 +19,13 @@ import {
   createStore,
   type Store,
 } from "@starknet-io/get-starknet-discovery";
-import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-wallet-standard/features";
+import {
+  StandardConnect,
+  type WalletWithStarknetFeatures,
+} from "@starknet-io/get-starknet-wallet-standard/features";
+import type {
+  WalletWithStarknetFeatures as WalletWithStarknetFeaturesV6,
+} from "@starknet-io/get-starknet-wallet-standard-v6/features";
 import {
   Check,
   ChevronDown,
@@ -33,6 +38,7 @@ import {
 } from "lucide-react";
 import {
   SEPOLIA_EXPLORER_TX,
+  SEPOLIA_RPC,
   STRK_TOKEN,
   sepoliaProvider,
 } from "@/lib/strk20/config";
@@ -73,6 +79,27 @@ type CarelTestnetContextValue = {
 };
 
 const CarelTestnetContext = createContext<CarelTestnetContextValue | null>(null);
+
+// Keep one discovery store alive for the page lifetime.
+// Android extension hosts such as Mises can inject Ready after React mounts.
+const walletStore: Store = createStore({ eip1193Adapters: [] });
+
+function refreshInjectedWallets() {
+  if (typeof window === "undefined") return;
+
+  walletStore._refreshInjectedWallets();
+}
+
+function getDiscoveredWallets(): WalletWithStarknetFeatures[] {
+  return walletStore
+    .getWallets()
+    .filter((wallet) => {
+      const id = normalizeWalletName(wallet.name);
+
+      return !id.includes("metamask") && !id.includes("braavos");
+    })
+    .slice();
+}
 
 function normalizeWalletName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -171,23 +198,48 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const strk20Capable = supportsStrk20(specs);
 
   useEffect(() => {
-    const store: Store = createStore({ eip1193Adapters: [] });
-
-    const apply = (next: WalletWithStarknetFeatures[]) => {
-      setWallets(
-        next
-          .filter((wallet) => {
-            const id = normalizeWalletName(wallet.name);
-            return !id.includes("metamask") && !id.includes("braavos");
-          })
-          .slice(),
-      );
+    const syncWallets = () => {
+      refreshInjectedWallets();
+      setWallets(getDiscoveredWallets());
     };
 
-    apply(store.getWallets().slice());
-    const unsubscribe = store.subscribe((next) => apply(next.slice()));
+    syncWallets();
 
-    return () => unsubscribe();
+    const unsubscribe = walletStore.subscribe(() => {
+      setWallets(getDiscoveredWallets());
+    });
+
+    // Ready can appear after React has mounted in Android/Mises.
+    const timers = [150, 400, 900, 1800, 3500, 6000].map((ms) =>
+      window.setTimeout(syncWallets, ms),
+    );
+
+    const polling = window.setInterval(syncWallets, 1500);
+    const stopPolling = window.setTimeout(
+      () => window.clearInterval(polling),
+      30000,
+    );
+
+    const onFocus = () => syncWallets();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        syncWallets();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      unsubscribe();
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.clearInterval(polling);
+      window.clearTimeout(stopPolling);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   useEffect(() => {
@@ -228,52 +280,79 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      if (!wallets.length) {
-        throw new Error("No Starknet wallet detected. Open CAREL in Ready or another compatible Starknet wallet browser.");
+      // Force a fresh Android/Mises injection scan before giving up.
+      refreshInjectedWallets();
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 200);
+      });
+
+      let discovered = getDiscoveredWallets();
+
+      if (!discovered.length) {
+        refreshInjectedWallets();
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 500);
+        });
+
+        discovered = getDiscoveredWallets();
+      }
+
+      setWallets(discovered);
+
+      if (!discovered.length) {
+        throw new Error(
+          "Ready was not detected. Unlock Ready, return to CAREL, then tap Connect again.",
+        );
       }
 
       const requested = walletName
-        ? wallets.find(
+        ? discovered.find(
             (wallet) =>
-              normalizeWalletName(wallet.name) === normalizeWalletName(walletName),
+              normalizeWalletName(wallet.name) ===
+              normalizeWalletName(walletName),
           )
         : undefined;
 
       const ready =
-        wallets.find((wallet) =>
+        discovered.find((wallet) =>
           normalizeWalletName(wallet.name).includes("ready"),
-        ) ?? wallets[0];
+        ) ?? discovered[0];
 
       const selected = requested ?? ready;
 
-      // starknet.js 10.4.0 carries an aliased copy of the v6 wallet-standard
-      // types. The discovered wallet is the same runtime object, but TypeScript
-      // treats the two package identities as different. Adapt only at this
-      // integration boundary instead of weakening types across CAREL.
-      const walletForAccount =
-        selected as unknown as Parameters<typeof WalletAccountV6.connect>[1];
-      const walletForAccounts =
-        selected as unknown as Parameters<typeof walletV6.requestAccounts>[0];
-      const walletForChain =
-        selected as unknown as Parameters<typeof walletV6.requestChainId>[0];
-      const walletForSpecs =
-        selected as unknown as Parameters<typeof walletV6.supportedSpecs>[0];
+      // Connect through Wallet Standard first.
+      // This is the same connection boundary used by the working VINSS flow.
+      const connection =
+        await selected.features[StandardConnect].connect({
+          silent: false,
+        });
 
-      const account = await WalletAccountV6.connect(
-        sepoliaProvider,
-        walletForAccount,
-      );
-      const accounts = await walletV6.requestAccounts(walletForAccounts);
-
-      if (!Array.isArray(accounts) || !accounts[0]) {
-        throw new Error("Wallet did not return a Starknet account.");
+      if (!connection.accounts.length) {
+        throw new Error("Wallet connected without returning an account.");
       }
 
-      const nextAddress = validateAndParseAddress(accounts[0]);
-      const nextChainId = String(
-        await walletV6.requestChainId(walletForChain),
+      // starknet.js 10.4 carries the Wallet Standard v6 package under
+      // an alias. Same runtime wallet, different TypeScript identity.
+      const selectedV6 =
+        selected as unknown as WalletWithStarknetFeaturesV6;
+
+      const account = await WalletAccountV6.connect(
+        { nodeUrl: SEPOLIA_RPC },
+        selectedV6,
       );
-      const supported = await walletV6.supportedSpecs(walletForSpecs);
+
+      const nextAddress = account.address;
+
+      const nextChainId = String(
+        await walletV6.requestChainId(selectedV6),
+      );
+
+      // Capability check only: does not request private balances.
+      const supported =
+        await walletV6.supportedWalletApi(selectedV6);
+
       const nextSpecs = Array.isArray(supported)
         ? supported.map((value) => String(value))
         : [];
@@ -292,7 +371,13 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         setPublicStrk(null);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Wallet connection failed.");
+      console.error("[CAREL] wallet connect failed", cause);
+
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Wallet connection failed.",
+      );
     } finally {
       setConnecting(false);
     }
