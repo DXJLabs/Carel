@@ -41,6 +41,10 @@ import {
   type PrivacyMode,
   type RiskLevel,
 } from "@/lib/carel";
+import {
+  Strk20TestnetPanel,
+  WalletStatusButton,
+} from "@/components/testnet/Strk20Testnet";
 
 const goals = [
   "Earn sustainable yield on my USDC",
@@ -127,7 +131,7 @@ export function CarelApp() {
           </div>
           <div className="top-actions">
             <button className="icon-btn" type="button" aria-label="Notifications"><Bell size={17} /></button>
-            <button className="wallet-pill" type="button"><span className="wallet-dot" />0x7A3…91D<ChevronDown size={14} /></button>
+            <WalletStatusButton />
             <button className="mobile-menu-btn" type="button" onClick={() => setMobileMenu((value) => !value)} aria-label="Open menu">
               {mobileMenu ? <X size={19} /> : <Menu size={19} />}
             </button>
@@ -300,6 +304,8 @@ export function CarelApp() {
                   </div>
                 )}
               </article>
+
+              <Strk20TestnetPanel />
 
               <article className="panel privacy-panel">
                 <div className="panel-head compact-head">
