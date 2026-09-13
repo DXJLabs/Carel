@@ -370,3 +370,39 @@ button{cursor:pointer}
   .live-route{grid-template-columns:1fr}
   .live-route>span{transform:rotate(90deg)}
 }
+
+/* ===== CAREL v3 workspace + live agent integration ===== */
+.real-command-row{margin-bottom:14px}
+.real-metric-grid .metric-card>strong{font-size:21px}
+.real-mandate-panel{padding-bottom:14px}
+.real-goal-grid{display:grid;grid-template-columns:auto auto minmax(170px,1fr) auto;gap:7px}
+.real-goal-grid>button:not(.real-build-button){height:42px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.012);color:var(--muted);padding:0 12px;display:flex;align-items:center;gap:7px;font-size:8px}
+.real-goal-grid>button.active:not(.real-build-button){border-color:rgba(185,255,105,.18);background:rgba(185,255,105,.045);color:var(--text)}
+.real-goal-grid>button.active:not(.real-build-button) svg{color:var(--lime)}
+.real-target-field{height:42px;border:1px solid var(--line);border-radius:9px;padding:0 10px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.real-target-field span{font-size:7px;color:var(--faint)}
+.real-target-field input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:15px;font-weight:700}
+.real-target-field b{font-size:7px;color:var(--mint)}
+.real-build-button{height:42px;margin:0;padding:0 13px}
+.real-empty-plan{min-height:170px}
+.real-plan-reason{margin:0 0 10px;color:var(--muted);font-size:8px;line-height:1.6}
+.real-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.real-status-row>span{font-size:8px;color:var(--muted)}
+.real-status-row strong{display:flex;align-items:center;gap:6px;font-size:7px;color:var(--faint);font-weight:600;text-align:right}
+.real-status-row strong i{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.real-status-row strong.ok{color:var(--lime)}
+.real-status-row strong.ok i{background:var(--lime);box-shadow:0 0 9px rgba(185,255,105,.42)}
+.real-refresh-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.real-refresh-row button{min-height:34px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.012);color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px;font-size:7px}
+.real-refresh-row button:disabled{opacity:.4}
+.real-muted{margin:0;color:var(--faint);font-size:8px;line-height:1.6}
+
+@media(max-width:720px){
+  .command-intro h1{font-size:27px}
+  .real-goal-grid{grid-template-columns:1fr 1fr}
+  .real-target-field{grid-column:1/-1}
+  .real-build-button{grid-column:1/-1;justify-content:center}
+  .real-metric-grid{grid-template-columns:1fr 1fr}
+  .real-metric-grid .metric-card{min-height:92px}
+  .real-metric-grid .metric-card>strong{font-size:17px}
+}

@@ -3,89 +3,108 @@
 import { useMemo, useState } from "react";
 import {
   Activity,
-  ArrowRight,
-  Bell,
   Bot,
   Check,
-  ChevronDown,
-  CircleDollarSign,
-  Command,
+  ChevronRight,
   EyeOff,
-  Gauge,
   Home,
-  KeyRound,
   LayoutDashboard,
   LockKeyhole,
-  Menu,
-  MessageSquareText,
-  MoreHorizontal,
   Orbit,
-  PanelLeftClose,
-  Play,
   RefreshCw,
   Route,
-  Settings2,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Target,
-  TrendingUp,
   WalletCards,
-  X,
   Zap,
 } from "lucide-react";
+import { constants } from "starknet";
+
 import {
-  activityFeed,
-  buildPlan,
-  money,
-  type PrivacyMode,
-  type RiskLevel,
-} from "@/lib/carel";
-import {
-  Strk20TestnetPanel,
+  useCarelTestnet,
   WalletStatusButton,
 } from "@/components/testnet/Strk20Testnet";
+import {
+  buildLivePlan,
+  type LiveGoal,
+} from "@/lib/agent/livePlanner";
+import { formatUnits18 } from "@/lib/strk20/units";
+import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 
-const goals = [
-  "Earn sustainable yield on my USDC",
-  "Keep my capital productive but liquid",
-  "Reduce risk without exiting DeFi",
-  "Rebalance only when the improvement is meaningful",
-];
+const ZERO = BigInt(0);
+
+function fmt(value: bigint | null) {
+  return value === null ? "—" : `${formatUnits18(value)} STRK`;
+}
+
+function actionLabel(action: string) {
+  if (action === "shield") return "Shield";
+  if (action === "unshield") return "Unshield";
+  if (action === "reveal-private") return "Reveal private";
+  return "None";
+}
 
 export function CarelApp() {
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [goal, setGoal] = useState(goals[0]);
-  const [capital, setCapital] = useState(5000);
-  const [risk, setRisk] = useState<RiskLevel>("medium");
-  const [privacy, setPrivacy] = useState<PrivacyMode>("prefer-private");
-  const [liquidPercent, setLiquidPercent] = useState(20);
-  const [maxProtocolPercent, setMaxProtocolPercent] = useState(30);
-  const [approvalThreshold, setApprovalThreshold] = useState(500);
-  const [runState, setRunState] = useState<"ready" | "planning" | "review" | "active">("ready");
-  const [selectedRoute, setSelectedRoute] = useState(0);
-  const [showRules, setShowRules] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const wallet = useCarelTestnet();
+  const [goal, setGoal] = useState<LiveGoal>("target-private");
+  const [target, setTarget] = useState("1");
+  const [planned, setPlanned] = useState(false);
+  const [executing, setExecuting] = useState(false);
+
+  const isSepolia =
+    wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
 
   const plan = useMemo(
-    () => buildPlan({ capital, goal, risk, privacy, liquidPercent, maxProtocolPercent, approvalThreshold }),
-    [capital, goal, risk, privacy, liquidPercent, maxProtocolPercent, approvalThreshold],
+    () =>
+      buildLivePlan({
+        goal,
+        targetText: target,
+        connected: wallet.connected,
+        networkReady: isSepolia,
+        strk20Capable: wallet.strk20Capable,
+        publicStrk: wallet.publicStrk,
+        privateStrk: wallet.privateStrk,
+        privateRevealed: wallet.privateRevealed,
+      }),
+    [
+      goal,
+      target,
+      wallet.connected,
+      wallet.strk20Capable,
+      wallet.publicStrk,
+      wallet.privateStrk,
+      wallet.privateRevealed,
+      isSepolia,
+    ],
   );
 
-  const planStrategy = () => {
-    setRunState("planning");
-    setNotice(null);
-    window.setTimeout(() => setRunState("review"), 700);
-  };
+  const knownCapital =
+    wallet.publicStrk !== null && wallet.privateRevealed
+      ? wallet.publicStrk + (wallet.privateStrk ?? ZERO)
+      : null;
 
-  const approve = () => {
-    setRunState("active");
-    setNotice("Strategy activated in simulation mode. No funds moved.");
-  };
+  const remainingBlocks =
+    wallet.maturityTarget && wallet.currentBlock !== null
+      ? Math.max(0, wallet.maturityTarget - wallet.currentBlock)
+      : null;
 
-  const reset = () => {
-    setRunState("ready");
-    setNotice(null);
+  const execute = async () => {
+    if (plan.status !== "ready") return;
+
+    setExecuting(true);
+
+    try {
+      const amount = formatUnits18(plan.delta, 18);
+
+      if (plan.action === "shield") {
+        await wallet.shield(amount);
+      } else if (plan.action === "unshield") {
+        await wallet.unshield(amount);
+      }
+    } finally {
+      setExecuting(false);
+    }
   };
 
   return (
@@ -95,7 +114,10 @@ export function CarelApp() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="logo-mark"><Orbit size={21} /></div>
-          <div><strong>CAREL</strong><span>Agentic Private DeFi</span></div>
+          <div>
+            <strong>CAREL</strong>
+            <span>Agentic Private DeFi</span>
+          </div>
         </div>
 
         <nav className="side-nav" aria-label="Main navigation">
@@ -109,12 +131,15 @@ export function CarelApp() {
         <div className="sidebar-spacer" />
 
         <div className="side-capital-card">
-          <span>Managed capital</span>
-          <strong>{money(capital)}</strong>
-          <div className="capital-mini-row"><i /> Starknet Testnet</div>
+          <span>Known capital</span>
+          <strong>
+            {knownCapital === null ? "—" : `${formatUnits18(knownCapital)} STRK`}
+          </strong>
+          <div className="capital-mini-row">
+            <i />
+            {isSepolia ? "Starknet Sepolia" : "Connect Sepolia"}
+          </div>
         </div>
-
-        <button className="side-settings" type="button"><Settings2 size={16} /> Settings</button>
       </aside>
 
       <div className="workspace">
@@ -123,140 +148,268 @@ export function CarelApp() {
             <div className="logo-mark"><Orbit size={19} /></div>
             <strong>CAREL</strong>
           </div>
+
           <div className="top-status">
             <span className="status-dot" />
-            <span>Agent online</span>
+            <span>{wallet.connected ? "Wallet connected" : "Waiting for wallet"}</span>
             <span className="divider" />
-            <span>Starknet Testnet</span>
+            <span>{isSepolia ? "Starknet Sepolia" : "Testnet"}</span>
           </div>
+
           <div className="top-actions">
-            <button className="icon-btn" type="button" aria-label="Notifications"><Bell size={17} /></button>
             <WalletStatusButton />
-            <button className="mobile-menu-btn" type="button" onClick={() => setMobileMenu((value) => !value)} aria-label="Open menu">
-              {mobileMenu ? <X size={19} /> : <Menu size={19} />}
-            </button>
           </div>
         </header>
 
-        {mobileMenu && (
-          <div className="mobile-menu-panel">
-            <button><Home size={17} /> Overview</button>
-            <button><Bot size={17} /> Agent</button>
-            <button><Route size={17} /> Strategies</button>
-            <button><EyeOff size={17} /> Privacy</button>
-          </div>
-        )}
-
         <main className="workspace-inner">
-          <section className="command-row">
+          <section className="command-row real-command-row">
             <div className="command-intro">
-              <div className="eyebrow"><Sparkles size={14} /> CAREL WORKSPACE</div>
-              <h1>What should your capital do next?</h1>
-              <p>Set the outcome. CAREL handles routing, risk checks, privacy decisions, and execution planning inside your rules.</p>
-            </div>
-            <button className="ghost-action" type="button" onClick={reset}><RefreshCw size={15} /> Reset run</button>
-          </section>
-
-          <section className="composer-card">
-            <div className="composer-main">
-              <div className="composer-icon"><Command size={18} /></div>
-              <textarea
-                value={goal}
-                onChange={(event) => setGoal(event.target.value)}
-                aria-label="Goal for CAREL"
-                placeholder="Describe what you want CAREL to achieve…"
-              />
-            </div>
-            <div className="composer-bottom">
-              <div className="quick-prompts">
-                {goals.slice(1).map((item) => (
-                  <button key={item} type="button" onClick={() => setGoal(item)}>{item}</button>
-                ))}
+              <div className="eyebrow">
+                <Sparkles size={14} />
+                LIVE AGENT WORKSPACE
               </div>
-              <button className="run-button" type="button" disabled={runState === "planning"} onClick={planStrategy}>
-                {runState === "planning" ? <RefreshCw className="spin" size={17} /> : <Play size={17} fill="currentColor" />}
-                {runState === "planning" ? "Planning…" : "Build strategy"}
-              </button>
+              <h1>Tell CAREL the state you want maintained.</h1>
+              <p>
+                CAREL reads the connected wallet, calculates only the required
+                delta, asks for approval, executes through Ready, then monitors
+                the result.
+              </p>
             </div>
           </section>
 
-          <section className="metric-grid">
-            <MetricCard label="Portfolio" value={money(capital)} meta="USDC available" icon={<WalletCards size={17} />} />
-            <MetricCard label="Projected net APY" value={`${plan.weightedApy.toFixed(1)}%`} meta="Simulated · before execution" icon={<TrendingUp size={17} />} accent />
-            <MetricCard label="Private allocation" value={money(plan.privateCapital)} meta={privacy === "public-ok" ? "Privacy disabled" : "STRK20 where supported"} icon={<LockKeyhole size={17} />} privateCard />
-            <MetricCard label="Liquid reserve" value={`${liquidPercent}%`} meta={`${money(plan.liquidReserve)} stays available`} icon={<CircleDollarSign size={17} />} />
+          <section className="metric-grid real-metric-grid">
+            <MetricCard
+              label="Public STRK"
+              value={fmt(wallet.publicStrk)}
+              meta={wallet.connected ? "Read from Starknet Sepolia" : "Connect wallet"}
+              icon={<WalletCards size={17} />}
+            />
+
+            <MetricCard
+              label="Private STRK"
+              value={
+                wallet.privateRevealed
+                  ? fmt(wallet.privateStrk ?? ZERO)
+                  : "Hidden"
+              }
+              meta={
+                wallet.privateRevealed
+                  ? "Wallet-mediated STRK20 balance"
+                  : "Explicit permission required"
+              }
+              icon={<EyeOff size={17} />}
+              privateCard
+            />
+
+            <MetricCard
+              label="Known capital"
+              value={
+                knownCapital === null
+                  ? "—"
+                  : `${formatUnits18(knownCapital)} STRK`
+              }
+              meta="Public + disclosed private"
+              icon={<LockKeyhole size={17} />}
+            />
+
+            <MetricCard
+              label="Agent state"
+              value={
+                !wallet.connected
+                  ? "Offline"
+                  : planned
+                    ? plan.status === "ready"
+                      ? "Review"
+                      : plan.status === "satisfied"
+                        ? "No action"
+                        : "Blocked"
+                    : "Ready"
+              }
+              meta="Human approval required"
+              icon={<Bot size={17} />}
+              accent
+            />
           </section>
 
           <section className="work-grid">
             <div className="left-stack">
+              <article className="panel strategy-panel real-mandate-panel">
+                <div className="panel-head">
+                  <div>
+                    <span className="panel-kicker">MANDATE</span>
+                    <h2>Target state</h2>
+                  </div>
+                  <Target size={18} />
+                </div>
+
+                <div className="real-goal-grid">
+                  <button
+                    type="button"
+                    className={goal === "target-private" ? "active" : ""}
+                    onClick={() => {
+                      setGoal("target-private");
+                      setPlanned(false);
+                    }}
+                  >
+                    <EyeOff size={15} />
+                    Keep private
+                  </button>
+
+                  <button
+                    type="button"
+                    className={goal === "target-public" ? "active" : ""}
+                    onClick={() => {
+                      setGoal("target-public");
+                      setPlanned(false);
+                    }}
+                  >
+                    <WalletCards size={15} />
+                    Keep public
+                  </button>
+
+                  <label className="real-target-field">
+                    <span>Target balance</span>
+                    <input
+                      inputMode="decimal"
+                      value={target}
+                      onChange={(event) => {
+                        setTarget(event.target.value.replace(/[^0-9.]/g, ""));
+                        setPlanned(false);
+                      }}
+                    />
+                    <b>STRK</b>
+                  </label>
+
+                  <button
+                    type="button"
+                    className="run-button real-build-button"
+                    onClick={() => setPlanned(true)}
+                  >
+                    <Sparkles size={15} />
+                    Build live plan
+                  </button>
+                </div>
+              </article>
+
               <article className="panel strategy-panel">
                 <div className="panel-head">
                   <div>
                     <span className="panel-kicker">AGENT PLAN</span>
-                    <h2>{runState === "ready" ? "Ready for a mandate" : plan.headline}</h2>
+                    <h2>{planned ? plan.title : "Ready for a mandate"}</h2>
                   </div>
-                  <StateBadge state={runState} />
+                  <LiveStateBadge planned={planned} status={plan.status} />
                 </div>
 
-                {runState === "ready" ? (
-                  <div className="empty-plan">
+                {!planned ? (
+                  <div className="empty-plan real-empty-plan">
                     <div className="empty-orb"><Bot size={27} /></div>
-                    <strong>CAREL has not planned anything yet.</strong>
-                    <p>Use the command box above. Your funds stay untouched until you review and approve a strategy.</p>
+                    <strong>No transaction proposed.</strong>
+                    <p>
+                      Set a target above. CAREL will use live wallet state and
+                      move only the minimum delta required.
+                    </p>
                   </div>
                 ) : (
                   <>
-                    <div className="plan-summary-row">
-                      <span><small>Deploy</small><strong>{money(plan.productiveCapital)}</strong></span>
-                      <span><small>Keep liquid</small><strong>{money(plan.liquidReserve)}</strong></span>
-                      <span><small>Routes</small><strong>{plan.routes.length}</strong></span>
-                      <span><small>Approval</small><strong>&gt; {money(approvalThreshold)}</strong></span>
-                    </div>
+                    <p className="real-plan-reason">{plan.reason}</p>
 
-                    <div className="route-list">
-                      {plan.routes.map((route, index) => (
-                        <button
-                          key={`${route.protocol}-${route.action}`}
-                          type="button"
-                          className={`route-card ${selectedRoute === index ? "selected" : ""}`}
-                          onClick={() => setSelectedRoute(index)}
-                        >
-                          <div className="route-index">0{index + 1}</div>
-                          <div className="route-main">
-                            <div className="route-title"><strong>{route.protocol}</strong><span>{route.action}</span></div>
-                            <p>{route.note}</p>
-                          </div>
-                          <div className="route-metrics">
-                            <span><small>Allocation</small>{money(route.allocation)}</span>
-                            <span><small>APY</small>{route.apy.toFixed(1)}%</span>
-                            <span><small>Risk</small>{route.risk}</span>
-                          </div>
-                          <div className={`privacy-chip ${route.privacy === "Private" ? "is-private" : ""}`}>
-                            {route.privacy === "Private" ? <EyeOff size={13} /> : <Route size={13} />}{route.privacy}
-                          </div>
-                        </button>
-                      ))}
+                    <div className="plan-summary-row">
+                      <span>
+                        <small>Target</small>
+                        <strong>{formatUnits18(plan.target)} STRK</strong>
+                      </span>
+                      <span>
+                        <small>Required delta</small>
+                        <strong>{formatUnits18(plan.delta)} STRK</strong>
+                      </span>
+                      <span>
+                        <small>Action</small>
+                        <strong>{actionLabel(plan.action)}</strong>
+                      </span>
+                      <span>
+                        <small>Approval</small>
+                        <strong>{plan.action === "none" ? "Not needed" : "Required"}</strong>
+                      </span>
                     </div>
 
                     <div className="execution-preview">
-                      <div className="execution-head"><span>Execution preview</span><small>Simulation</small></div>
+                      <div className="execution-head">
+                        <span>Live execution route</span>
+                        <small>Sepolia</small>
+                      </div>
+
                       <div className="exec-flow">
-                        <ExecNode title="Wallet" subtitle="Public balance" />
+                        <ExecNode
+                          title={plan.action === "unshield" ? "Private STRK" : "Public STRK"}
+                          subtitle="Current state"
+                        />
                         <ExecArrow />
-                        <ExecNode title={privacy === "public-ok" ? "Direct route" : "Shield if needed"} subtitle={privacy === "public-ok" ? "Public" : "STRK20"} privateNode={privacy !== "public-ok"} />
+                        <ExecNode
+                          title={
+                            plan.action === "shield"
+                              ? "STRK20 Shield"
+                              : plan.action === "unshield"
+                                ? "STRK20 Unshield"
+                                : "Policy check"
+                          }
+                          subtitle={
+                            plan.action === "none"
+                              ? "No value movement"
+                              : "Wallet API"
+                          }
+                          privateNode={plan.action === "shield"}
+                        />
                         <ExecArrow />
-                        <ExecNode title={plan.routes[selectedRoute]?.protocol ?? "Protocol"} subtitle={plan.routes[selectedRoute]?.action ?? "Strategy"} />
+                        <ExecNode
+                          title={goal === "target-private" ? "Private target" : "Public target"}
+                          subtitle={`${formatUnits18(plan.target)} STRK`}
+                          activeNode
+                        />
                         <ExecArrow />
-                        <ExecNode title="Monitor" subtitle="Policy checks" activeNode />
+                        <ExecNode title="Monitor" subtitle="Post-execution state" />
                       </div>
                     </div>
 
                     <div className="approval-row">
-                      <div><ShieldCheck size={18} /><span><strong>Nothing moves automatically.</strong><small>Review the route and approve execution.</small></span></div>
-                      {runState !== "active" ? (
-                        <button className="approve-button" type="button" onClick={approve}><Check size={16} /> Approve simulation</button>
-                      ) : (
-                        <span className="active-pill"><Zap size={14} /> Strategy active</span>
+                      <div>
+                        <ShieldCheck size={18} />
+                        <span>
+                          <strong>Policy gate</strong>
+                          <small>Ready must approve every value-moving action.</small>
+                        </span>
+                      </div>
+
+                      {plan.status === "needs-private-state" && (
+                        <button
+                          className="approve-button"
+                          type="button"
+                          disabled={wallet.busy}
+                          onClick={() => void wallet.revealPrivateBalance()}
+                        >
+                          <EyeOff size={15} />
+                          Reveal private
+                        </button>
+                      )}
+
+                      {plan.status === "ready" && (
+                        <button
+                          className="approve-button"
+                          type="button"
+                          disabled={wallet.busy || executing}
+                          onClick={() => void execute()}
+                        >
+                          <Zap size={15} />
+                          {executing || wallet.busy
+                            ? "Waiting for Ready…"
+                            : `Approve ${actionLabel(plan.action)}`}
+                        </button>
+                      )}
+
+                      {plan.status === "satisfied" && (
+                        <span className="active-pill">
+                          <Check size={14} />
+                          No action required
+                        </span>
                       )}
                     </div>
                   </>
@@ -265,15 +418,39 @@ export function CarelApp() {
 
               <article className="panel agent-run-panel">
                 <div className="panel-head compact-head">
-                  <div><span className="panel-kicker">AGENT RUN</span><h2>What CAREL is doing</h2></div>
-                  <button className="icon-btn soft" type="button"><MoreHorizontal size={18} /></button>
+                  <div>
+                    <span className="panel-kicker">AGENT LOOP</span>
+                    <h2>Decision trace</h2>
+                  </div>
+                  <Bot size={17} />
                 </div>
+
                 <div className="run-timeline">
-                  <RunStep icon={<Target size={16} />} title="Understand mandate" copy="Read goal, capital, risk ceiling, privacy preference, and approval threshold." done={runState !== "ready"} />
-                  <RunStep icon={<Gauge size={16} />} title="Score routes" copy="Compare simulated yield, liquidity, concentration, and risk." done={runState === "review" || runState === "active"} />
-                  <RunStep icon={<EyeOff size={16} />} title="Choose privacy path" copy="Use private execution only when the route benefits from it." done={runState === "review" || runState === "active"} />
-                  <RunStep icon={<ShieldCheck size={16} />} title="Policy gate" copy={`Anything above ${money(approvalThreshold)} returns to you for approval.`} done={runState === "active"} current={runState === "review"} />
-                  <RunStep icon={<Activity size={16} />} title="Monitor" copy="Watch for yield drift, liquidity changes, or rule violations." done={runState === "active"} current={runState === "active"} />
+                  <RunStep
+                    icon={<WalletCards size={16} />}
+                    title="Read wallet state"
+                    copy="Read public STRK from Sepolia and private STRK only with explicit wallet permission."
+                    done={wallet.connected}
+                  />
+                  <RunStep
+                    icon={<EyeOff size={16} />}
+                    title="Check privacy state"
+                    copy="Private balance remains hidden until the user explicitly reveals it."
+                    done={wallet.privateRevealed}
+                  />
+                  <RunStep
+                    icon={<Target size={16} />}
+                    title="Calculate minimum delta"
+                    copy="Compare current state with the target and avoid unnecessary movement."
+                    done={planned}
+                  />
+                  <RunStep
+                    icon={<ShieldCheck size={16} />}
+                    title="Approval and execution"
+                    copy="If movement is required, Ready signs the STRK20 action."
+                    done={wallet.tx.kind !== "idle"}
+                    current={planned && plan.status === "ready"}
+                  />
                 </div>
               </article>
             </div>
@@ -281,135 +458,318 @@ export function CarelApp() {
             <div className="right-stack">
               <article className="panel guardrail-panel">
                 <div className="panel-head compact-head">
-                  <div><span className="panel-kicker">MANDATE</span><h2>Your guardrails</h2></div>
-                  <button className="icon-btn soft" type="button" onClick={() => setShowRules((value) => !value)}><SlidersHorizontal size={17} /></button>
-                </div>
-
-                <div className="capital-edit-row">
-                  <label htmlFor="capital">Capital</label>
-                  <div><span>$</span><input id="capital" inputMode="decimal" value={capital} onChange={(event) => setCapital(Math.max(0, Number(event.target.value.replace(/[^0-9.]/g, "")) || 0))} /><b>USDC</b></div>
-                </div>
-
-                <RuleSegment label="Risk ceiling" options={["low", "medium", "high"]} value={risk} onChange={(value) => setRisk(value as RiskLevel)} />
-                <RuleSegment label="Privacy" options={["prefer-private", "balanced", "public-ok"]} value={privacy} onChange={(value) => setPrivacy(value as PrivacyMode)} display={{ "prefer-private": "Private first", balanced: "Balanced", "public-ok": "Public OK" }} />
-
-                <RangeRule label="Keep liquid" value={liquidPercent} suffix="%" min={10} max={50} onChange={setLiquidPercent} />
-                <RangeRule label="Max / protocol" value={maxProtocolPercent} suffix="%" min={15} max={50} onChange={setMaxProtocolPercent} />
-
-                {showRules && (
-                  <div className="advanced-rules">
-                    <label>Ask approval above</label>
-                    <div className="threshold-input"><span>$</span><input inputMode="decimal" value={approvalThreshold} onChange={(event) => setApprovalThreshold(Math.max(0, Number(event.target.value.replace(/[^0-9.]/g, "")) || 0))} /></div>
-                    <div className="rule-note"><KeyRound size={14} /> Session permissions will be added only after the testnet execution model is connected.</div>
+                  <div>
+                    <span className="panel-kicker">EXECUTION STATE</span>
+                    <h2>Wallet readiness</h2>
                   </div>
+                  <Activity size={17} />
+                </div>
+
+                <StatusRow
+                  label="Wallet"
+                  value={wallet.connected ? "Connected" : "Disconnected"}
+                  ok={wallet.connected}
+                />
+                <StatusRow
+                  label="Network"
+                  value={isSepolia ? "Starknet Sepolia" : "Switch to Sepolia"}
+                  ok={isSepolia}
+                />
+                <StatusRow
+                  label="STRK20 API"
+                  value={wallet.strk20Capable ? "Supported" : "Unavailable"}
+                  ok={wallet.strk20Capable}
+                />
+                <StatusRow
+                  label="Private state"
+                  value={wallet.privateRevealed ? "Disclosed to CAREL" : "Hidden"}
+                  ok={wallet.privateRevealed}
+                />
+
+                <div className="real-refresh-row">
+                  <button
+                    type="button"
+                    disabled={!wallet.connected || wallet.busy}
+                    onClick={() => void wallet.refreshPublicBalance()}
+                  >
+                    <RefreshCw size={13} />
+                    Refresh public
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!wallet.connected || !isSepolia || wallet.busy}
+                    onClick={() => void wallet.revealPrivateBalance()}
+                  >
+                    <EyeOff size={13} />
+                    {wallet.privateRevealed ? "Refresh private" : "Reveal private"}
+                  </button>
+                </div>
+
+                {wallet.error && (
+                  <div className="testnet-error">{wallet.error}</div>
                 )}
-              </article>
-
-              <Strk20TestnetPanel />
-
-              <article className="panel privacy-panel">
-                <div className="panel-head compact-head">
-                  <div><span className="panel-kicker">PRIVACY</span><h2>What stays private?</h2></div>
-                  <span className="strk20-chip">STRK20</span>
-                </div>
-                <div className="privacy-balance">
-                  <span><small>Public route</small><strong>{money(plan.publicCapital)}</strong></span>
-                  <span className="private-balance"><small>Private route</small><strong>{money(plan.privateCapital)}</strong></span>
-                </div>
-                <div className="privacy-list">
-                  <PrivacyRow label="Shield transaction" state="Public" />
-                  <PrivacyRow label="Private balance" state="Protected" privateState />
-                  <PrivacyRow label="Supported private DeFi" state="Protected" privateState />
-                  <PrivacyRow label="Unshield destination + amount" state="Public" />
-                </div>
-                <p className="privacy-footnote">CAREL does not label the whole workflow “private”. It shows the boundary at each step.</p>
               </article>
 
               <article className="panel activity-panel">
                 <div className="panel-head compact-head">
-                  <div><span className="panel-kicker">LIVE ACTIVITY</span><h2>Monitoring</h2></div>
-                  <span className="live-tag"><i /> LIVE</span>
+                  <div>
+                    <span className="panel-kicker">MONITOR</span>
+                    <h2>Latest execution</h2>
+                  </div>
+                  <Zap size={17} />
                 </div>
-                <div className="activity-feed">
-                  {activityFeed.map((item) => (
-                    <div className="activity-item" key={`${item.time}-${item.title}`}>
-                      <span className={`feed-dot ${item.tone}`} />
-                      <div><strong>{item.title}</strong><p>{item.copy}</p></div>
-                      <time>{item.time}</time>
+
+                {wallet.tx.kind === "idle" ? (
+                  <p className="real-muted">
+                    No STRK20 transaction submitted in this session.
+                  </p>
+                ) : (
+                  <div className="testnet-tx">
+                    <div>
+                      <small>{wallet.tx.kind.toUpperCase()}</small>
+                      <strong>{wallet.tx.label}</strong>
                     </div>
-                  ))}
+                    <a
+                      href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View tx ↗
+                    </a>
+                  </div>
+                )}
+
+                {remainingBlocks !== null && (
+                  <div
+                    className={`maturity-tracker ${
+                      remainingBlocks === 0 ? "done" : ""
+                    }`}
+                  >
+                    {remainingBlocks === 0 ? (
+                      <Check size={15} />
+                    ) : (
+                      <RefreshCw className="spin" size={15} />
+                    )}
+                    <span>
+                      {remainingBlocks === 0
+                        ? "Private note should now be mature."
+                        : `~${remainingBlocks} blocks until note maturity`}
+                    </span>
+                  </div>
+                )}
+              </article>
+
+              <article className="panel privacy-panel">
+                <div className="panel-head compact-head">
+                  <div>
+                    <span className="panel-kicker">PRIVACY BOUNDARY</span>
+                    <h2>What CAREL exposes</h2>
+                  </div>
+                  <span className="strk20-chip">STRK20</span>
                 </div>
+
+                <div className="privacy-list">
+                  <PrivacyRow label="Shield deposit" state="Public" />
+                  <PrivacyRow label="Private note balance" state="Protected" privateState />
+                  <PrivacyRow label="Private state read" state="User-approved" privateState />
+                  <PrivacyRow label="Unshield amount + destination" state="Public" />
+                </div>
+
+                <p className="privacy-footnote">
+                  CAREL does not claim the entire flow is private. It shows the
+                  privacy boundary at each step.
+                </p>
               </article>
             </div>
           </section>
-
-          {notice && <div className="toast"><Check size={16} /><span>{notice}</span><button onClick={() => setNotice(null)} aria-label="Close"><X size={14} /></button></div>}
         </main>
-      </div>
 
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        <button className="active"><Home size={18} /><span>Home</span></button>
-        <button><Bot size={18} /><span>Agent</span></button>
-        <button className="mobile-command"><Sparkles size={20} /></button>
-        <button><EyeOff size={18} /><span>Privacy</span></button>
-        <button><Activity size={18} /><span>Activity</span></button>
-      </nav>
+        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+          <button className="active"><Home size={17} /><span>Home</span></button>
+          <button><Bot size={17} /><span>Agent</span></button>
+          <button className="mobile-command"><Sparkles size={18} /><span>Plan</span></button>
+          <button><EyeOff size={17} /><span>Privacy</span></button>
+          <button><Activity size={17} /><span>Activity</span></button>
+        </nav>
+      </div>
     </div>
   );
 }
 
-function SideItem({ icon, label, badge, active = false }: { icon: React.ReactNode; label: string; badge?: string; active?: boolean }) {
-  return <button className={`side-item ${active ? "active" : ""}`} type="button">{icon}<span>{label}</span>{badge && <small>{badge}</small>}</button>;
-}
-
-function MetricCard({ label, value, meta, icon, accent = false, privateCard = false }: { label: string; value: string; meta: string; icon: React.ReactNode; accent?: boolean; privateCard?: boolean }) {
+function MetricCard({
+  label,
+  value,
+  meta,
+  icon,
+  accent = false,
+  privateCard = false,
+}: {
+  label: string;
+  value: string;
+  meta: string;
+  icon: React.ReactNode;
+  accent?: boolean;
+  privateCard?: boolean;
+}) {
   return (
-    <article className={`metric-card ${accent ? "accent" : ""} ${privateCard ? "private-card" : ""}`}>
-      <div className="metric-top"><span>{label}</span><i>{icon}</i></div>
+    <article
+      className={`metric-card ${accent ? "accent" : ""} ${
+        privateCard ? "private-card" : ""
+      }`}
+    >
+      <div className="metric-top">
+        <span>{label}</span>
+        <i>{icon}</i>
+      </div>
       <strong>{value}</strong>
       <p>{meta}</p>
     </article>
   );
 }
 
-function StateBadge({ state }: { state: "ready" | "planning" | "review" | "active" }) {
-  const labels = { ready: "IDLE", planning: "PLANNING", review: "REVIEW", active: "ACTIVE" };
-  return <span className={`state-badge ${state}`}><i />{labels[state]}</span>;
-}
-
-function ExecNode({ title, subtitle, privateNode = false, activeNode = false }: { title: string; subtitle: string; privateNode?: boolean; activeNode?: boolean }) {
-  return <div className={`exec-node ${privateNode ? "private" : ""} ${activeNode ? "active" : ""}`}><span>{title}</span><small>{subtitle}</small></div>;
-}
-
-function ExecArrow() { return <ArrowRight className="exec-arrow" size={16} />; }
-
-function RunStep({ icon, title, copy, done = false, current = false }: { icon: React.ReactNode; title: string; copy: string; done?: boolean; current?: boolean }) {
+function SideItem({
+  icon,
+  label,
+  active = false,
+  badge,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  badge?: string;
+}) {
   return (
-    <div className={`run-step ${done ? "done" : ""} ${current ? "current" : ""}`}>
-      <div className="run-icon">{done ? <Check size={15} /> : icon}</div>
-      <div><strong>{title}</strong><p>{copy}</p></div>
+    <button className={`side-item ${active ? "active" : ""}`} type="button">
+      {icon}
+      <span>{label}</span>
+      {badge ? <small>{badge}</small> : null}
+    </button>
+  );
+}
+
+function LiveStateBadge({
+  planned,
+  status,
+}: {
+  planned: boolean;
+  status: string;
+}) {
+  const label = !planned
+    ? "READY"
+    : status === "ready"
+      ? "REVIEW"
+      : status === "satisfied"
+        ? "NO ACTION"
+        : status === "needs-private-state"
+          ? "NEEDS ACCESS"
+          : "BLOCKED";
+
+  const className =
+    status === "ready"
+      ? "review"
+      : status === "satisfied"
+        ? "active"
+        : "";
+
+  return (
+    <span className={`state-badge ${className}`}>
+      <i />
+      {label}
+    </span>
+  );
+}
+
+function ExecNode({
+  title,
+  subtitle,
+  privateNode = false,
+  activeNode = false,
+}: {
+  title: string;
+  subtitle: string;
+  privateNode?: boolean;
+  activeNode?: boolean;
+}) {
+  return (
+    <div
+      className={`exec-node ${privateNode ? "private" : ""} ${
+        activeNode ? "active" : ""
+      }`}
+    >
+      <span>{title}</span>
+      <small>{subtitle}</small>
     </div>
   );
 }
 
-function RuleSegment({ label, options, value, onChange, display = {} }: { label: string; options: string[]; value: string; onChange: (value: string) => void; display?: Record<string, string> }) {
+function ExecArrow() {
+  return <ChevronRight className="exec-arrow" size={14} />;
+}
+
+function RunStep({
+  icon,
+  title,
+  copy,
+  done = false,
+  current = false,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  copy: string;
+  done?: boolean;
+  current?: boolean;
+}) {
   return (
-    <div className="rule-segment">
-      <label>{label}</label>
-      <div>{options.map((option) => <button key={option} type="button" className={value === option ? "active" : ""} onClick={() => onChange(option)}>{display[option] ?? option[0].toUpperCase() + option.slice(1)}</button>)}</div>
+    <div
+      className={`run-step ${done ? "done" : ""} ${
+        current ? "current" : ""
+      }`}
+    >
+      <div className="run-icon">{done ? <Check size={14} /> : icon}</div>
+      <div>
+        <strong>{title}</strong>
+        <p>{copy}</p>
+      </div>
     </div>
   );
 }
 
-function RangeRule({ label, value, suffix, min, max, onChange }: { label: string; value: number; suffix: string; min: number; max: number; onChange: (value: number) => void }) {
+function StatusRow({
+  label,
+  value,
+  ok,
+}: {
+  label: string;
+  value: string;
+  ok: boolean;
+}) {
   return (
-    <div className="range-rule-app">
-      <div><label>{label}</label><strong>{value}{suffix}</strong></div>
-      <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+    <div className="real-status-row">
+      <span>{label}</span>
+      <strong className={ok ? "ok" : ""}>
+        <i />
+        {value}
+      </strong>
     </div>
   );
 }
 
-function PrivacyRow({ label, state, privateState = false }: { label: string; state: string; privateState?: boolean }) {
-  return <div className="privacy-row"><span>{label}</span><strong className={privateState ? "private-state" : "public-state"}>{privateState ? <EyeOff size={12} /> : <Route size={12} />}{state}</strong></div>;
+function PrivacyRow({
+  label,
+  state,
+  privateState = false,
+}: {
+  label: string;
+  state: string;
+  privateState?: boolean;
+}) {
+  return (
+    <div className="privacy-row">
+      <span>{label}</span>
+      <strong className={privateState ? "private-state" : "public-state"}>
+        {state}
+      </strong>
+    </div>
+  );
 }
