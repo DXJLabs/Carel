@@ -60,3 +60,182 @@ button{cursor:pointer}
 .privacy-truth-list{display:grid;gap:7px;margin-top:13px}.privacy-truth-list span{align-items:center;color:rgba(255,255,255,.42);display:flex;font-size:9px;gap:7px}.privacy-truth-list i{border-radius:50%;height:6px;width:6px}.privacy-truth-list i.public{background:#f4c967}.privacy-truth-list i.private{background:#61f6b1;box-shadow:0 0 10px rgba(97,246,177,.35)}
 .testnet-tx{align-items:center;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);border-radius:11px;display:flex;justify-content:space-between;margin-top:10px;padding:10px 11px}.testnet-tx small{color:rgba(255,255,255,.32);display:block;font-size:8px;letter-spacing:.08em}.testnet-tx strong{color:rgba(255,255,255,.7);display:block;font-size:10px;margin-top:3px}.testnet-tx a{color:#9da5ff;font-size:9px;text-decoration:none}.testnet-address{border-top:1px solid rgba(255,255,255,.055);display:flex;flex-direction:column;gap:3px;margin-top:12px;padding-top:10px}.testnet-address span{color:rgba(255,255,255,.55);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px}.testnet-address small{color:rgba(255,255,255,.28);font-size:8px}
 @media(max-width:640px){.carel-wallet-button small{display:none}.testnet-status-grid,.testnet-balances,.testnet-actions{grid-template-columns:1fr}.testnet-actions button{min-height:46px}.testnet-amount input{font-size:16px}}
+
+/* ===== CAREL mobile workspace fix — Mises / Android ===== */
+@media (max-width: 720px) {
+  .app-topbar {
+    position: relative;
+    top: auto;
+    height: 56px;
+    padding: 0 10px;
+    background: rgba(7,9,13,.92);
+  }
+
+  .mobile-brand .logo-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .mobile-brand strong {
+    font-size: 10px;
+  }
+
+  .top-actions {
+    min-width: 0;
+  }
+
+  .carel-wallet-button {
+    max-width: 154px;
+    height: 34px;
+  }
+
+  .workspace-inner {
+    padding: 18px 10px 90px;
+  }
+
+  .command-row {
+    margin-bottom: 14px;
+  }
+
+  .command-intro h1 {
+    max-width: 330px;
+    margin: 11px 0 9px;
+    font-size: clamp(28px, 8.2vw, 32px);
+    line-height: 1.02;
+  }
+
+  .command-intro p {
+    max-width: 350px;
+    font-size: 10px;
+    line-height: 1.55;
+  }
+
+  .composer-card {
+    margin-bottom: 12px;
+    border-radius: 14px;
+  }
+
+  .composer-main {
+    grid-template-columns: 32px minmax(0,1fr);
+    gap: 7px;
+    padding: 12px 11px 9px;
+  }
+
+  .composer-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .composer-main textarea {
+    min-height: 58px;
+    max-height: 100px;
+    font-size: 16px;
+    line-height: 1.35;
+    padding: 3px 4px;
+  }
+
+  .composer-bottom {
+    min-height: 52px;
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px 7px 10px;
+  }
+
+  .quick-prompts {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .quick-prompts button {
+    padding: 7px 9px;
+    font-size: 7px;
+  }
+
+  .run-button {
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 8px;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 7px;
+    margin-bottom: 8px;
+  }
+
+  .metric-card {
+    min-height: 92px;
+    padding: 11px;
+    border-radius: 12px;
+  }
+
+  .metric-card > strong {
+    margin: 12px 0 5px;
+    font-size: 20px;
+  }
+
+  .metric-card > p {
+    font-size: 7px;
+  }
+
+  .mobile-bottom-nav {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    height: 58px;
+    grid-template-columns: repeat(5, minmax(0,1fr));
+    border-radius: 15px;
+    padding: 4px;
+  }
+
+  .mobile-bottom-nav button {
+    min-width: 0;
+    font-size: 6px;
+  }
+
+  .mobile-bottom-nav .mobile-command {
+    width: 42px;
+    height: 42px;
+    transform: none;
+    border-radius: 12px;
+  }
+
+  .toast {
+    bottom: 76px;
+  }
+}
+
+@media (max-width: 430px) {
+  .workspace-inner {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .wallet-pill {
+    max-width: 148px;
+  }
+
+  .command-intro h1 {
+    font-size: 29px;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+
+  .metric-card {
+    min-height: 90px;
+  }
+
+  .mobile-bottom-nav {
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+  }
+}
