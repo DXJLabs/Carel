@@ -569,7 +569,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function useCarelTestnet() {
+export function useCarelTestnet() {
   const context = useContext(CarelTestnetContext);
 
   if (!context) {
