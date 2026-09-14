@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 .app{
   --lime:#b9ff69;
   --mint:#6ef0c4;
@@ -126,3 +128,243 @@
   .activePlanCard{display:block}.activePlanCard>button{margin-top:13px;width:100%;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){.app *,.app *::before,.app *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
+
+/* ===== CAREL TYPOGRAPHY + MOBILE DOCK V4 ===== */
+
+/* Typography system */
+.app{
+  font-family:"Inter",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-feature-settings:"kern" 1,"liga" 1,"tnum" 1;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+.heroCopy h1,
+.pageTitle h1,
+.portfolioHero>strong,
+.cardTop>div>strong,
+.activePlanCard h2,
+.sectionHead h2,
+.planCard h2,
+.assetGrid strong,
+.toolGrid strong{
+  font-family:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+}
+
+.heroCopy h1,
+.pageTitle h1{
+  font-weight:500;
+  letter-spacing:-.058em;
+}
+
+.heroCopy h1{
+  line-height:.92;
+}
+
+.heroCopy h1 span{
+  font-weight:400;
+  letter-spacing:-.062em;
+  -webkit-text-stroke:1px rgba(238,255,221,.36);
+  text-shadow:
+    0 0 28px rgba(185,255,105,.04),
+    0 0 64px rgba(185,255,105,.025);
+}
+
+.pageTitle h1{
+  line-height:.96;
+}
+
+.eyebrow,
+.brand strong,
+.brand small,
+.cardTop small,
+.sectionHead small,
+.pageTitle small,
+.planCard small,
+.infoCard small,
+.activityItem small,
+.portfolioHero small,
+.assetGrid small,
+.auditGrid small,
+.toolGrid em,
+.planStatus{
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-weight:600;
+  letter-spacing:.115em;
+}
+
+.brand strong{
+  letter-spacing:.20em;
+}
+
+.heroCopy p,
+.pageTitle p,
+.activePlanCard p,
+.planReason p,
+.toolGrid small,
+.quickGrid small{
+  font-weight:400;
+  letter-spacing:-.006em;
+}
+
+.cardTop>div>strong,
+.balanceGrid strong,
+.portfolioHero>strong,
+.assetGrid strong,
+.amountField input{
+  font-variant-numeric:tabular-nums lining-nums;
+  font-feature-settings:"tnum" 1,"lnum" 1;
+}
+
+.portfolioHero>strong,
+.cardTop>div>strong{
+  font-weight:500;
+}
+
+.quickGrid strong,
+.nav button,
+.primaryButton,
+.secondaryButton,
+.heroCta,
+.textButton{
+  font-family:"Inter",ui-sans-serif,system-ui,sans-serif;
+  font-weight:600;
+}
+
+.nav button{
+  letter-spacing:-.01em;
+}
+
+/* Slightly more readable product copy */
+.heroCopy p{
+  max-width:520px;
+  font-size:12.5px;
+  color:#929ca7;
+}
+
+.pageTitle p{
+  font-size:11.5px;
+  color:#8b96a2;
+}
+
+.sectionHead h2{
+  font-weight:600;
+  letter-spacing:-.025em;
+}
+
+.activePlanCard h2{
+  font-weight:600;
+  letter-spacing:-.025em;
+}
+
+/* Mobile dock: flush to app viewport, no floating gap */
+@media(max-width:720px){
+  .app{
+    padding-bottom:90px;
+  }
+
+  .main{
+    padding-bottom:34px;
+  }
+
+  .nav{
+    left:0;
+    right:0;
+    bottom:0;
+    transform:none;
+    width:100%;
+    min-height:68px;
+    padding:
+      5px
+      7px
+      calc(5px + env(safe-area-inset-bottom));
+    border-left:0;
+    border-right:0;
+    border-bottom:0;
+    border-radius:18px 18px 0 0;
+    background:rgba(9,13,18,.96);
+    box-shadow:
+      0 -1px 0 rgba(255,255,255,.035),
+      0 -18px 50px rgba(0,0,0,.34);
+    backdrop-filter:blur(26px) saturate(130%);
+  }
+
+  .nav button{
+    min-height:54px;
+    border-radius:12px;
+    gap:5px;
+    font-size:7px;
+  }
+
+  .nav button::after{
+    bottom:4px;
+  }
+
+  .heroCopy h1{
+    font-size:46px;
+    line-height:.91;
+    letter-spacing:-.062em;
+  }
+
+  .heroCopy h1 span{
+    letter-spacing:-.066em;
+  }
+
+  .heroCopy p{
+    max-width:94%;
+    font-size:11px;
+    line-height:1.65;
+  }
+
+  .pageTitle h1{
+    font-size:41px;
+    line-height:.94;
+    letter-spacing:-.058em;
+  }
+
+  .pageTitle p{
+    font-size:10px;
+    line-height:1.65;
+  }
+
+  .eyebrow{
+    font-size:8px;
+    letter-spacing:.12em;
+  }
+
+  .cardTop>div>strong{
+    font-size:21px;
+  }
+
+  .balanceGrid strong{
+    font-size:14px;
+  }
+
+  .quickGrid strong{
+    font-size:10px;
+  }
+
+  .quickGrid small,
+  .toolGrid small{
+    font-size:7.5px;
+    line-height:1.45;
+  }
+
+  .toolGrid strong{
+    font-size:12px;
+    letter-spacing:-.018em;
+  }
+}
+
+@media(max-width:390px){
+  .heroCopy h1{
+    font-size:41px;
+  }
+
+  .pageTitle h1{
+    font-size:37px;
+  }
+}
+
+/* ===== END CAREL TYPOGRAPHY + MOBILE DOCK V4 ===== */
