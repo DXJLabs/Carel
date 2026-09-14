@@ -1,19 +1,28 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  ArrowDownToLine,
+  ArrowLeftRight,
+  ArrowUpFromLine,
   Bot,
   Check,
-  ChevronDown,
+  ChevronRight,
+  CircleDollarSign,
   EyeOff,
   Home,
-  LockKeyhole,
+  Landmark,
+  Layers3,
+  Menu,
+  Network,
   Orbit,
   RefreshCw,
   Route,
+  Settings,
   ShieldCheck,
   Sparkles,
+  TrendingUp,
   WalletCards,
   Zap,
 } from "lucide-react";
@@ -27,43 +36,79 @@ import {
   buildLivePlan,
   type LiveGoal,
 } from "@/lib/agent/livePlanner";
-import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import { formatUnits18 } from "@/lib/strk20/units";
+import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 
 import styles from "./CarelApp.module.css";
 
 const ZERO = BigInt(0);
 
-function cx(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
-}
+type Tab = "home" | "agent" | "portfolio" | "activity" | "more";
+type QuickAction = "shield" | "withdraw" | null;
 
 function fmt(value: bigint | null) {
-  return value === null ? "Not loaded" : `${formatUnits18(value)} STRK`;
+  return value === null ? "—" : `${formatUnits18(value)} STRK`;
 }
 
-function actionLabel(action: string) {
-  if (action === "shield") return "Shield";
-  if (action === "unshield") return "Unshield";
-  return "No action";
+function parseGoal(text: string): { goal: LiveGoal; target: string } | null {
+  const normalized = text.trim().toLowerCase();
+  const amount = normalized.match(/(\d+(?:\.\d+)?)/)?.[1];
+
+  if (!amount) return null;
+
+  if (
+    normalized.includes("public") ||
+    normalized.includes("withdraw") ||
+    normalized.includes("unshield") ||
+    normalized.includes("available")
+  ) {
+    return { goal: "target-public", target: amount };
+  }
+
+  if (
+    normalized.includes("private") ||
+    normalized.includes("shield") ||
+    normalized.includes("privacy") ||
+    normalized.includes("privasi")
+  ) {
+    return { goal: "target-private", target: amount };
+  }
+
+  return null;
 }
 
 export function CarelApp() {
   const wallet = useCarelTestnet();
 
-  const [goal, setGoal] = useState<LiveGoal>("target-private");
-  const [target, setTarget] = useState("1");
+  const [tab, setTab] = useState<Tab>("home");
+  const [goalText, setGoalText] = useState("Keep at least 1 STRK private");
+  const [planGoal, setPlanGoal] = useState<LiveGoal>("target-private");
+  const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
+  const [goalError, setGoalError] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
+  const [quickAction, setQuickAction] = useState<QuickAction>(null);
+  const [quickAmount, setQuickAmount] = useState("1");
 
   const isSepolia =
     wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
 
+  useEffect(() => {
+    if (
+      wallet.connected &&
+      isSepolia &&
+      wallet.publicStrk === null &&
+      !wallet.busy
+    ) {
+      void wallet.refreshPublicBalance();
+    }
+  }, [wallet.connected, wallet.publicStrk, wallet.busy, isSepolia]);
+
   const plan = useMemo(
     () =>
       buildLivePlan({
-        goal,
-        targetText: target,
+        goal: planGoal,
+        targetText: planTarget,
         connected: wallet.connected,
         networkReady: isSepolia,
         strk20Capable: wallet.strk20Capable,
@@ -72,8 +117,8 @@ export function CarelApp() {
         privateRevealed: wallet.privateRevealed,
       }),
     [
-      goal,
-      target,
+      planGoal,
+      planTarget,
       wallet.connected,
       wallet.strk20Capable,
       wallet.publicStrk,
@@ -83,22 +128,52 @@ export function CarelApp() {
     ],
   );
 
-  const coreState = executing || wallet.busy
-    ? "working"
-    : planned && plan.status === "ready"
-      ? "ready"
-      : planned && plan.status === "blocked"
-        ? "blocked"
-        : "idle";
+  const knownCapital =
+    wallet.publicStrk !== null && wallet.privateRevealed
+      ? wallet.publicStrk + (wallet.privateStrk ?? ZERO)
+      : null;
 
-  const execute = async () => {
+  const buildPlan = (source = goalText) => {
+    const parsed = parseGoal(source);
+
+    if (!parsed) {
+      setGoalError(
+        "Live testnet execution currently supports STRK privacy targets. CAREL can still stage other DeFi goals as plans without pretending they are live.",
+      );
+      setPlanned(false);
+      return;
+    }
+
+    setGoalError(null);
+    setPlanGoal(parsed.goal);
+    setPlanTarget(parsed.target);
+    setPlanned(true);
+  };
+
+  const openAgent = (prompt: string, autoPlan = false) => {
+    setGoalText(prompt);
+    setGoalError(null);
+    setTab("agent");
+
+    if (autoPlan) {
+      const parsed = parseGoal(prompt);
+      if (parsed) {
+        setPlanGoal(parsed.goal);
+        setPlanTarget(parsed.target);
+        setPlanned(true);
+        return;
+      }
+    }
+
+    setPlanned(false);
+  };
+
+  const executePlan = async () => {
     if (plan.status !== "ready") return;
 
     setExecuting(true);
-
     try {
       const amount = formatUnits18(plan.delta, 18);
-
       if (plan.action === "shield") {
         await wallet.shield(amount);
       } else if (plan.action === "unshield") {
@@ -109,502 +184,653 @@ export function CarelApp() {
     }
   };
 
-  const buildPlan = () => {
-    setPlanned(true);
-    window.setTimeout(() => {
-      document
-        .getElementById("carel-plan")
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 120);
+  const executeQuickAction = async () => {
+    if (!quickAction || !quickAmount) return;
+
+    setExecuting(true);
+    try {
+      if (quickAction === "shield") {
+        await wallet.shield(quickAmount);
+      } else {
+        await wallet.unshield(quickAmount);
+      }
+    } finally {
+      setExecuting(false);
+    }
   };
 
-  const privacyCopy =
-    plan.status === "ready" && plan.action === "shield"
-      ? "The shield deposit is public. The matured balance becomes private."
-      : plan.status === "ready" && plan.action === "unshield"
-        ? "The amount and destination become public when funds are unshielded."
-        : "CAREL does not change the privacy boundary without showing it first.";
-
-  return (
-    <div className={styles.app} id="home">
-      <div className={styles.scene} aria-hidden="true">
-        <div className={styles.sceneGrid} />
-        <div className={styles.sceneGlow} />
-        <div className={styles.scanlines} />
-        <span className={cx(styles.particle, styles.particleOne)} />
-        <span className={cx(styles.particle, styles.particleTwo)} />
-        <span className={cx(styles.particle, styles.particleThree)} />
-        <span className={cx(styles.particle, styles.particleFour)} />
-      </div>
-
-      <header className={styles.header}>
-        <a className={styles.brand} href="#home" aria-label="CAREL home">
-          <span className={styles.brandMark}>
-            <Orbit size={18} />
+  const renderHome = () => (
+    <div className={styles.page} key="home">
+      <section className={styles.homeHero}>
+        <div className={styles.heroCopy}>
+          <span className={styles.eyebrow}>
+            <Sparkles size={13} />
+            AGENTIC PRIVATE DEFI
           </span>
-          <span className={styles.brandName}>CAREL</span>
-          <span className={styles.brandBy}>BY DXJ LABS</span>
-        </a>
+          <h1>
+            Set the goal.
+            <span>Keep control.</span>
+          </h1>
+          <p>
+            CAREL plans the route, checks privacy and risk, then waits for your
+            approval before execution.
+          </p>
 
-        <div className={styles.headerActions}>
-          <div
-            className={cx(
-              styles.network,
-              isSepolia ? styles.networkReady : styles.networkWaiting,
-            )}
+          <button
+            type="button"
+            className={styles.heroCta}
+            onClick={() => setTab("agent")}
           >
-            <i />
-            <span>{isSepolia ? "STARKNET SEPOLIA" : "NETWORK REQUIRED"}</span>
-          </div>
-          <div className={styles.walletSlot}>
-            <WalletStatusButton />
+            Ask CAREL
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        <div className={styles.agentCore} aria-hidden="true">
+          <div className={styles.coreRingA} />
+          <div className={styles.coreRingB} />
+          <div className={styles.coreRingC} />
+          <div className={styles.coreGlow} />
+          <div className={styles.coreBadge}>
+            <Orbit size={26} />
+            <strong>CAREL</strong>
+            <small>PRIVATE AGENT</small>
           </div>
         </div>
-      </header>
+      </section>
 
-      <main className={styles.main}>
-        <section className={styles.hero}>
-          <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}>
-              <Sparkles size={14} />
-              AGENTIC PRIVATE DEFI
-            </div>
-
-            <h1>
-              <span>Set the goal.</span>
-              <em>Keep control.</em>
-            </h1>
-
-            <p>
-              CAREL turns your capital target into a controlled Starknet plan,
-              checks the privacy boundary, and asks before funds move.
-            </p>
-
-            <div className={styles.promiseRow}>
-              <span><ShieldCheck size={14} /> User-approved</span>
-              <span><EyeOff size={14} /> Privacy-aware</span>
-              <span><Route size={14} /> Goal-first</span>
-            </div>
+      <section className={styles.portfolioCard}>
+        <div className={styles.cardTop}>
+          <div>
+            <small>KNOWN PORTFOLIO</small>
+            <strong>
+              {knownCapital === null ? "Private by default" : fmt(knownCapital)}
+            </strong>
           </div>
 
-          <CarelCore state={coreState} />
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={() => setTab("portfolio")}
+          >
+            View portfolio
+            <ChevronRight size={14} />
+          </button>
+        </div>
 
-          <div className={styles.commandGrid}>
-            <section className={styles.commandCard}>
-              <div className={styles.cardTopline}>
-                <div>
-                  <span className={styles.cardIcon}><Bot size={17} /></span>
-                  <span>
-                    <small>CAPITAL MANDATE</small>
-                    <strong>Tell CAREL where funds should live</strong>
-                  </span>
-                </div>
-                <span className={styles.secureLabel}>
-                  <i /> LOCAL INTENT
-                </span>
-              </div>
+        <div className={styles.balanceGrid}>
+          <div>
+            <span><EyeOff size={14} /> Private</span>
+            <strong>
+              {wallet.privateRevealed
+                ? fmt(wallet.privateStrk ?? ZERO)
+                : "••••••"}
+            </strong>
+            <button
+              type="button"
+              disabled={!wallet.connected || !isSepolia || wallet.busy}
+              onClick={() => void wallet.revealPrivateBalance()}
+            >
+              {wallet.privateRevealed ? "Refresh" : "Reveal"}
+            </button>
+          </div>
 
-              <div className={styles.mandateSentence}>
-                <span>Keep at least</span>
-                <label>
-                  <span className={styles.srOnly}>Target amount in STRK</span>
-                  <input
-                    inputMode="decimal"
-                    value={target}
-                    onChange={(event) => {
-                      setTarget(event.target.value.replace(/[^0-9.]/g, ""));
-                      setPlanned(false);
-                    }}
-                    aria-label="Target amount in STRK"
-                  />
-                  <b>STRK</b>
-                </label>
-                <span>inside my</span>
-                <strong>
-                  {goal === "target-private" ? "private balance" : "public wallet"}
-                </strong>
-                <span>.</span>
-              </div>
+          <div>
+            <span><WalletCards size={14} /> Public</span>
+            <strong>{fmt(wallet.publicStrk)}</strong>
+            <button
+              type="button"
+              disabled={!wallet.connected || wallet.busy}
+              onClick={() => void wallet.refreshPublicBalance()}
+            >
+              {wallet.publicStrk === null ? "Load" : "Refresh"}
+            </button>
+          </div>
+        </div>
+      </section>
 
-              <div className={styles.modeRow}>
-                <button
-                  type="button"
-                  className={goal === "target-private" ? styles.active : ""}
-                  onClick={() => {
-                    setGoal("target-private");
-                    setPlanned(false);
-                  }}
-                >
-                  <EyeOff size={16} />
-                  <span><strong>Keep private</strong><small>Use STRK20 balance</small></span>
-                </button>
+      <section className={styles.section}>
+        <div className={styles.sectionHead}>
+          <div>
+            <small>QUICK ACCESS</small>
+            <h2>Most useful actions</h2>
+          </div>
+          <Route size={18} />
+        </div>
 
-                <button
-                  type="button"
-                  className={goal === "target-public" ? styles.active : ""}
-                  onClick={() => {
-                    setGoal("target-public");
-                    setPlanned(false);
-                  }}
-                >
-                  <WalletCards size={16} />
-                  <span><strong>Keep public</strong><small>Use connected wallet</small></span>
-                </button>
-              </div>
+        <div className={styles.quickGrid}>
+          <button type="button" onClick={() => openAgent("Keep at least 10 STRK private", true)}>
+            <span><ShieldCheck size={17} /></span>
+            <strong>Private goal</strong>
+            <small>Agent plans the minimum move</small>
+          </button>
 
+          <button type="button" onClick={() => setTab("portfolio")}>
+            <span><Layers3 size={17} /></span>
+            <strong>Portfolio</strong>
+            <small>Public + private capital</small>
+          </button>
+
+          <button type="button" onClick={() => setTab("more")}>
+            <span><CircleDollarSign size={17} /></span>
+            <strong>Tools</strong>
+            <small>Swap, earn, bridge & more</small>
+          </button>
+
+          <button type="button" onClick={() => setTab("activity")}>
+            <span><Activity size={17} /></span>
+            <strong>Activity</strong>
+            <small>Inspect executions</small>
+          </button>
+        </div>
+      </section>
+
+      <section className={styles.activePlanCard}>
+        <div>
+          <small>ACTIVE MANDATE</small>
+          <h2>{planned ? plan.title : "No active plan yet"}</h2>
+          <p>
+            {planned
+              ? plan.reason
+              : "Create a goal and CAREL will turn it into an inspectable route."}
+          </p>
+        </div>
+
+        <button type="button" onClick={() => setTab("agent")}>
+          {planned ? "Review plan" : "Create goal"}
+          <ChevronRight size={15} />
+        </button>
+      </section>
+
+      <section className={styles.recentCard}>
+        <div className={styles.sectionHead}>
+          <div>
+            <small>RECENT</small>
+            <h2>Activity</h2>
+          </div>
+          <button type="button" onClick={() => setTab("activity")}>
+            View all
+          </button>
+        </div>
+
+        {wallet.tx.kind === "idle" ? (
+          <div className={styles.emptyState}>
+            <Activity size={18} />
+            <span>No execution in this session.</span>
+          </div>
+        ) : (
+          <a
+            className={styles.txRow}
+            href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className={styles.txPulse} />
+            <div>
+              <strong>{wallet.tx.label}</strong>
+              <small>{wallet.tx.kind}</small>
+            </div>
+            <ChevronRight size={15} />
+          </a>
+        )}
+      </section>
+    </div>
+  );
+
+  const renderAgent = () => (
+    <div className={styles.page} key="agent">
+      <section className={styles.pageTitle}>
+        <span className={styles.eyebrow}>
+          <Bot size={13} />
+          CAREL AGENT
+        </span>
+        <h1>Tell CAREL the outcome.</h1>
+        <p>
+          Goal → plan → privacy/risk check → approval → execution. The user stays
+          in control at every irreversible step.
+        </p>
+      </section>
+
+      <section className={styles.commandCard}>
+        <div className={styles.commandGlow} />
+
+        <textarea
+          value={goalText}
+          onChange={(event) => {
+            setGoalText(event.target.value);
+            setPlanned(false);
+            setGoalError(null);
+          }}
+          placeholder="e.g. Keep at least 5 STRK private"
+          aria-label="Goal for CAREL"
+        />
+
+        <div className={styles.promptChips}>
+          <button type="button" onClick={() => setGoalText("Keep at least 10 STRK private")}>
+            10 STRK private
+          </button>
+          <button type="button" onClick={() => setGoalText("Keep at least 5 STRK public")}>
+            5 STRK public
+          </button>
+          <button type="button" onClick={() => setGoalText("Find a low-risk yield strategy for 10 STRK")}>
+            Low-risk yield
+          </button>
+        </div>
+
+        <button
+          type="button"
+          className={styles.primaryButton}
+          onClick={() => buildPlan()}
+        >
+          <Sparkles size={16} />
+          Build controlled plan
+        </button>
+      </section>
+
+      {goalError && <div className={styles.errorCard}>{goalError}</div>}
+
+      <section className={`${styles.planCard} ${planned ? styles.planLive : ""}`}>
+        <div className={styles.sectionHead}>
+          <div>
+            <small>AGENT PLAN</small>
+            <h2>{planned ? plan.title : "Waiting for a goal"}</h2>
+          </div>
+          <span className={styles.planStatus}>
+            <i />
+            {!planned ? "IDLE" : plan.status.toUpperCase()}
+          </span>
+        </div>
+
+        {!planned ? (
+          <div className={styles.planEmpty}>
+            <div className={styles.miniCore}>
+              <Orbit size={20} />
+            </div>
+            <p>
+              Your route, privacy boundary and approval step will appear here.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className={styles.flowRail}>
+              <div><span>01</span><strong>Observe</strong><small>Wallet state</small></div>
+              <i />
+              <div><span>02</span><strong>Plan</strong><small>Minimum route</small></div>
+              <i />
+              <div><span>03</span><strong>Approve</strong><small>User control</small></div>
+            </div>
+
+            <div className={styles.planReason}>
+              <ShieldCheck size={17} />
+              <p>{plan.reason}</p>
+            </div>
+
+            {plan.status === "needs-private-state" && (
               <button
                 type="button"
-                className={styles.buildButton}
-                onClick={buildPlan}
+                className={styles.secondaryButton}
+                disabled={wallet.busy}
+                onClick={() => void wallet.revealPrivateBalance()}
               >
-                <span><Sparkles size={17} /> Build controlled plan</span>
-                <b>→</b>
+                <EyeOff size={15} />
+                Reveal private balance
               </button>
-            </section>
-
-            <aside className={styles.balanceStack} aria-label="Wallet balances">
-              <div className={cx(styles.balanceCard, styles.privateCard)}>
-                <div className={styles.balanceHead}>
-                  <span><EyeOff size={15} /> PRIVATE BALANCE</span>
-                  <i className={wallet.privateRevealed ? styles.liveDot : ""} />
-                </div>
-                <strong>
-                  {wallet.privateRevealed
-                    ? fmt(wallet.privateStrk ?? ZERO)
-                    : "••••••"}
-                </strong>
-                <div className={styles.balanceFoot}>
-                  <span>{wallet.privateRevealed ? "User-approved view" : "Hidden by default"}</span>
-                  <button
-                    type="button"
-                    disabled={!wallet.connected || !isSepolia || wallet.busy}
-                    onClick={() => void wallet.revealPrivateBalance()}
-                  >
-                    {wallet.privateRevealed ? <RefreshCw size={13} /> : <EyeOff size={13} />}
-                    {wallet.privateRevealed ? "Refresh" : "Reveal"}
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.balanceCard}>
-                <div className={styles.balanceHead}>
-                  <span><WalletCards size={15} /> PUBLIC WALLET</span>
-                  <i className={wallet.connected ? styles.liveDot : ""} />
-                </div>
-                <strong>{fmt(wallet.publicStrk)}</strong>
-                <div className={styles.balanceFoot}>
-                  <span>{wallet.connected ? "Wallet connected" : "Connect to load"}</span>
-                  <button
-                    type="button"
-                    disabled={!wallet.connected || wallet.busy}
-                    onClick={() => void wallet.refreshPublicBalance()}
-                  >
-                    <RefreshCw size={13} /> Refresh
-                  </button>
-                </div>
-              </div>
-            </aside>
-          </div>
-        </section>
-
-        <section className={styles.controlRail} aria-label="CAREL safeguards">
-          <div><small>01 / AUTHORITY</small><strong>Approval before execution</strong></div>
-          <div><small>02 / PRIVACY</small><strong>Boundary shown before action</strong></div>
-          <div><small>03 / CONTROL</small><strong>No unrestricted automation</strong></div>
-        </section>
-
-        {planned && (
-          <section
-            id="carel-plan"
-            className={cx(
-              styles.planPanel,
-              plan.status === "ready" && styles.planReady,
-              plan.status === "satisfied" && styles.planSatisfied,
-              plan.status === "blocked" && styles.planBlocked,
             )}
-          >
-            <div className={styles.planHeading}>
-              <div>
-                <span className={styles.planNumber}>PLAN / 001</span>
-                <h2>CAREL decision</h2>
-              </div>
-              <PlanStatus status={plan.status} />
-            </div>
 
             {plan.status === "ready" && (
-              <div className={styles.planBody}>
-                <div className={styles.decisionBlock}>
-                  <span className={styles.decisionIcon}><Zap size={22} /></span>
-                  <div>
-                    <small>RECOMMENDED ACTION</small>
-                    <h3>{actionLabel(plan.action)} {formatUnits18(plan.delta)} STRK</h3>
-                    <p>{plan.reason}</p>
-                  </div>
-
-                  <div className={styles.routeFlow}>
-                    <RouteStep
-                      index="01"
-                      label={plan.action === "shield" ? "Public wallet" : "Private balance"}
-                    />
-                    <span className={styles.routeArrow}>→</span>
-                    <RouteStep index="02" label={actionLabel(plan.action)} active />
-                    <span className={styles.routeArrow}>→</span>
-                    <RouteStep
-                      index="03"
-                      label={goal === "target-private" ? "Private target" : "Public target"}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    className={styles.approveButton}
-                    disabled={wallet.busy || executing}
-                    onClick={() => void execute()}
-                  >
-                    <ShieldCheck size={17} />
-                    {executing || wallet.busy
-                      ? "Waiting for Ready…"
-                      : "Review and approve in Ready"}
-                  </button>
-                </div>
-
-                <aside className={styles.planFacts}>
-                  <PlanFact label="Agent scope" value={`Only ${actionLabel(plan.action).toLowerCase()} ${formatUnits18(plan.delta)} STRK`} />
-                  <PlanFact label="Approval" value="Required before execution" />
-                  <PlanFact label="Privacy impact" value={privacyCopy} />
-                  <PlanFact label="Network" value="Starknet Sepolia" />
-                </aside>
-              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={wallet.busy || executing}
+                onClick={() => void executePlan()}
+              >
+                {executing || wallet.busy ? (
+                  <RefreshCw size={15} className={styles.spin} />
+                ) : (
+                  <Zap size={15} />
+                )}
+                {executing || wallet.busy
+                  ? "Waiting for Ready…"
+                  : "Approve & execute"}
+              </button>
             )}
 
             {plan.status === "satisfied" && (
-              <div className={styles.simpleDecision}>
-                <span className={cx(styles.decisionIcon, styles.goodIcon)}><Check size={22} /></span>
-                <div>
-                  <small>GOAL ALREADY SATISFIED</small>
-                  <h3>Nothing needs to move</h3>
-                  <p>{plan.reason}</p>
-                  <strong>CAREL will not submit a transaction.</strong>
-                </div>
+              <div className={styles.successNote}>
+                <Check size={15} />
+                Target already satisfied. No funds move.
               </div>
             )}
-
-            {plan.status === "needs-private-state" && (
-              <div className={styles.simpleDecision}>
-                <span className={styles.decisionIcon}><EyeOff size={22} /></span>
-                <div>
-                  <small>USER ACCESS REQUIRED</small>
-                  <h3>Reveal private balance</h3>
-                  <p>{plan.reason}</p>
-                  <button
-                    type="button"
-                    className={styles.inlineButton}
-                    disabled={wallet.busy}
-                    onClick={() => void wallet.revealPrivateBalance()}
-                  >
-                    <EyeOff size={15} /> Reveal with wallet approval
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {plan.status === "blocked" && (
-              <div className={styles.simpleDecision}>
-                <span className={cx(styles.decisionIcon, styles.blockedIcon)}><LockKeyhole size={22} /></span>
-                <div>
-                  <small>EXECUTION BLOCKED</small>
-                  <h3>CAREL cannot execute this target</h3>
-                  <p>{plan.reason}</p>
-                  <strong>No funds will move.</strong>
-                </div>
-              </div>
-            )}
-          </section>
+          </>
         )}
+      </section>
+    </div>
+  );
 
-        {wallet.error && (
-          <div className={styles.errorPanel} role="alert">
-            <LockKeyhole size={16} />
-            <span>{wallet.error}</span>
-          </div>
-        )}
+  const renderPortfolio = () => (
+    <div className={styles.page} key="portfolio">
+      <section className={styles.pageTitle}>
+        <span className={styles.eyebrow}>
+          <Layers3 size={13} />
+          PORTFOLIO
+        </span>
+        <h1>Your capital at a glance.</h1>
+        <p>
+          Public state remains readable. Private state only appears when you
+          explicitly reveal it.
+        </p>
+      </section>
 
-        <section className={styles.agentLoop} id="strategies">
-          <div className={styles.sectionIntro}>
-            <small>THE CONTROLLED AGENT LOOP</small>
-            <h2>Automation you can inspect.</h2>
-            <p>Every CAREL action has a reason, a boundary, and a final user decision.</p>
-          </div>
-          <div className={styles.loopGrid}>
-            <LoopCard number="01" icon={<Activity size={19} />} title="Observe" text="Read approved wallet state and understand the target." />
-            <LoopCard number="02" icon={<Route size={19} />} title="Plan" text="Choose the minimum public or private route required." />
-            <LoopCard number="03" icon={<ShieldCheck size={19} />} title="Ask, then execute" text="Show impact clearly and wait for wallet approval." />
-          </div>
-        </section>
+      <section className={styles.portfolioHero}>
+        <small>KNOWN CAPITAL</small>
+        <strong>
+          {knownCapital === null
+            ? wallet.privateRevealed
+              ? fmt(wallet.privateStrk ?? ZERO)
+              : "Private by default"
+            : fmt(knownCapital)}
+        </strong>
+        <span className={styles.portfolioSub}>
+          {wallet.connected ? "Wallet connected" : "Connect wallet to load live balances"}
+        </span>
+      </section>
 
-        <section className={styles.activitySection} id="activity">
-          <div className={styles.activityHeading}>
+      <section className={styles.assetGrid}>
+        <article>
+          <div className={styles.assetIcon}><EyeOff size={18} /></div>
+          <small>PRIVATE STRK</small>
+          <strong>
+            {wallet.privateRevealed ? fmt(wallet.privateStrk ?? ZERO) : "Hidden"}
+          </strong>
+          <button
+            type="button"
+            disabled={!wallet.connected || !isSepolia || wallet.busy}
+            onClick={() => void wallet.revealPrivateBalance()}
+          >
+            {wallet.privateRevealed ? "Refresh" : "Reveal"}
+          </button>
+        </article>
+
+        <article>
+          <div className={styles.assetIcon}><WalletCards size={18} /></div>
+          <small>PUBLIC STRK</small>
+          <strong>{fmt(wallet.publicStrk)}</strong>
+          <button
+            type="button"
+            disabled={!wallet.connected || wallet.busy}
+            onClick={() => void wallet.refreshPublicBalance()}
+          >
+            {wallet.publicStrk === null ? "Load" : "Refresh"}
+          </button>
+        </article>
+      </section>
+
+      <section className={styles.infoCard}>
+        <div>
+          <small>PRIVACY BOUNDARY</small>
+          <strong>Private balance stays hidden until you ask to reveal it.</strong>
+        </div>
+        <ShieldCheck size={18} />
+      </section>
+    </div>
+  );
+
+  const renderActivity = () => (
+    <div className={styles.page} key="activity">
+      <section className={styles.pageTitle}>
+        <span className={styles.eyebrow}>
+          <Activity size={13} />
+          EXECUTION LOG
+        </span>
+        <h1>Everything inspectable.</h1>
+        <p>
+          Approved actions and transaction state stay visible instead of
+          disappearing behind automation.
+        </p>
+      </section>
+
+      <section className={styles.timelineCard}>
+        {wallet.tx.kind === "idle" ? (
+          <div className={styles.activityEmpty}>
+            <span className={styles.timelinePulse} />
+            <strong>No CAREL execution yet</strong>
+            <p>Approved actions in this session will appear here.</p>
+          </div>
+        ) : (
+          <a
+            className={styles.activityItem}
+            href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className={styles.timelinePulse} />
             <div>
-              <small>LIVE EXECUTION LOG</small>
-              <h2>Activity</h2>
+              <small>LATEST EXECUTION</small>
+              <strong>{wallet.tx.label}</strong>
+              <p>{wallet.tx.kind}</p>
             </div>
-            <span><i /> THIS SESSION</span>
+            <ChevronRight size={16} />
+          </a>
+        )}
+      </section>
+
+      <section className={styles.auditGrid}>
+        <div><small>01 / AUTHORITY</small><strong>Approval before execution</strong></div>
+        <div><small>02 / PRIVACY</small><strong>Boundary shown before action</strong></div>
+        <div><small>03 / CONTROL</small><strong>No unrestricted automation</strong></div>
+      </section>
+    </div>
+  );
+
+  const renderMore = () => (
+    <div className={styles.page} key="more">
+      <section className={styles.pageTitle}>
+        <span className={styles.eyebrow}>
+          <Menu size={13} />
+          TOOLS & CONTROL
+        </span>
+        <h1>Everything else lives here.</h1>
+        <p>
+          DeFi tools support the agent. They are not the product identity.
+        </p>
+      </section>
+
+      <section className={styles.toolGrid}>
+        <button type="button" onClick={() => openAgent("Plan the best route to swap 10 STRK with controlled risk")}>
+          <span><ArrowLeftRight size={18} /></span>
+          <div><strong>Swap</strong><small>Route, fees and price impact</small></div>
+          <ChevronRight size={15} />
+        </button>
+
+        <button type="button" onClick={() => openAgent("Plan a Starknet bridge route for 10 STRK")}>
+          <span><Network size={18} /></span>
+          <div><strong>Bridge</strong><small>Route, cost and destination</small></div>
+          <ChevronRight size={15} />
+        </button>
+
+        <button type="button" onClick={() => openAgent("Find a low-risk yield strategy for 10 STRK")}>
+          <span><TrendingUp size={18} /></span>
+          <div><strong>Earn</strong><small>Yield, lockup and protocol risk</small></div>
+          <ChevronRight size={15} />
+        </button>
+
+        <button type="button" onClick={() => openAgent("Plan a conservative borrow strategy with safe health factor")}>
+          <span><Landmark size={18} /></span>
+          <div><strong>Borrow</strong><small>Collateral and health factor</small></div>
+          <ChevronRight size={15} />
+        </button>
+
+        <button
+          type="button"
+          className={quickAction === "shield" ? styles.toolActive : ""}
+          onClick={() => setQuickAction(quickAction === "shield" ? null : "shield")}
+        >
+          <span><ArrowDownToLine size={18} /></span>
+          <div><strong>Shield</strong><small>Public STRK → private notes</small></div>
+          <em>LIVE</em>
+        </button>
+
+        <button
+          type="button"
+          className={quickAction === "withdraw" ? styles.toolActive : ""}
+          onClick={() => setQuickAction(quickAction === "withdraw" ? null : "withdraw")}
+        >
+          <span><ArrowUpFromLine size={18} /></span>
+          <div><strong>Withdraw</strong><small>Private notes → public wallet</small></div>
+          <em>LIVE</em>
+        </button>
+
+        <button type="button" onClick={() => setTab("portfolio")}>
+          <span><EyeOff size={18} /></span>
+          <div><strong>Privacy</strong><small>Reveal and inspect private state</small></div>
+          <ChevronRight size={15} />
+        </button>
+
+        <button type="button" onClick={() => setTab("portfolio")}>
+          <span><Settings size={18} /></span>
+          <div><strong>Wallet & network</strong><small>Connection and network state</small></div>
+          <ChevronRight size={15} />
+        </button>
+      </section>
+
+      {quickAction && (
+        <section className={styles.executionSheet}>
+          <div className={styles.sectionHead}>
+            <div>
+              <small>LIVE TESTNET ACTION</small>
+              <h2>{quickAction === "shield" ? "Shield STRK" : "Withdraw STRK"}</h2>
+            </div>
+            <ShieldCheck size={18} />
           </div>
 
-          {wallet.tx.kind !== "idle" ? (
-            <div className={styles.txPanel}>
-              <div className={styles.txPulse}><Activity size={18} /></div>
-              <div>
-                <small>{wallet.tx.kind.toUpperCase()}</small>
-                <strong>{wallet.tx.label}</strong>
-              </div>
-              <a
-                href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View transaction <span>↗</span>
-              </a>
-            </div>
-          ) : (
-            <div className={styles.emptyActivity}>
-              <span><Activity size={19} /></span>
-              <div>
-                <strong>No execution yet</strong>
-                <p>Approved CAREL actions will appear here with their transaction link.</p>
-              </div>
-            </div>
-          )}
+          <div className={styles.amountField}>
+            <input
+              value={quickAmount}
+              inputMode="decimal"
+              onChange={(event) =>
+                setQuickAmount(event.target.value.replace(/[^0-9.]/g, ""))
+              }
+              aria-label={`${quickAction} amount`}
+            />
+            <b>STRK</b>
+          </div>
+
+          <button
+            type="button"
+            className={styles.primaryButton}
+            disabled={wallet.busy || executing}
+            onClick={() => void executeQuickAction()}
+          >
+            {executing || wallet.busy ? (
+              <RefreshCw size={15} className={styles.spin} />
+            ) : quickAction === "shield" ? (
+              <ArrowDownToLine size={15} />
+            ) : (
+              <ArrowUpFromLine size={15} />
+            )}
+            {executing || wallet.busy
+              ? "Waiting for wallet…"
+              : `Approve ${quickAction === "shield" ? "shield" : "withdraw"}`}
+          </button>
         </section>
+      )}
 
-        <details className={styles.detailsPanel}>
-          <summary>
-            <span><Activity size={16} /> Connection and privacy details</span>
-            <ChevronDown size={16} />
-          </summary>
-          <div className={styles.detailsBody}>
-            <DetailRow label="Wallet" value={wallet.connected ? "Connected" : "Disconnected"} />
-            <DetailRow label="Network" value={isSepolia ? "Starknet Sepolia" : "Not ready"} />
-            <DetailRow label="STRK20" value={wallet.strk20Capable ? "Supported" : "Unavailable"} />
-            <DetailRow label="Private state" value={wallet.privateRevealed ? "User-approved" : "Hidden"} />
-            <p>
-              Shield deposits are public. Mature notes are private. Unshield
-              amount and destination are public.
-            </p>
+      <section className={styles.statusCard}>
+        <div>
+          <span><WalletCards size={15} /> Wallet</span>
+          <strong>{wallet.connected ? "Connected" : "Disconnected"}</strong>
+        </div>
+        <div>
+          <span><Network size={15} /> Network</span>
+          <strong>{isSepolia ? "Sepolia" : "Not ready"}</strong>
+        </div>
+        <div>
+          <span><ShieldCheck size={15} /> STRK20</span>
+          <strong>{wallet.strk20Capable ? "Supported" : "Unavailable"}</strong>
+        </div>
+      </section>
+    </div>
+  );
+
+  return (
+    <div className={styles.app}>
+      <div className={styles.auroraA} />
+      <div className={styles.auroraB} />
+      <div className={styles.gridNoise} />
+
+      <header className={styles.header}>
+        <button
+          type="button"
+          className={styles.brand}
+          onClick={() => setTab("home")}
+          aria-label="Go to CAREL home"
+        >
+          <span><Orbit size={18} /></span>
+          <div>
+            <strong>CAREL</strong>
+            <small>BY DXJ LABS</small>
           </div>
-        </details>
+        </button>
+
+        <WalletStatusButton />
+      </header>
+
+      <main className={styles.main}>
+        {tab === "home" && renderHome()}
+        {tab === "agent" && renderAgent()}
+        {tab === "portfolio" && renderPortfolio()}
+        {tab === "activity" && renderActivity()}
+        {tab === "more" && renderMore()}
+
+        {wallet.error && <div className={styles.errorCard}>{wallet.error}</div>}
       </main>
 
-      <nav className={styles.bottomNav} aria-label="Primary navigation">
-        <a className={styles.navActive} href="#home"><Home size={18} /><span>Home</span></a>
-        <a href="#strategies"><Route size={18} /><span>Strategy</span></a>
-        <a href="#activity"><Activity size={18} /><span>Activity</span></a>
+      <nav className={styles.nav} aria-label="Primary navigation">
+        <button
+          type="button"
+          className={tab === "home" ? styles.navActive : ""}
+          onClick={() => setTab("home")}
+        >
+          <Home size={18} />
+          <span>Home</span>
+        </button>
+
+        <button
+          type="button"
+          className={tab === "agent" ? styles.navActive : ""}
+          onClick={() => setTab("agent")}
+        >
+          <Bot size={18} />
+          <span>Agent</span>
+        </button>
+
+        <button
+          type="button"
+          className={tab === "portfolio" ? styles.navActive : ""}
+          onClick={() => setTab("portfolio")}
+        >
+          <Layers3 size={18} />
+          <span>Portfolio</span>
+        </button>
+
+        <button
+          type="button"
+          className={tab === "activity" ? styles.navActive : ""}
+          onClick={() => setTab("activity")}
+        >
+          <Activity size={18} />
+          <span>Activity</span>
+        </button>
+
+        <button
+          type="button"
+          className={tab === "more" ? styles.navActive : ""}
+          onClick={() => setTab("more")}
+        >
+          <Menu size={18} />
+          <span>More</span>
+        </button>
       </nav>
-    </div>
-  );
-}
-
-function CarelCore({ state }: { state: "idle" | "working" | "ready" | "blocked" }) {
-  return (
-    <div className={styles.coreStage} data-state={state} aria-hidden="true">
-      <div className={styles.coreHalo} />
-      <div className={cx(styles.orbitRing, styles.orbitOuter)}><i /><i /></div>
-      <div className={cx(styles.orbitRing, styles.orbitMiddle)}><i /><i /></div>
-      <div className={cx(styles.orbitRing, styles.orbitInner)}><i /></div>
-      <div className={styles.coreSphere}>
-        <span className={cx(styles.latitude, styles.latitudeOne)} />
-        <span className={cx(styles.latitude, styles.latitudeTwo)} />
-        <span className={cx(styles.latitude, styles.latitudeThree)} />
-        <span className={cx(styles.meridian, styles.meridianOne)} />
-        <span className={cx(styles.meridian, styles.meridianTwo)} />
-        <div className={styles.coreCenter}>
-          <Orbit size={34} />
-          <strong>CAREL</strong>
-          <small>PRIVATE AGENT</small>
-        </div>
-      </div>
-      <span className={cx(styles.coreNode, styles.nodeOne)} />
-      <span className={cx(styles.coreNode, styles.nodeTwo)} />
-      <span className={cx(styles.coreNode, styles.nodeThree)} />
-      <span className={cx(styles.coreNode, styles.nodeFour)} />
-      <div className={styles.coreStatus}>
-        <i />
-        {state === "working"
-          ? "CALCULATING ROUTE"
-          : state === "ready"
-            ? "PLAN READY"
-            : state === "blocked"
-              ? "ACTION BLOCKED"
-              : "AGENT ONLINE"}
-      </div>
-    </div>
-  );
-}
-
-function PlanStatus({ status }: { status: string }) {
-  const label =
-    status === "ready"
-      ? "SIMULATION READY"
-      : status === "satisfied"
-        ? "NO ACTION"
-        : status === "needs-private-state"
-          ? "ACCESS REQUIRED"
-          : "BLOCKED";
-
-  return <span className={styles.planStatus}><i /> {label}</span>;
-}
-
-function RouteStep({
-  index,
-  label,
-  active = false,
-}: {
-  index: string;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <div className={cx(styles.routeStep, active && styles.routeStepActive)}>
-      <small>{index}</small>
-      <strong>{label}</strong>
-    </div>
-  );
-}
-
-function PlanFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={styles.planFact}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function LoopCard({
-  number,
-  icon,
-  title,
-  text,
-}: {
-  number: string;
-  icon: ReactNode;
-  title: string;
-  text: string;
-}) {
-  return (
-    <article className={styles.loopCard}>
-      <div><span>{icon}</span><small>{number}</small></div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={styles.detailRow}>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
