@@ -368,3 +368,44 @@
 }
 
 /* ===== END CAREL TYPOGRAPHY + MOBILE DOCK V4 ===== */
+
+/* ===== CAREL MOBILE DOCK HOTFIX V4.1 ===== */
+@media (max-width:720px){
+  .app{
+    padding-bottom:76px;
+  }
+
+  .main{
+    padding-bottom:20px;
+  }
+
+  .nav{
+    left:0 !important;
+    right:0 !important;
+    bottom:0 !important;
+    transform:none !important;
+    width:100% !important;
+    height:66px !important;
+    min-height:66px !important;
+    max-height:66px !important;
+    padding:5px 7px !important;
+    padding-bottom:5px !important;
+    border-left:0 !important;
+    border-right:0 !important;
+    border-bottom:0 !important;
+    border-radius:17px 17px 0 0 !important;
+    align-items:stretch;
+    overflow:hidden;
+  }
+
+  .nav button{
+    height:56px;
+    min-height:56px;
+    padding:4px 2px 6px;
+  }
+
+  .nav button::after{
+    bottom:3px;
+  }
+}
+/* ===== END CAREL MOBILE DOCK HOTFIX V4.1 ===== */
