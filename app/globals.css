@@ -957,3 +957,15 @@ button{cursor:pointer}
   .rf-plan-actions{justify-content:stretch}.rf-plan-actions button{width:100%;justify-content:center}
   .rf-token-row{grid-template-columns:auto 1fr}.rf-token-balances{grid-column:1/-1}
 }
+
+/* CAREL status — product-level, not debug diagnostics */
+.rf-status-summary{display:grid;gap:8px;margin-top:10px}
+.rf-status-item{display:grid;grid-template-columns:34px 1fr;gap:9px;align-items:start;border:1px solid #162135;background:#090E1A;border-radius:11px;padding:10px}
+.rf-status-icon{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;border:1px solid #1E2B44;background:#111827;color:#94a3b8}
+.rf-status-icon.ready{color:#34d399;border-color:rgba(52,211,153,.22);background:rgba(6,78,59,.12)}
+.rf-status-icon.privacy{color:#c084fc;border-color:rgba(168,85,247,.24);background:rgba(88,28,135,.12)}
+.rf-status-icon.pending{color:#fbbf24;border-color:rgba(251,191,36,.2);background:rgba(120,53,15,.10)}
+.rf-status-item span{display:block;color:#64748b;font-size:7px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.rf-status-item strong{display:block;margin-top:3px;color:#e2e8f0;font-size:9px}
+.rf-status-item p{margin:3px 0 0;color:#64748b;font-size:7px;line-height:1.45}
+@media(max-width:720px){.rf-status-summary{gap:7px}.rf-status-item{padding:9px;grid-template-columns:31px 1fr}.rf-status-icon{width:29px;height:29px}}

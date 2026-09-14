@@ -542,44 +542,80 @@ export function CarelApp() {
             <section className="rf-card rf-sentinel-card">
               <div className="rf-side-heading">
                 <div>
-                  <span>MONITOR</span>
-                  <h3>Execution state</h3>
+                  <span>CAREL STATUS</span>
+                  <h3>
+                    {wallet.connected && isSepolia && wallet.strk20Capable
+                      ? "Ready for next action"
+                      : "Needs attention"}
+                  </h3>
                 </div>
-                <Activity size={17} />
+                <CheckCircle2 size={17} />
               </div>
 
-              <div className="rf-monitor-list">
-                <div>
-                  <span>Wallet</span>
-                  <strong>{wallet.connected ? "Connected" : "Disconnected"}</strong>
-                </div>
-                <div>
-                  <span>Network</span>
-                  <strong>{isSepolia ? "Sepolia" : "Wrong network"}</strong>
-                </div>
-                <div>
-                  <span>STRK20 API</span>
-                  <strong>{wallet.strk20Capable ? "Supported" : "Unavailable"}</strong>
-                </div>
-                <div>
-                  <span>Private state</span>
-                  <strong>{wallet.privateRevealed ? "Revealed" : "Hidden"}</strong>
-                </div>
-              </div>
-
-              {maturityRemaining !== null && (
-                <div className="rf-maturity">
-                  <Clock3 size={14} />
+              <div className="rf-status-summary">
+                <div className="rf-status-item">
+                  <div className="rf-status-icon ready">
+                    <WalletCards size={15} />
+                  </div>
                   <div>
-                    <span>Note maturity</span>
+                    <span>Execution</span>
                     <strong>
-                      {maturityRemaining === 0
-                        ? "Mature"
-                        : `${maturityRemaining} blocks remaining`}
+                      {wallet.connected && isSepolia
+                        ? "Wallet ready"
+                        : "Reconnect wallet"}
                     </strong>
+                    <p>
+                      {wallet.connected && isSepolia
+                        ? "CAREL can prepare a plan and request approval."
+                        : "Connect Ready on Starknet Sepolia to continue."}
+                    </p>
                   </div>
                 </div>
-              )}
+
+                <div className="rf-status-item">
+                  <div className="rf-status-icon privacy">
+                    <Lock size={15} />
+                  </div>
+                  <div>
+                    <span>Private balance</span>
+                    <strong>
+                      {wallet.privateRevealed
+                        ? fmt(wallet.privateStrk ?? ZERO)
+                        : "Hidden"}
+                    </strong>
+                    <p>
+                      {wallet.privateRevealed
+                        ? "Available to CAREL for this session."
+                        : "Revealed only when a plan needs private state."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rf-status-item">
+                  <div className="rf-status-icon pending">
+                    <Clock3 size={15} />
+                  </div>
+                  <div>
+                    <span>Pending</span>
+                    <strong>
+                      {maturityRemaining !== null
+                        ? maturityRemaining === 0
+                          ? "Private note mature"
+                          : `${maturityRemaining} blocks to maturity`
+                        : wallet.tx.kind !== "idle"
+                          ? wallet.tx.label
+                          : "Nothing pending"}
+                    </strong>
+                    <p>
+                      {maturityRemaining !== null
+                        ? "CAREL is tracking note readiness."
+                        : wallet.tx.kind !== "idle"
+                          ? "Latest execution remains visible below."
+                          : "No execution is waiting right now."}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section className="rf-card rf-activity-card">
