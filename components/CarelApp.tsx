@@ -831,103 +831,176 @@ export function CarelApp() {
 
   const renderPortfolio = () => (
     <div className={styles.page} key="portfolio">
-      <section className={styles.p7Hero}>
-        <span className={styles.eyebrow}><Layers3 size={13}/> PORTFOLIO</span>
-        <h1>Everything CAREL manages.</h1>
-        <p>Wallet capital, Privacy Pool, assets, DeFi positions, networks and agent routes.</p>
+      <section className={styles.p71Hero}>
+        <span className={styles.eyebrow}>
+          <Layers3 size={13} />
+          PORTFOLIO
+        </span>
+        <h1>Your capital.</h1>
+        <p>Only live balances and real positions appear here.</p>
       </section>
 
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}>
-          <div><small>KNOWN CAPITAL</small><h2>{knownCapital === null ? "Private by default" : fmt(knownCapital)}</h2></div>
-          <span>{wallet.connected ? "LIVE WALLET" : "OFFLINE"}</span>
-        </div>
-        <p>{wallet.privateRevealed ? "Public wallet + revealed STRK20 Privacy Pool." : "Reveal private state to calculate total known capital."}</p>
-        <div className={styles.p7Actions}>
-          <button type="button" disabled={!wallet.connected || wallet.busy} onClick={() => void wallet.refreshPublicBalance()}><RefreshCw size={14}/>Refresh public</button>
-          <button type="button" disabled={!wallet.connected || !isSepolia || wallet.busy} onClick={() => void wallet.revealPrivateBalance()}><EyeOff size={14}/>{wallet.privateRevealed ? "Refresh private" : "Reveal private"}</button>
-        </div>
-      </section>
-
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}><div><small>PERFORMANCE</small><h2>Observed history</h2></div><span>SESSION LOCAL</span></div>
-        <div className={styles.p7Ranges}>
-          {(["1D","7D","30D","90D","1Y"] as PortfolioRange[]).map((range) => (
-            <button type="button" key={range} className={portfolioRange === range ? styles.p7RangeActive : ""} onClick={() => setPortfolioRange(range)}>{range}</button>
-          ))}
-        </div>
-        <PortfolioChart points={visiblePortfolioHistory}/>
-      </section>
-
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}><div><small>CAPITAL LOCATIONS</small><h2>Where your STRK is now</h2></div><Route size={18}/></div>
-        <div className={styles.p7Grid2}>
-          <article>
-            <span className={styles.p7Icon}><EyeOff size={18}/></span>
-            <div><small>STRK20 PRIVACY POOL</small><strong>{wallet.privateRevealed ? fmt(wallet.privateStrk ?? ZERO) : "Hidden"}</strong><p>Shielded private capital</p></div>
-            <em>PRIVATE</em>
-          </article>
-          <article>
-            <span className={styles.p7Icon}><WalletCards size={18}/></span>
-            <div><small>STARKNET WALLET</small><strong>{fmt(wallet.publicStrk)}</strong><p>Public STRK on Sepolia</p></div>
-            <em>PUBLIC</em>
-          </article>
-        </div>
-        {privateShare !== null && publicShare !== null ? (
-          <div className={styles.p7Alloc}>
-            <div><span style={{width:`${privateShare}%`}}/><i style={{width:`${publicShare}%`}}/></div>
-            <p><span>Privacy Pool {privateShare.toFixed(1)}%</span><span>Public {publicShare.toFixed(1)}%</span></p>
+      <section className={styles.p71BalanceCard}>
+        <div className={styles.p71BalanceHead}>
+          <div>
+            <small>LIVE BALANCES</small>
+            <h2>
+              {knownCapital !== null
+                ? fmt(knownCapital)
+                : wallet.publicStrk !== null
+                  ? `${fmt(wallet.publicStrk)} + private`
+                  : "Balance unavailable"}
+            </h2>
           </div>
-        ) : (
-          <div className={styles.p7Empty}><EyeOff size={15}/>Reveal private state to calculate allocation.</div>
+
+          <span className={wallet.connected ? styles.p71Online : styles.p71Offline}>
+            <i />
+            {wallet.connected ? "CONNECTED" : "OFFLINE"}
+          </span>
+        </div>
+
+        <div className={styles.p71BalanceGrid}>
+          <article>
+            <div className={styles.p71BalanceIcon}>
+              <WalletCards size={18} />
+            </div>
+            <div>
+              <small>PUBLIC WALLET</small>
+              <strong>
+                {wallet.publicStrk === null ? "Unavailable" : fmt(wallet.publicStrk)}
+              </strong>
+              <span>Starknet Sepolia</span>
+            </div>
+            <button
+              type="button"
+              disabled={!wallet.connected || wallet.busy}
+              onClick={() => void wallet.refreshPublicBalance()}
+            >
+              <RefreshCw size={14} />
+            </button>
+          </article>
+
+          <article>
+            <div className={styles.p71BalanceIcon}>
+              <EyeOff size={18} />
+            </div>
+            <div>
+              <small>PRIVACY POOL</small>
+              <strong>
+                {wallet.privateRevealed
+                  ? fmt(wallet.privateStrk ?? ZERO)
+                  : "Hidden"}
+              </strong>
+              <span>STRK20 shielded balance</span>
+            </div>
+            <button
+              type="button"
+              disabled={!wallet.connected || !isSepolia || wallet.busy}
+              onClick={() => void wallet.revealPrivateBalance()}
+            >
+              {wallet.privateRevealed ? <RefreshCw size={14} /> : <EyeOff size={14} />}
+            </button>
+          </article>
+        </div>
+
+        {privateShare !== null && publicShare !== null && (
+          <div className={styles.p71Allocation}>
+            <div>
+              <span style={{ width: `${privateShare}%` }} />
+              <i style={{ width: `${publicShare}%` }} />
+            </div>
+            <p>
+              <span>Private {privateShare.toFixed(0)}%</span>
+              <span>Public {publicShare.toFixed(0)}%</span>
+            </p>
+          </div>
+        )}
+
+        {wallet.publicStrk === null && wallet.connected && (
+          <div className={styles.p71InlineError}>
+            <span>Public balance could not be loaded.</span>
+            <button
+              type="button"
+              disabled={wallet.busy}
+              onClick={() => void wallet.refreshPublicBalance()}
+            >
+              Retry
+            </button>
+          </div>
         )}
       </section>
 
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}><div><small>ASSETS</small><h2>Token holdings</h2></div><CircleDollarSign size={18}/></div>
-        <div className={styles.p7Asset}>
-          <span>S</span>
-          <div><strong>STRK</strong><small>Starknet Token</small></div>
-          <div><strong>{knownCapital === null ? "—" : fmt(knownCapital)}</strong><small>{wallet.privateRevealed ? "PUBLIC + PRIVATE" : "PRIVATE HIDDEN"}</small></div>
-        </div>
-        <div className={styles.p7Empty}><ArrowLeftRight size={15}/><div><strong>Swap assets will appear here automatically</strong><p>USDC, ETH and other assets show only after a live adapter reports real balances.</p></div></div>
-      </section>
+      {visiblePortfolioHistory.length >= 2 && (
+        <section className={styles.p71Card}>
+          <div className={styles.p71SectionHead}>
+            <div>
+              <small>PERFORMANCE</small>
+              <h2>Observed history</h2>
+            </div>
+            <div className={styles.p71Ranges}>
+              {(["1D", "7D", "30D", "90D", "1Y"] as PortfolioRange[]).map(
+                (range) => (
+                  <button
+                    type="button"
+                    key={range}
+                    className={portfolioRange === range ? styles.p71RangeActive : ""}
+                    onClick={() => setPortfolioRange(range)}
+                  >
+                    {range}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+          <PortfolioChart points={visiblePortfolioHistory} />
+        </section>
+      )}
 
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}><div><small>DEFI POSITIONS</small><h2>Agent-managed positions</h2></div><TrendingUp size={18}/></div>
-        <div className={styles.p7Grid2}>
-          <article>
-            <span className={styles.p7Icon}><TrendingUp size={18}/></span>
-            <div><small>EARN / STAKE</small><strong>No live position</strong><p>Protocol, amount, APY and PnL appear when connected.</p></div>
-          </article>
-          <article>
-            <span className={styles.p7Icon}><Landmark size={18}/></span>
-            <div><small>BORROW</small><strong>No live position</strong><p>Collateral, debt and health factor appear when connected.</p></div>
-          </article>
-        </div>
-      </section>
+      {wallet.tx.kind !== "idle" && (
+        <section className={styles.p71Card}>
+          <div className={styles.p71SectionHead}>
+            <div>
+              <small>ACTIVE ROUTE</small>
+              <h2>Latest CAREL execution</h2>
+            </div>
+            <button type="button" onClick={() => setTab("activity")}>
+              View
+            </button>
+          </div>
 
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}><div><small>NETWORKS</small><h2>Capital by network</h2></div><Network size={18}/></div>
-        <div className={styles.p7Network}><i/><div><strong>Starknet Sepolia</strong><small>Connected execution network</small></div><em>{isSepolia ? "ACTIVE" : "NOT READY"}</em></div>
-        <div className={styles.p7Empty}><Network size={15}/><div><strong>Bridge destinations are adapter-driven</strong><p>Other networks appear after a live bridge route and observable balance source exist.</p></div></div>
-      </section>
-
-      <section className={styles.p7Insight}>
-        <Orbit size={21}/>
-        <div><small>CAREL INSIGHT</small><strong>{!wallet.connected ? "Connect your wallet to start portfolio analysis." : !wallet.privateRevealed ? "Private capital is hidden. CAREL will not guess it." : "Your observed wallet state is ready for agent planning."}</strong><p>Shield/Unshield change privacy boundary. Swap changes assets. Bridge changes network. Earn and Borrow create positions.</p></div>
-        <button type="button" onClick={() => setTab("agent")}>Ask CAREL <ChevronRight size={14}/></button>
-      </section>
-
-      <section className={styles.p7Card}>
-        <div className={styles.p7Head}><div><small>RECENT AGENT ROUTE</small><h2>Latest execution</h2></div><button type="button" onClick={() => setTab("activity")}>View all</button></div>
-        {wallet.tx.kind === "idle" ? (
-          <div className={styles.p7Empty}><Activity size={17}/><div><strong>No CAREL execution in this session</strong><p>Shield / Unshield and future protocol route steps appear here.</p></div></div>
-        ) : (
-          <a className={styles.p7Route} href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`} target="_blank" rel="noreferrer">
-            <i/><div><small>LIVE ROUTE</small><strong>{wallet.tx.label}</strong><p>{wallet.tx.label.toLowerCase().includes("unshield") ? "Privacy Pool → Public Starknet" : "Public Starknet → Privacy Pool"}</p></div><ChevronRight size={16}/>
+          <a
+            className={styles.p71Route}
+            href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className={styles.p71Pulse} />
+            <div>
+              <strong>{wallet.tx.label}</strong>
+              <small>
+                {wallet.tx.label.toLowerCase().includes("unshield")
+                  ? "Privacy Pool → Public"
+                  : "Public → Privacy Pool"}
+              </small>
+            </div>
+            <ChevronRight size={16} />
           </a>
-        )}
+        </section>
+      )}
+
+      <section className={styles.p71AgentBar}>
+        <div>
+          <small>CAREL</small>
+          <strong>
+            {wallet.privateRevealed
+              ? "Wallet state ready"
+              : "Private balance stays hidden until you reveal it"}
+          </strong>
+        </div>
+        <button type="button" onClick={() => setTab("agent")}>
+          Open Agent
+          <ChevronRight size={14} />
+        </button>
       </section>
     </div>
   );
@@ -1112,7 +1185,7 @@ export function CarelApp() {
         {tab === "activity" && renderActivity()}
         {tab === "more" && renderMore()}
 
-        {wallet.error && (
+        {wallet.error && tab !== "portfolio" && (
           <div className={styles.pfError}>
             <div><small>WALLET DATA</small><strong>Unable to load wallet data</strong><p>CAREL could not reach the wallet or RPC. No transaction was sent.</p></div>
             <button type="button" disabled={!wallet.connected || wallet.busy} onClick={() => void wallet.refreshPublicBalance()}><RefreshCw size={14}/>Retry</button>

@@ -268,10 +268,19 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const refreshPublicBalance = async () => {
     if (!address) return;
 
+    setError(null);
+
     try {
-      setPublicStrk(await readPublicStrk(address));
+      const balance = await readPublicStrk(address);
+      setPublicStrk(balance);
+      setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not read public STRK balance.");
+      setPublicStrk(null);
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not read public STRK balance.",
+      );
     }
   };
 

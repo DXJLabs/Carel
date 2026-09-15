@@ -714,3 +714,309 @@
 @media(max-width:720px){.p7Hero h1{font-size:42px}.p7Card,.p7Insight{border-radius:14px}.p7Actions{display:grid;grid-template-columns:1fr 1fr}.p7Actions button{justify-content:center}.p7Grid2{grid-template-columns:1fr}.p7Insight{grid-template-columns:auto 1fr}.p7Insight button{grid-column:1/-1;width:100%}}
 @media(max-width:390px){.p7Hero h1{font-size:38px}.p7Actions{grid-template-columns:1fr}.p7Asset{grid-template-columns:auto 1fr}.p7Asset>div:last-child{grid-column:2;text-align:left}}
 /* ===== END CAREL FULL PORTFOLIO V7 ===== */
+
+/* ===== CAREL PORTFOLIO V7.1 CLEAN ===== */
+
+.p71Hero{
+  padding:14px 7px 4px;
+}
+.p71Hero h1{
+  margin:12px 0 7px;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:clamp(40px,7vw,62px);
+  line-height:.94;
+  letter-spacing:-.06em;
+  font-weight:500;
+}
+.p71Hero p{
+  margin:0;
+  color:#7e8994;
+  font-size:9px;
+}
+
+.p71BalanceCard,
+.p71Card,
+.p71AgentBar{
+  margin-top:12px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;
+  background:linear-gradient(145deg,rgba(13,18,24,.95),rgba(8,11,15,.9));
+}
+
+.p71BalanceCard{
+  padding:17px;
+}
+.p71BalanceHead,
+.p71SectionHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.p71BalanceHead small,
+.p71SectionHead small,
+.p71AgentBar small{
+  display:block;
+  color:#697480;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:7px;
+  font-weight:600;
+  letter-spacing:.11em;
+}
+.p71BalanceHead h2{
+  margin:5px 0 0;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:30px;
+  line-height:1;
+  letter-spacing:-.045em;
+  font-weight:500;
+}
+.p71Online,
+.p71Offline{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 8px;
+  border-radius:999px;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:6px;
+  letter-spacing:.08em;
+}
+.p71Online{
+  color:var(--lime);
+  border:1px solid rgba(185,255,105,.14);
+}
+.p71Offline{
+  color:#717b85;
+  border:1px solid rgba(255,255,255,.07);
+}
+.p71Online i,
+.p71Offline i{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:currentColor;
+}
+
+.p71BalanceGrid{
+  margin-top:15px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.p71BalanceGrid article{
+  min-height:108px;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:13px;
+  background:rgba(255,255,255,.012);
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:10px;
+}
+.p71BalanceIcon{
+  width:39px;
+  height:39px;
+  border-radius:11px;
+  display:grid;
+  place-items:center;
+  color:var(--lime);
+  border:1px solid rgba(185,255,105,.13);
+  background:rgba(185,255,105,.03);
+}
+.p71BalanceGrid small,
+.p71BalanceGrid strong,
+.p71BalanceGrid span{
+  display:block;
+}
+.p71BalanceGrid small{
+  color:#6b7680;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:6.5px;
+  letter-spacing:.09em;
+}
+.p71BalanceGrid strong{
+  margin-top:6px;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:16px;
+  letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;
+}
+.p71BalanceGrid span{
+  margin-top:4px;
+  color:#68737e;
+  font-size:7px;
+}
+.p71BalanceGrid article>button{
+  width:34px;
+  height:34px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:9px;
+  background:transparent;
+  color:#89949e;
+  display:grid;
+  place-items:center;
+}
+
+.p71Allocation{
+  margin-top:11px;
+}
+.p71Allocation>div{
+  height:9px;
+  display:flex;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(255,255,255,.03);
+}
+.p71Allocation>div span{
+  min-width:2px;
+  background:linear-gradient(90deg,var(--violet),var(--mint));
+}
+.p71Allocation>div i{
+  min-width:2px;
+  background:var(--lime);
+}
+.p71Allocation p{
+  margin:6px 0 0;
+  display:flex;
+  justify-content:space-between;
+  color:#68737e;
+  font-size:7px;
+}
+
+.p71InlineError{
+  margin-top:10px;
+  min-height:42px;
+  padding:0 10px;
+  border:1px solid rgba(255,140,155,.12);
+  border-radius:10px;
+  background:rgba(255,140,155,.025);
+  color:#a88288;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  font-size:7.5px;
+}
+.p71InlineError button{
+  border:0;
+  background:none;
+  color:#ff9eae;
+  font-size:8px;
+}
+
+.p71Card{
+  padding:17px;
+}
+.p71SectionHead h2{
+  margin:5px 0 0;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:18px;
+  letter-spacing:-.025em;
+}
+.p71SectionHead>button{
+  border:0;
+  background:none;
+  color:var(--lime);
+  font-size:8px;
+}
+.p71Ranges{
+  display:flex;
+  gap:5px;
+}
+.p71Ranges button{
+  min-width:36px;
+  height:27px;
+  padding:0 8px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:8px;
+  background:transparent;
+  color:#68737e;
+  font-size:6.5px;
+}
+.p71Ranges .p71RangeActive{
+  background:var(--lime);
+  border-color:var(--lime);
+  color:#091007;
+}
+
+.p71Route{
+  min-height:66px;
+  margin-top:11px;
+  padding:10px 11px;
+  border:1px solid rgba(185,255,105,.1);
+  border-radius:11px;
+  color:inherit;
+  text-decoration:none;
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:10px;
+}
+.p71Pulse{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:var(--lime);
+  box-shadow:0 0 11px rgba(185,255,105,.45);
+}
+.p71Route strong,
+.p71Route small{
+  display:block;
+}
+.p71Route strong{
+  font-size:9px;
+}
+.p71Route small{
+  margin-top:4px;
+  color:#68737e;
+  font-size:7px;
+}
+
+.p71AgentBar{
+  padding:14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-color:rgba(185,255,105,.09);
+}
+.p71AgentBar strong{
+  display:block;
+  margin-top:5px;
+  font-size:9px;
+}
+.p71AgentBar button{
+  flex:0 0 auto;
+  min-height:38px;
+  padding:0 10px;
+  border:1px solid rgba(185,255,105,.14);
+  border-radius:10px;
+  background:rgba(185,255,105,.025);
+  color:var(--lime);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:8px;
+}
+
+@media(max-width:720px){
+  .p71Hero h1{font-size:42px}
+  .p71BalanceCard,.p71Card,.p71AgentBar{border-radius:14px}
+  .p71BalanceGrid{grid-template-columns:1fr}
+  .p71BalanceGrid article{min-height:96px}
+  .p71SectionHead{display:block}
+  .p71Ranges{margin-top:10px;overflow-x:auto}
+  .p71AgentBar{align-items:flex-end}
+}
+
+@media(max-width:390px){
+  .p71Hero h1{font-size:38px}
+  .p71BalanceHead{display:block}
+  .p71Online,.p71Offline{margin-top:9px}
+  .p71AgentBar{display:block}
+  .p71AgentBar button{margin-top:10px;width:100%;justify-content:center}
+}
+
+/* ===== END CAREL PORTFOLIO V7.1 CLEAN ===== */
