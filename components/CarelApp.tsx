@@ -45,6 +45,67 @@ const ZERO = BigInt(0);
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "more";
 type QuickAction = "shield" | "withdraw" | null;
+type PortfolioRange = "1D" | "7D" | "30D" | "90D" | "1Y";
+type PortfolioPoint = { ts: number; total: number };
+
+function portfolioRangeMs(range: PortfolioRange) {
+  if (range === "1D") return 86400000;
+  if (range === "7D") return 7 * 86400000;
+  if (range === "30D") return 30 * 86400000;
+  if (range === "90D") return 90 * 86400000;
+  return 365 * 86400000;
+}
+
+function PortfolioChart({ points }: { points: PortfolioPoint[] }) {
+  if (points.length < 2) {
+    return (
+      <div className={styles.pfChartEmpty}>
+        <Activity size={21} />
+        <strong>Performance history is building</strong>
+        <p>CAREL only plots balances actually observed in this browser session. No synthetic portfolio data is shown.</p>
+      </div>
+    );
+  }
+
+  const W = 720;
+  const H = 220;
+  const values = points.map((point) => point.total);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(max - min, Math.max(max * 0.015, 0.000001));
+  const low = min - spread * 0.3;
+  const high = max + spread * 0.3;
+  const firstTs = points[0].ts;
+  const lastTs = points[points.length - 1].ts;
+  const timeRange = Math.max(lastTs - firstTs, 1);
+
+  const coords = points.map((point) => ({
+    x: 8 + ((point.ts - firstTs) / timeRange) * (W - 16),
+    y: H - 18 - ((point.total - low) / Math.max(high - low, 0.000001)) * (H - 36),
+  }));
+
+  const line = coords.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+  const area = `${line} L ${coords[coords.length - 1].x.toFixed(2)} ${H} L ${coords[0].x.toFixed(2)} ${H} Z`;
+  const delta = points[points.length - 1].total - points[0].total;
+  const pct = points[0].total > 0 ? (delta / points[0].total) * 100 : 0;
+
+  return (
+    <div className={styles.pfChartWrap}>
+      <div className={styles.pfChartStats}>
+        <div><small>OBSERVED CHANGE</small><strong className={delta >= 0 ? styles.pfPositive : styles.pfNegative}>{delta >= 0 ? "+" : ""}{delta.toFixed(4)} STRK</strong></div>
+        <span className={delta >= 0 ? styles.pfPositive : styles.pfNegative}>{delta >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
+      </div>
+      <svg className={styles.pfChart} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Observed portfolio performance">
+        <defs><linearGradient id="carelPfArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity="0.24"/><stop offset="100%" stopColor="currentColor" stopOpacity="0"/></linearGradient></defs>
+        <line x1="0" y1="55" x2={W} y2="55" className={styles.pfGrid}/><line x1="0" y1="110" x2={W} y2="110" className={styles.pfGrid}/><line x1="0" y1="165" x2={W} y2="165" className={styles.pfGrid}/>
+        <path d={area} fill="url(#carelPfArea)"/><path d={line} className={styles.pfLine}/>
+        {coords.map((point, index) => <circle key={`${points[index].ts}-${index}`} cx={point.x} cy={point.y} r={index === coords.length - 1 ? 4 : 2} className={index === coords.length - 1 ? styles.pfDotActive : styles.pfDot}/>) }
+      </svg>
+      <div className={styles.pfAxis}><span>{new Date(points[0].ts).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span><span>Observed locally</span><span>{new Date(points[points.length-1].ts).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>
+    </div>
+  );
+}
+
 
 function fmt(value: bigint | null) {
   return value === null ? "—" : `${formatUnits18(value)} STRK`;
@@ -89,6 +150,8 @@ export function CarelApp() {
   const [executing, setExecuting] = useState(false);
   const [quickAction, setQuickAction] = useState<QuickAction>(null);
   const [quickAmount, setQuickAmount] = useState("1");
+  const [portfolioRange, setPortfolioRange] = useState<PortfolioRange>("30D");
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioPoint[]>([]);
 
   const isSepolia =
     wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
@@ -132,6 +195,43 @@ export function CarelApp() {
     wallet.publicStrk !== null && wallet.privateRevealed
       ? wallet.publicStrk + (wallet.privateStrk ?? ZERO)
       : null;
+
+  useEffect(() => {
+    if (knownCapital === null) return;
+    const total = Number(formatUnits18(knownCapital, 6));
+    if (!Number.isFinite(total)) return;
+
+    setPortfolioHistory((previous) => {
+      let base = previous;
+      if (base.length === 0) {
+        try {
+          const raw = sessionStorage.getItem("carel.portfolio.session.v1");
+          const parsed = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(parsed)) {
+            base = parsed.filter((item): item is PortfolioPoint => item && typeof item.ts === "number" && typeof item.total === "number");
+          }
+        } catch { base = []; }
+      }
+
+      const now = Date.now();
+      const last = base[base.length - 1];
+      if (last && Math.abs(last.total - total) <= 0.000001 && now - last.ts < 300000) return base;
+      const next = [...base, { ts: now, total }].slice(-160);
+      try { sessionStorage.setItem("carel.portfolio.session.v1", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [knownCapital]);
+
+  const visiblePortfolioHistory = useMemo(() => {
+    const cutoff = Date.now() - portfolioRangeMs(portfolioRange);
+    return portfolioHistory.filter((point) => point.ts >= cutoff);
+  }, [portfolioHistory, portfolioRange]);
+
+  const privateAmount = wallet.privateRevealed && wallet.privateStrk !== null ? Number(formatUnits18(wallet.privateStrk ?? ZERO, 6)) : null;
+  const publicAmount = wallet.publicStrk !== null ? Number(formatUnits18(wallet.publicStrk, 6)) : null;
+  const knownAmount = privateAmount !== null && publicAmount !== null ? privateAmount + publicAmount : null;
+  const privateShare = knownAmount && knownAmount > 0 && privateAmount !== null ? (privateAmount / knownAmount) * 100 : null;
+  const publicShare = privateShare !== null ? Math.max(0, 100 - privateShare) : null;
 
   const buildPlan = (source = goalText) => {
     const parsed = parseGoal(source);
@@ -509,72 +609,58 @@ export function CarelApp() {
 
   const renderPortfolio = () => (
     <div className={styles.page} key="portfolio">
-      <section className={styles.pageTitle}>
-        <span className={styles.eyebrow}>
-          <Layers3 size={13} />
-          PORTFOLIO
-        </span>
-        <h1>Your capital at a glance.</h1>
-        <p>
-          Public state remains readable. Private state only appears when you
-          explicitly reveal it.
-        </p>
-      </section>
-
-      <section className={styles.portfolioHero}>
-        <small>KNOWN CAPITAL</small>
-        <strong>
-          {knownCapital === null
-            ? wallet.privateRevealed
-              ? fmt(wallet.privateStrk ?? ZERO)
-              : "Private by default"
-            : fmt(knownCapital)}
-        </strong>
-        <span className={styles.portfolioSub}>
-          {wallet.connected ? "Wallet connected" : "Connect wallet to load live balances"}
-        </span>
-      </section>
-
-      <section className={styles.assetGrid}>
-        <article>
-          <div className={styles.assetIcon}><EyeOff size={18} /></div>
-          <small>PRIVATE STRK</small>
-          <strong>
-            {wallet.privateRevealed ? fmt(wallet.privateStrk ?? ZERO) : "Hidden"}
-          </strong>
-          <button
-            type="button"
-            disabled={!wallet.connected || !isSepolia || wallet.busy}
-            onClick={() => void wallet.revealPrivateBalance()}
-          >
-            {wallet.privateRevealed ? "Refresh" : "Reveal"}
-          </button>
-        </article>
-
-        <article>
-          <div className={styles.assetIcon}><WalletCards size={18} /></div>
-          <small>PUBLIC STRK</small>
-          <strong>{fmt(wallet.publicStrk)}</strong>
-          <button
-            type="button"
-            disabled={!wallet.connected || wallet.busy}
-            onClick={() => void wallet.refreshPublicBalance()}
-          >
-            {wallet.publicStrk === null ? "Load" : "Refresh"}
-          </button>
-        </article>
-      </section>
-
-      <section className={styles.infoCard}>
+      <section className={styles.pfHeader}>
         <div>
-          <small>PRIVACY BOUNDARY</small>
-          <strong>Private balance stays hidden until you ask to reveal it.</strong>
+          <span className={styles.eyebrow}><Layers3 size={13}/> PORTFOLIO</span>
+          <h1>Your capital, clearly.</h1>
+          <p>Real wallet state, explicit privacy boundaries, and observed performance without fabricated market data.</p>
         </div>
-        <ShieldCheck size={18} />
+        <span className={styles.pfLive}><i/>{wallet.connected ? "LIVE WALLET" : "OFFLINE"}</span>
+      </section>
+
+      <section className={styles.pfOverview}>
+        <div><small>KNOWN CAPITAL</small><strong>{knownCapital === null ? "Private by default" : fmt(knownCapital)}</strong><span>{wallet.privateRevealed ? "Public + user-revealed private STRK" : "Reveal private state to calculate total capital"}</span></div>
+        <div className={styles.pfActions}>
+          <button type="button" disabled={!wallet.connected || wallet.busy} onClick={() => void wallet.refreshPublicBalance()}><RefreshCw size={14}/>Refresh</button>
+          <button type="button" disabled={!wallet.connected || !isSepolia || wallet.busy} onClick={() => void wallet.revealPrivateBalance()}><EyeOff size={14}/>{wallet.privateRevealed ? "Refresh private" : "Reveal private"}</button>
+        </div>
+      </section>
+
+      <section className={styles.pfPerformance}>
+        <div className={styles.pfSectionHead}><div><small>PERFORMANCE</small><h2>Observed portfolio history</h2></div><span>SESSION LOCAL</span></div>
+        <div className={styles.pfRanges}>{(["1D","7D","30D","90D","1Y"] as PortfolioRange[]).map((range) => <button type="button" key={range} className={portfolioRange === range ? styles.pfRangeActive : ""} onClick={() => setPortfolioRange(range)}>{range}</button>)}</div>
+        <PortfolioChart points={visiblePortfolioHistory}/>
+      </section>
+
+      <section className={styles.pfCard}>
+        <div className={styles.sectionHead}><div><small>CAPITAL BREAKDOWN</small><h2>Public vs private</h2></div><CircleDollarSign size={18}/></div>
+        {privateShare !== null && publicShare !== null ? <>
+          <div className={styles.pfAllocation}><span className={styles.pfPrivate} style={{width:`${privateShare}%`}}/><span className={styles.pfPublic} style={{width:`${publicShare}%`}}/></div>
+          <div className={styles.pfLegend}><div><span><i className={styles.pfPrivateDot}/>Private</span><strong>{privateAmount?.toFixed(4)} STRK</strong><small>{privateShare.toFixed(1)}%</small></div><div><span><i className={styles.pfPublicDot}/>Public</span><strong>{publicAmount?.toFixed(4)} STRK</strong><small>{publicShare.toFixed(1)}%</small></div></div>
+        </> : <div className={styles.pfLocked}><EyeOff size={18}/><div><strong>Private allocation is hidden</strong><p>CAREL will not infer your private balance. Reveal it explicitly to calculate allocation.</p></div></div>}
+      </section>
+
+      <section className={styles.pfCard}>
+        <div className={styles.sectionHead}><div><small>POSITIONS</small><h2>Current capital</h2></div><Layers3 size={18}/></div>
+        <div className={styles.pfPositions}>
+          <article><span className={styles.pfPosIcon}><EyeOff size={17}/></span><div><strong>STRK Private</strong><small>STRK20 private balance</small></div><div className={styles.pfPosValue}><strong>{wallet.privateRevealed ? fmt(wallet.privateStrk ?? ZERO) : "Hidden"}</strong><small>PRIVATE</small></div></article>
+          <article><span className={styles.pfPosIcon}><WalletCards size={17}/></span><div><strong>STRK Public</strong><small>Connected Starknet wallet</small></div><div className={styles.pfPosValue}><strong>{fmt(wallet.publicStrk)}</strong><small>PUBLIC</small></div></article>
+        </div>
+        <div className={styles.pfProtocolEmpty}><Route size={16}/><div><strong>No live protocol positions yet</strong><p>Nostra, Vesu, staking or LP positions appear only after a real adapter reports them.</p></div></div>
+      </section>
+
+      <section className={styles.pfInsight}>
+        <span className={styles.pfInsightIcon}><Orbit size={19}/></span>
+        <div><small>CAREL INSIGHT</small><strong>{!wallet.connected ? "Connect your wallet to start portfolio analysis." : !wallet.privateRevealed ? "Your private state is hidden — CAREL will not guess it." : knownAmount === 0 ? "No known capital is available to analyze yet." : "Your wallet state is ready for a controlled strategy review."}</strong><p>Recommendations should come from real protocol data, risk rules and wallet state — never decorative APY numbers.</p></div>
+        <button type="button" onClick={() => setTab("agent")}>Ask CAREL<ChevronRight size={14}/></button>
+      </section>
+
+      <section className={styles.pfCard}>
+        <div className={styles.sectionHead}><div><small>RECENT ACTIVITY</small><h2>Latest execution</h2></div><button type="button" onClick={() => setTab("activity")}>View all</button></div>
+        {wallet.tx.kind === "idle" ? <div className={styles.pfActivityEmpty}><Activity size={17}/><span>No CAREL execution in this session.</span></div> : <a className={styles.pfTx} href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`} target="_blank" rel="noreferrer"><span className={styles.txPulse}/><div><strong>{wallet.tx.label}</strong><small>{wallet.tx.kind}</small></div><ChevronRight size={15}/></a>}
       </section>
     </div>
   );
-
   const renderActivity = () => (
     <div className={styles.page} key="activity">
       <section className={styles.pageTitle}>
@@ -782,7 +868,12 @@ export function CarelApp() {
         {tab === "activity" && renderActivity()}
         {tab === "more" && renderMore()}
 
-        {wallet.error && <div className={styles.errorCard}>{wallet.error}</div>}
+        {wallet.error && (
+          <div className={styles.pfError}>
+            <div><small>WALLET DATA</small><strong>Unable to load wallet data</strong><p>CAREL could not reach the wallet or RPC. No transaction was sent.</p></div>
+            <button type="button" disabled={!wallet.connected || wallet.busy} onClick={() => void wallet.refreshPublicBalance()}><RefreshCw size={14}/>Retry</button>
+          </div>
+        )}
       </main>
 
       <nav className={styles.nav} aria-label="Primary navigation">
