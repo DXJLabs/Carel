@@ -45,6 +45,7 @@ const ZERO = BigInt(0);
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "more";
 type QuickAction = "shield" | "withdraw" | null;
+type ExecutionMode = "shield" | "unshield";
 type PortfolioRange = "1D" | "7D" | "30D" | "90D" | "1Y";
 type PortfolioPoint = { ts: number; total: number };
 
@@ -150,6 +151,7 @@ export function CarelApp() {
   const [executing, setExecuting] = useState(false);
   const [quickAction, setQuickAction] = useState<QuickAction>(null);
   const [quickAmount, setQuickAmount] = useState("1");
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>("shield");
   const [portfolioRange, setPortfolioRange] = useState<PortfolioRange>("30D");
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioPoint[]>([]);
 
@@ -234,37 +236,68 @@ export function CarelApp() {
   const publicShare = privateShare !== null ? Math.max(0, 100 - privateShare) : null;
 
   const buildPlan = (source = goalText) => {
-    const parsed = parseGoal(source);
+    const normalized = source.trim().toLowerCase();
+    const amount = normalized.match(/(\d+(?:\.\d+)?)/)?.[1];
+    const asksForProtocolCapability =
+      /\b(swap|bridge|earn|borrow|stake|yield|lend)\b/.test(normalized);
 
-    if (!parsed) {
+    if (asksForProtocolCapability) {
       setGoalError(
-        "Live testnet execution currently supports STRK privacy targets. CAREL can still stage other DeFi goals as plans without pretending they are live.",
+        "Swap, Bridge, Earn and Borrow are CAREL route capabilities. Their live protocol adapters are not enabled in this testnet build yet, so CAREL will not pretend to execute them.",
+      );
+      setPlanned(false);
+      return;
+    }
+
+    if (!amount) {
+      setGoalError(
+        executionMode === "shield"
+          ? "Add a STRK amount for the Shield target. Example: Keep at least 1 STRK private."
+          : "Add a STRK amount for the Unshield target. Example: Keep at least 1 STRK public.",
       );
       setPlanned(false);
       return;
     }
 
     setGoalError(null);
-    setPlanGoal(parsed.goal);
-    setPlanTarget(parsed.target);
+    setPlanGoal(executionMode === "shield" ? "target-private" : "target-public");
+    setPlanTarget(amount);
     setPlanned(true);
   };
 
+  const toggleExecutionMode = () => {
+    const next: ExecutionMode =
+      executionMode === "shield" ? "unshield" : "shield";
+
+    setExecutionMode(next);
+    setPlanGoal(next === "shield" ? "target-private" : "target-public");
+    setGoalText(
+      next === "shield"
+        ? "Keep at least 1 STRK private"
+        : "Keep at least 1 STRK public",
+    );
+    setGoalError(null);
+    setPlanned(false);
+  };
+
   const openAgent = (prompt: string, autoPlan = false) => {
+    const parsed = parseGoal(prompt);
+    const nextMode: ExecutionMode =
+      parsed?.goal === "target-public" ? "unshield" : "shield";
+
+    setExecutionMode(nextMode);
     setGoalText(prompt);
     setGoalError(null);
     setTab("agent");
 
-    if (autoPlan) {
-      const parsed = parseGoal(prompt);
-      if (parsed) {
-        setPlanGoal(parsed.goal);
-        setPlanTarget(parsed.target);
-        setPlanned(true);
-        return;
-      }
+    if (autoPlan && parsed) {
+      setPlanGoal(parsed.goal);
+      setPlanTarget(parsed.target);
+      setPlanned(true);
+      return;
     }
 
+    setPlanGoal(nextMode === "shield" ? "target-private" : "target-public");
     setPlanned(false);
   };
 
@@ -393,7 +426,7 @@ export function CarelApp() {
         <div className={styles.sectionHead}>
           <div>
             <small>QUICK ACCESS</small>
-            <h2>Most useful actions</h2>
+            <h2>Start with CAREL</h2>
           </div>
           <Route size={18} />
         </div>
@@ -413,8 +446,8 @@ export function CarelApp() {
 
           <button type="button" onClick={() => setTab("more")}>
             <span><CircleDollarSign size={17} /></span>
-            <strong>Tools</strong>
-            <small>Swap, earn, bridge & more</small>
+            <strong>Agent modes</strong>
+            <small>Shield / Unshield + route capabilities</small>
           </button>
 
           <button type="button" onClick={() => setTab("activity")}>
@@ -479,20 +512,134 @@ export function CarelApp() {
 
   const renderAgent = () => (
     <div className={styles.page} key="agent">
-      <section className={styles.pageTitle}>
+      <section className={styles.agentHeroV6}>
         <span className={styles.eyebrow}>
           <Bot size={13} />
           CAREL AGENT
         </span>
-        <h1>Tell CAREL the outcome.</h1>
+
+        <h1>
+          Choose the boundary.
+          <span>CAREL builds the route.</span>
+        </h1>
+
         <p>
-          Goal → plan → privacy/risk check → approval → execution. The user stays
-          in control at every irreversible step.
+          Shield and Unshield are one execution mode switch. Swap, Bridge,
+          Earn and Borrow remain available to the agent in either mode.
         </p>
       </section>
 
-      <section className={styles.commandCard}>
-        <div className={styles.commandGlow} />
+      <section className={styles.modeCardV6}>
+        <div className={styles.modeCardHeadV6}>
+          <div>
+            <small>EXECUTION MODE</small>
+            <strong>Tap to switch the privacy boundary</strong>
+          </div>
+          <span className={styles.modeLiveV6}>
+            <i />
+            TESTNET
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className={`${styles.modeSwitchV6} ${
+            executionMode === "unshield" ? styles.modeSwitchUnshieldV6 : ""
+          }`}
+          onClick={toggleExecutionMode}
+          aria-label={`Switch from ${executionMode} mode`}
+        >
+          <span className={styles.modeSwitchIconV6}>
+            {executionMode === "shield" ? (
+              <ArrowDownToLine size={25} />
+            ) : (
+              <ArrowUpFromLine size={25} />
+            )}
+          </span>
+
+          <span className={styles.modeSwitchCopyV6}>
+            <small>
+              {executionMode === "shield" ? "PRIVATE ENTRY" : "PUBLIC EXIT"}
+            </small>
+            <strong>
+              {executionMode === "shield" ? "SHIELD" : "UNSHIELD"}
+            </strong>
+            <em>
+              {executionMode === "shield"
+                ? "Public STRK → STRK20 Privacy Pool"
+                : "STRK20 Privacy Pool → Public Starknet"}
+            </em>
+          </span>
+
+          <span className={styles.modeFlipV6}>
+            <ArrowLeftRight size={17} />
+            TAP
+          </span>
+        </button>
+
+        <div className={styles.boundaryTrackV6}>
+          <span className={executionMode === "shield" ? styles.boundaryActiveV6 : ""}>
+            PUBLIC WALLET
+          </span>
+          <div>
+            <i />
+            <ShieldCheck size={15} />
+            <i />
+          </div>
+          <span className={executionMode === "unshield" ? styles.boundaryActiveV6 : ""}>
+            PRIVACY POOL
+          </span>
+        </div>
+
+        <div className={styles.capabilityHeadV6}>
+          <div>
+            <small>AGENT CAPABILITIES</small>
+            <strong>Same tools. Different boundary.</strong>
+          </div>
+          <Route size={17} />
+        </div>
+
+        <div className={styles.capabilityGridV6}>
+          <article>
+            <span><ArrowLeftRight size={18} /></span>
+            <div><strong>Swap</strong><small>Route & price execution</small></div>
+          </article>
+
+          <article>
+            <span><Network size={18} /></span>
+            <div><strong>Bridge</strong><small>Cross-network routing</small></div>
+          </article>
+
+          <article>
+            <span><TrendingUp size={18} /></span>
+            <div><strong>Earn</strong><small>Yield & stake routes</small></div>
+          </article>
+
+          <article>
+            <span><Landmark size={18} /></span>
+            <div><strong>Borrow</strong><small>Collateral & debt routes</small></div>
+          </article>
+        </div>
+
+        <div className={styles.adapterNoticeV6}>
+          <Zap size={14} />
+          <span>
+            Live now: STRK20 Shield / Unshield boundary. Protocol capability
+            adapters connect to this same agent route when enabled.
+          </span>
+        </div>
+      </section>
+
+      <section className={styles.goalComposerV6}>
+        <div className={styles.goalComposerHeadV6}>
+          <div>
+            <small>OUTCOME</small>
+            <h2>What should CAREL achieve?</h2>
+          </div>
+          <span>
+            {executionMode === "shield" ? "SHIELD MODE" : "UNSHIELD MODE"}
+          </span>
+        </div>
 
         <textarea
           value={goalText}
@@ -501,20 +648,57 @@ export function CarelApp() {
             setPlanned(false);
             setGoalError(null);
           }}
-          placeholder="e.g. Keep at least 5 STRK private"
-          aria-label="Goal for CAREL"
+          placeholder={
+            executionMode === "shield"
+              ? "Example: Keep at least 1 STRK private"
+              : "Example: Keep at least 1 STRK public"
+          }
         />
 
-        <div className={styles.promptChips}>
-          <button type="button" onClick={() => setGoalText("Keep at least 10 STRK private")}>
-            10 STRK private
-          </button>
-          <button type="button" onClick={() => setGoalText("Keep at least 5 STRK public")}>
-            5 STRK public
-          </button>
-          <button type="button" onClick={() => setGoalText("Find a low-risk yield strategy for 10 STRK")}>
-            Low-risk yield
-          </button>
+        <div className={styles.goalChipsV6}>
+          {executionMode === "shield" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoalText("Keep at least 1 STRK private");
+                  setPlanned(false);
+                }}
+              >
+                1 STRK private
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoalText("Keep at least 10 STRK private");
+                  setPlanned(false);
+                }}
+              >
+                10 STRK private
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoalText("Keep at least 1 STRK public");
+                  setPlanned(false);
+                }}
+              >
+                1 STRK public
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoalText("Keep at least 5 STRK public");
+                  setPlanned(false);
+                }}
+              >
+                5 STRK public
+              </button>
+            </>
+          )}
         </div>
 
         <button
@@ -522,46 +706,86 @@ export function CarelApp() {
           className={styles.primaryButton}
           onClick={() => buildPlan()}
         >
-          <Sparkles size={16} />
+          <Sparkles size={17} />
           Build controlled plan
         </button>
       </section>
 
-      {goalError && <div className={styles.errorCard}>{goalError}</div>}
+      {goalError && (
+        <div className={styles.agentNoticeV6}>
+          <Route size={16} />
+          <span>{goalError}</span>
+        </div>
+      )}
 
-      <section className={`${styles.planCard} ${planned ? styles.planLive : ""}`}>
-        <div className={styles.sectionHead}>
+      <section className={styles.agentPlanV6}>
+        <div className={styles.agentPlanHeadV6}>
           <div>
             <small>AGENT PLAN</small>
             <h2>{planned ? plan.title : "Waiting for a goal"}</h2>
           </div>
-          <span className={styles.planStatus}>
+
+          <span
+            className={`${styles.planStateV6} ${
+              planned && plan.status === "ready" ? styles.planStateReadyV6 : ""
+            }`}
+          >
             <i />
-            {!planned ? "IDLE" : plan.status.toUpperCase()}
+            {planned ? plan.status.replaceAll("-", " ") : "idle"}
           </span>
         </div>
 
         {!planned ? (
-          <div className={styles.planEmpty}>
-            <div className={styles.miniCore}>
-              <Orbit size={20} />
-            </div>
+          <div className={styles.agentPlanEmptyV6}>
+            <div><Orbit size={25} /></div>
+            <strong>
+              {executionMode === "shield"
+                ? "Shield route is ready to plan"
+                : "Unshield route is ready to plan"}
+            </strong>
             <p>
-              Your route, privacy boundary and approval step will appear here.
+              CAREL will show the boundary, minimum delta and approval step
+              before any live transaction.
             </p>
           </div>
         ) : (
           <>
-            <div className={styles.flowRail}>
-              <div><span>01</span><strong>Observe</strong><small>Wallet state</small></div>
-              <i />
-              <div><span>02</span><strong>Plan</strong><small>Minimum route</small></div>
-              <i />
-              <div><span>03</span><strong>Approve</strong><small>User control</small></div>
+            <div className={styles.routePreviewV6}>
+              <span>
+                {executionMode === "shield" ? "PUBLIC STRK" : "STRK20 PRIVATE"}
+              </span>
+              <div>
+                <i />
+                <ChevronRight size={15} />
+                <i />
+              </div>
+              <strong>
+                {executionMode === "shield" ? "PRIVACY POOL" : "PUBLIC STARKNET"}
+              </strong>
             </div>
 
-            <div className={styles.planReason}>
-              <ShieldCheck size={17} />
+            <div className={styles.planStepsV6}>
+              <article>
+                <span>01</span>
+                <div><strong>Observe</strong><small>Read allowed wallet state</small></div>
+                <Check size={15} />
+              </article>
+
+              <article>
+                <span>02</span>
+                <div><strong>Plan</strong><small>Calculate the minimum required delta</small></div>
+                <Check size={15} />
+              </article>
+
+              <article>
+                <span>03</span>
+                <div><strong>Approve</strong><small>User confirms before execution</small></div>
+                <ShieldCheck size={15} />
+              </article>
+            </div>
+
+            <div className={styles.planReasonV6}>
+              <small>WHY THIS ROUTE</small>
               <p>{plan.reason}</p>
             </div>
 
@@ -569,10 +793,10 @@ export function CarelApp() {
               <button
                 type="button"
                 className={styles.secondaryButton}
-                disabled={wallet.busy}
+                disabled={!wallet.connected || !isSepolia || wallet.busy}
                 onClick={() => void wallet.revealPrivateBalance()}
               >
-                <EyeOff size={15} />
+                <EyeOff size={16} />
                 Reveal private balance
               </button>
             )}
@@ -581,24 +805,22 @@ export function CarelApp() {
               <button
                 type="button"
                 className={styles.primaryButton}
-                disabled={wallet.busy || executing}
+                disabled={executing || wallet.busy}
                 onClick={() => void executePlan()}
               >
-                {executing || wallet.busy ? (
-                  <RefreshCw size={15} className={styles.spin} />
-                ) : (
-                  <Zap size={15} />
-                )}
-                {executing || wallet.busy
-                  ? "Waiting for Ready…"
-                  : "Approve & execute"}
+                <Zap size={17} />
+                {executing
+                  ? "Executing…"
+                  : executionMode === "shield"
+                    ? "Approve & Shield"
+                    : "Approve & Unshield"}
               </button>
             )}
 
             {plan.status === "satisfied" && (
-              <div className={styles.successNote}>
-                <Check size={15} />
-                Target already satisfied. No funds move.
+              <div className={styles.planSatisfiedV6}>
+                <Check size={16} />
+                Target already satisfied. No transaction required.
               </div>
             )}
           </>
@@ -633,7 +855,7 @@ export function CarelApp() {
       </section>
 
       <section className={styles.pfCard}>
-        <div className={styles.sectionHead}><div><small>CAPITAL BREAKDOWN</small><h2>Public vs private</h2></div><CircleDollarSign size={18}/></div>
+        <div className={styles.sectionHead}><div><small>CAPITAL BREAKDOWN</small><h2>Public wallet vs Privacy Pool</h2></div><CircleDollarSign size={18}/></div>
         {privateShare !== null && publicShare !== null ? <>
           <div className={styles.pfAllocation}><span className={styles.pfPrivate} style={{width:`${privateShare}%`}}/><span className={styles.pfPublic} style={{width:`${publicShare}%`}}/></div>
           <div className={styles.pfLegend}><div><span><i className={styles.pfPrivateDot}/>Private</span><strong>{privateAmount?.toFixed(4)} STRK</strong><small>{privateShare.toFixed(1)}%</small></div><div><span><i className={styles.pfPublicDot}/>Public</span><strong>{publicAmount?.toFixed(4)} STRK</strong><small>{publicShare.toFixed(1)}%</small></div></div>
@@ -643,7 +865,7 @@ export function CarelApp() {
       <section className={styles.pfCard}>
         <div className={styles.sectionHead}><div><small>POSITIONS</small><h2>Current capital</h2></div><Layers3 size={18}/></div>
         <div className={styles.pfPositions}>
-          <article><span className={styles.pfPosIcon}><EyeOff size={17}/></span><div><strong>STRK Private</strong><small>STRK20 private balance</small></div><div className={styles.pfPosValue}><strong>{wallet.privateRevealed ? fmt(wallet.privateStrk ?? ZERO) : "Hidden"}</strong><small>PRIVATE</small></div></article>
+          <article><span className={styles.pfPosIcon}><EyeOff size={17}/></span><div><strong>STRK Privacy Pool</strong><small>Shielded STRK20 balance</small></div><div className={styles.pfPosValue}><strong>{wallet.privateRevealed ? fmt(wallet.privateStrk ?? ZERO) : "Hidden"}</strong><small>PRIVATE</small></div></article>
           <article><span className={styles.pfPosIcon}><WalletCards size={17}/></span><div><strong>STRK Public</strong><small>Connected Starknet wallet</small></div><div className={styles.pfPosValue}><strong>{fmt(wallet.publicStrk)}</strong><small>PUBLIC</small></div></article>
         </div>
         <div className={styles.pfProtocolEmpty}><Route size={16}/><div><strong>No live protocol positions yet</strong><p>Nostra, Vesu, staking or LP positions appear only after a real adapter reports them.</p></div></div>
@@ -710,129 +932,102 @@ export function CarelApp() {
 
   const renderMore = () => (
     <div className={styles.page} key="more">
-      <section className={styles.pageTitle}>
+      <section className={styles.moreHeroV6}>
         <span className={styles.eyebrow}>
           <Menu size={13} />
-          TOOLS & CONTROL
+          CONTROL CENTER
         </span>
-        <h1>Everything else lives here.</h1>
+        <h1>
+          Configure CAREL.
+          <span>Do not duplicate the Agent.</span>
+        </h1>
         <p>
-          DeFi tools support the agent. They are not the product identity.
+          Swap, Bridge, Earn and Borrow live inside the Agent route.
+          More is reserved for privacy, permissions, risk and wallet state.
         </p>
       </section>
 
-      <section className={styles.toolGrid}>
-        <button type="button" onClick={() => openAgent("Plan the best route to swap 10 STRK with controlled risk")}>
-          <span><ArrowLeftRight size={18} /></span>
-          <div><strong>Swap</strong><small>Route, fees and price impact</small></div>
-          <ChevronRight size={15} />
-        </button>
+      <section className={styles.moreModeCardV6}>
+        <div>
+          <small>CURRENT AGENT MODE</small>
+          <strong>{executionMode === "shield" ? "Shield" : "Unshield"}</strong>
+          <span>
+            {executionMode === "shield"
+              ? "Public STRK → STRK20 Privacy Pool"
+              : "STRK20 Privacy Pool → Public Starknet"}
+          </span>
+        </div>
 
-        <button type="button" onClick={() => openAgent("Plan a Starknet bridge route for 10 STRK")}>
-          <span><Network size={18} /></span>
-          <div><strong>Bridge</strong><small>Route, cost and destination</small></div>
-          <ChevronRight size={15} />
-        </button>
-
-        <button type="button" onClick={() => openAgent("Find a low-risk yield strategy for 10 STRK")}>
-          <span><TrendingUp size={18} /></span>
-          <div><strong>Earn</strong><small>Yield, lockup and protocol risk</small></div>
-          <ChevronRight size={15} />
-        </button>
-
-        <button type="button" onClick={() => openAgent("Plan a conservative borrow strategy with safe health factor")}>
-          <span><Landmark size={18} /></span>
-          <div><strong>Borrow</strong><small>Collateral and health factor</small></div>
-          <ChevronRight size={15} />
-        </button>
-
-        <button
-          type="button"
-          className={quickAction === "shield" ? styles.toolActive : ""}
-          onClick={() => setQuickAction(quickAction === "shield" ? null : "shield")}
-        >
-          <span><ArrowDownToLine size={18} /></span>
-          <div><strong>Shield</strong><small>Public STRK → private notes</small></div>
-          <em>LIVE</em>
-        </button>
-
-        <button
-          type="button"
-          className={quickAction === "withdraw" ? styles.toolActive : ""}
-          onClick={() => setQuickAction(quickAction === "withdraw" ? null : "withdraw")}
-        >
-          <span><ArrowUpFromLine size={18} /></span>
-          <div><strong>Withdraw</strong><small>Private notes → public wallet</small></div>
-          <em>LIVE</em>
-        </button>
-
-        <button type="button" onClick={() => setTab("portfolio")}>
-          <span><EyeOff size={18} /></span>
-          <div><strong>Privacy</strong><small>Reveal and inspect private state</small></div>
-          <ChevronRight size={15} />
-        </button>
-
-        <button type="button" onClick={() => setTab("portfolio")}>
-          <span><Settings size={18} /></span>
-          <div><strong>Wallet & network</strong><small>Connection and network state</small></div>
+        <button type="button" onClick={() => setTab("agent")}>
+          Open Agent
           <ChevronRight size={15} />
         </button>
       </section>
 
-      {quickAction && (
-        <section className={styles.executionSheet}>
-          <div className={styles.sectionHead}>
-            <div>
-              <small>LIVE TESTNET ACTION</small>
-              <h2>{quickAction === "shield" ? "Shield STRK" : "Withdraw STRK"}</h2>
-            </div>
-            <ShieldCheck size={18} />
+      <section className={styles.moreControlGridV6}>
+        <button type="button" onClick={() => setTab("portfolio")}>
+          <span><EyeOff size={19} /></span>
+          <div>
+            <strong>Privacy & balances</strong>
+            <small>Reveal policy and STRK20 private state</small>
           </div>
+          <ChevronRight size={16} />
+        </button>
 
-          <div className={styles.amountField}>
-            <input
-              value={quickAmount}
-              inputMode="decimal"
-              onChange={(event) =>
-                setQuickAmount(event.target.value.replace(/[^0-9.]/g, ""))
-              }
-              aria-label={`${quickAction} amount`}
-            />
-            <b>STRK</b>
+        <button type="button" onClick={() => setTab("agent")}>
+          <span><Bot size={19} /></span>
+          <div>
+            <strong>Agent execution</strong>
+            <small>Shield / Unshield mode and approval flow</small>
           </div>
+          <ChevronRight size={16} />
+        </button>
 
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={wallet.busy || executing}
-            onClick={() => void executeQuickAction()}
-          >
-            {executing || wallet.busy ? (
-              <RefreshCw size={15} className={styles.spin} />
-            ) : quickAction === "shield" ? (
-              <ArrowDownToLine size={15} />
-            ) : (
-              <ArrowUpFromLine size={15} />
-            )}
-            {executing || wallet.busy
-              ? "Waiting for wallet…"
-              : `Approve ${quickAction === "shield" ? "shield" : "withdraw"}`}
-          </button>
-        </section>
-      )}
+        <article>
+          <span><ShieldCheck size={19} /></span>
+          <div>
+            <strong>Risk controls</strong>
+            <small>Approval remains required before irreversible execution</small>
+          </div>
+          <em>ENFORCED</em>
+        </article>
 
-      <section className={styles.statusCard}>
-        <div>
-          <span><WalletCards size={15} /> Wallet</span>
-          <strong>{wallet.connected ? "Connected" : "Disconnected"}</strong>
+        <article>
+          <span><Settings size={19} /></span>
+          <div>
+            <strong>Transaction policy</strong>
+            <small>No unrestricted automation in this testnet build</small>
+          </div>
+          <em>CONTROLLED</em>
+        </article>
+      </section>
+
+      <section className={styles.statusPanelV6}>
+        <div className={styles.statusPanelHeadV6}>
+          <div>
+            <small>TESTNET STATUS</small>
+            <h2>Execution boundary</h2>
+          </div>
+          <Network size={18} />
         </div>
-        <div>
-          <span><Network size={15} /> Network</span>
-          <strong>{isSepolia ? "Sepolia" : "Not ready"}</strong>
-        </div>
-        <div>
-          <span><ShieldCheck size={15} /> STRK20</span>
-          <strong>{wallet.strk20Capable ? "Supported" : "Unavailable"}</strong>
+
+        <div className={styles.statusRowsV6}>
+          <div>
+            <span>Wallet</span>
+            <strong>{wallet.connected ? "Connected" : "Disconnected"}</strong>
+          </div>
+          <div>
+            <span>Network</span>
+            <strong>{isSepolia ? "Starknet Sepolia" : "Not ready"}</strong>
+          </div>
+          <div>
+            <span>STRK20</span>
+            <strong>{wallet.strk20Capable ? "Available" : "Unavailable"}</strong>
+          </div>
+          <div>
+            <span>Live boundary</span>
+            <strong>Shield ↔ Unshield</strong>
+          </div>
         </div>
       </section>
     </div>

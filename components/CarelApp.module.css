@@ -422,3 +422,278 @@
 @media(max-width:720px){.pfHeader{display:block;padding:12px 7px 5px}.pfHeader h1{font-size:42px}.pfHeader p{font-size:9.5px}.pfLive{margin-top:12px}.pfOverview,.pfPerformance,.pfCard,.pfInsight{border-radius:14px}.pfOverview{display:block;padding:16px}.pfOverview strong{font-size:34px}.pfActions{margin-top:14px;display:grid;grid-template-columns:1fr 1fr}.pfSectionHead h2{font-size:16px}.pfChart{height:190px}.pfChartEmpty{min-height:190px}.pfInsight{grid-template-columns:auto 1fr}.pfInsight>button{grid-column:1/-1;width:100%;justify-content:center}.pfError{align-items:flex-end}}
 @media(max-width:390px){.pfHeader h1{font-size:38px}.pfOverview strong{font-size:30px}.pfActions{grid-template-columns:1fr}.pfLegend{grid-template-columns:1fr}.pfPositions article{grid-template-columns:auto 1fr}.pfPosValue{grid-column:2;text-align:left}}
 /* ===== END CAREL PORTFOLIO PRODUCTION V5 ===== */
+
+/* ===== CAREL AGENT MODES V6 ===== */
+
+.agentHeroV6,
+.moreHeroV6{padding:18px 7px 6px}
+.agentHeroV6 h1,
+.moreHeroV6 h1{
+  margin:14px 0 10px;max-width:760px;
+  font-family:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+  font-size:clamp(42px,7vw,72px);line-height:.92;letter-spacing:-.06em;font-weight:500
+}
+.agentHeroV6 h1 span,
+.moreHeroV6 h1 span{display:block;color:#75808a;font-weight:400}
+.agentHeroV6 p,
+.moreHeroV6 p{max-width:680px;margin:0;color:#8a949f;font-size:11px;line-height:1.7}
+
+.modeCardV6,.goalComposerV6,.agentPlanV6,.moreModeCardV6,.statusPanelV6{
+  margin-top:14px;border:1px solid rgba(255,255,255,.075);border-radius:18px;
+  background:radial-gradient(circle at 88% 8%,rgba(185,255,105,.055),transparent 24%),
+             linear-gradient(145deg,rgba(13,18,24,.96),rgba(8,11,15,.9));
+  box-shadow:0 24px 70px rgba(0,0,0,.2)
+}
+.modeCardV6,.goalComposerV6,.agentPlanV6,.statusPanelV6{padding:18px}
+
+.modeCardHeadV6,.goalComposerHeadV6,.agentPlanHeadV6,.statusPanelHeadV6{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:14px
+}
+.modeCardHeadV6 small,.goalComposerHeadV6 small,.agentPlanHeadV6 small,
+.statusPanelHeadV6 small,.moreModeCardV6 small,.planReasonV6 small{
+  display:block;color:#68737f;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:7px;font-weight:600;letter-spacing:.12em
+}
+.modeCardHeadV6 strong{display:block;margin-top:4px;font-size:11px}
+.modeLiveV6{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 8px;
+  border:1px solid rgba(185,255,105,.14);border-radius:999px;color:var(--lime);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:6px;letter-spacing:.1em
+}
+.modeLiveV6 i{
+  width:6px;height:6px;border-radius:50%;background:var(--lime);
+  box-shadow:0 0 12px rgba(185,255,105,.55);animation:modePulseV6 1.8s ease-in-out infinite
+}
+
+.modeSwitchV6{
+  width:100%;min-height:145px;margin-top:14px;padding:17px;
+  border:1px solid rgba(185,255,105,.23);border-radius:16px;
+  background:linear-gradient(115deg,rgba(185,255,105,.09),rgba(110,240,196,.025) 55%,rgba(255,255,255,.01));
+  color:#eef5ea;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:15px;
+  text-align:left;position:relative;overflow:hidden;
+  transition:transform .28s cubic-bezier(.2,.8,.2,1),border-color .28s ease,background .28s ease
+}
+.modeSwitchV6::after{
+  content:"";position:absolute;inset:-60% auto -60% -25%;width:24%;transform:rotate(15deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
+  animation:modeSweepV6 4.4s ease-in-out infinite;pointer-events:none
+}
+.modeSwitchV6:active{transform:scale(.985)}
+.modeSwitchUnshieldV6{
+  border-color:rgba(110,240,196,.24);
+  background:linear-gradient(115deg,rgba(110,240,196,.085),rgba(167,139,250,.028) 58%,rgba(255,255,255,.01))
+}
+.modeSwitchIconV6{
+  width:58px;height:58px;border-radius:16px;display:grid;place-items:center;color:var(--lime);
+  border:1px solid rgba(185,255,105,.2);background:rgba(185,255,105,.045);
+  box-shadow:inset 0 0 24px rgba(185,255,105,.025),0 0 32px rgba(185,255,105,.05)
+}
+.modeSwitchUnshieldV6 .modeSwitchIconV6{
+  color:var(--mint);border-color:rgba(110,240,196,.2);background:rgba(110,240,196,.04)
+}
+.modeSwitchCopyV6 small,.modeSwitchCopyV6 strong,.modeSwitchCopyV6 em{display:block}
+.modeSwitchCopyV6 small{
+  color:#78838e;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:7px;font-style:normal;letter-spacing:.11em
+}
+.modeSwitchCopyV6 strong{
+  margin-top:3px;font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:34px;line-height:1;letter-spacing:-.045em;font-weight:600
+}
+.modeSwitchCopyV6 em{margin-top:7px;color:#89949e;font-size:9px;font-style:normal}
+.modeFlipV6{
+  display:flex;flex-direction:column;align-items:center;gap:5px;color:#77828d;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:6px;letter-spacing:.08em
+}
+
+.boundaryTrackV6{
+  margin-top:12px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;
+  color:#5e6974;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:6px;letter-spacing:.08em
+}
+.boundaryTrackV6>span:last-child{text-align:right}
+.boundaryTrackV6>div{display:flex;align-items:center;gap:4px;color:#6f7a85}
+.boundaryTrackV6>div i{width:24px;height:1px;background:rgba(185,255,105,.23)}
+.boundaryActiveV6{color:var(--lime)!important}
+
+.capabilityHeadV6{
+  margin-top:20px;padding-top:17px;border-top:1px solid rgba(255,255,255,.055);
+  display:flex;align-items:center;justify-content:space-between;gap:12px
+}
+.capabilityHeadV6 small{
+  display:block;color:#68737f;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:7px;letter-spacing:.11em
+}
+.capabilityHeadV6 strong{display:block;margin-top:4px;font-size:12px}
+.capabilityGridV6{margin-top:11px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.capabilityGridV6 article{
+  min-height:94px;padding:11px;border:1px solid rgba(255,255,255,.06);border-radius:13px;
+  background:rgba(255,255,255,.012);display:flex;flex-direction:column;justify-content:space-between;gap:10px
+}
+.capabilityGridV6 article>span{
+  width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--lime);
+  border:1px solid rgba(185,255,105,.13);background:rgba(185,255,105,.03)
+}
+.capabilityGridV6 strong,.capabilityGridV6 small{display:block}
+.capabilityGridV6 strong{font-size:10px}
+.capabilityGridV6 small{margin-top:4px;color:#65707c;font-size:7px;line-height:1.45}
+.adapterNoticeV6{
+  margin-top:10px;padding:10px 11px;border:1px dashed rgba(110,240,196,.12);
+  border-radius:11px;color:#75818c;display:flex;align-items:flex-start;gap:8px;font-size:7.5px;line-height:1.55
+}
+.adapterNoticeV6 svg{color:var(--mint);flex:0 0 auto}
+
+.goalComposerHeadV6 h2,.agentPlanHeadV6 h2,.statusPanelHeadV6 h2{
+  margin:5px 0 0;font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:20px;line-height:1.08;letter-spacing:-.025em;font-weight:600
+}
+.goalComposerHeadV6>span{
+  padding:6px 8px;border:1px solid rgba(185,255,105,.12);border-radius:999px;color:var(--lime);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:6px;letter-spacing:.08em
+}
+.goalComposerV6 textarea{
+  width:100%;min-height:135px;margin-top:13px;padding:16px;resize:vertical;outline:none;
+  border:1px solid rgba(255,255,255,.075);border-radius:14px;background:rgba(3,6,9,.42);color:#f0f4f7;
+  font-family:"Space Grotesk","Inter",sans-serif;font-size:20px;line-height:1.38;letter-spacing:-.025em
+}
+.goalComposerV6 textarea:focus{border-color:rgba(185,255,105,.26);box-shadow:0 0 0 3px rgba(185,255,105,.025)}
+.goalChipsV6{margin:11px 0;display:flex;gap:7px;flex-wrap:wrap}
+.goalChipsV6 button{
+  min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.07);border-radius:999px;
+  background:transparent;color:#7b8691;font-size:8px
+}
+
+.agentNoticeV6{
+  margin-top:12px;padding:11px 13px;border:1px solid rgba(255,194,92,.14);border-radius:12px;
+  background:rgba(255,194,92,.025);color:#b09b78;display:flex;align-items:flex-start;gap:9px;
+  font-size:8px;line-height:1.55
+}
+.agentNoticeV6 svg{flex:0 0 auto;color:#d9b76f}
+
+.planStateV6{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid rgba(255,255,255,.07);
+  border-radius:999px;color:#7c8792;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:6px;text-transform:uppercase;letter-spacing:.08em
+}
+.planStateV6 i{width:6px;height:6px;border-radius:50%;background:#6a7580}
+.planStateReadyV6{color:var(--lime);border-color:rgba(185,255,105,.14)}
+.planStateReadyV6 i{background:var(--lime);box-shadow:0 0 9px rgba(185,255,105,.45)}
+
+.agentPlanEmptyV6{
+  min-height:210px;display:grid;place-items:center;align-content:center;text-align:center;padding:18px
+}
+.agentPlanEmptyV6>div{
+  width:62px;height:62px;border-radius:50%;display:grid;place-items:center;color:var(--lime);
+  border:1px solid rgba(185,255,105,.14);background:rgba(185,255,105,.025);
+  box-shadow:0 0 35px rgba(185,255,105,.045);animation:coreFloat 5s ease-in-out infinite
+}
+.agentPlanEmptyV6 strong{margin-top:14px;font-size:12px}
+.agentPlanEmptyV6 p{max-width:420px;margin:6px 0 0;color:#6d7883;font-size:8px;line-height:1.55}
+
+.routePreviewV6{
+  min-height:62px;margin-top:15px;padding:0 12px;display:grid;grid-template-columns:1fr auto 1fr;
+  align-items:center;gap:8px;border:1px solid rgba(185,255,105,.105);border-radius:12px;
+  background:rgba(185,255,105,.018);font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:7px;letter-spacing:.07em
+}
+.routePreviewV6>span{color:#6f7a84}
+.routePreviewV6>strong{text-align:right;color:var(--lime);font-size:7px}
+.routePreviewV6>div{display:flex;align-items:center;color:#8a9580}
+.routePreviewV6>div i{width:14px;height:1px;background:rgba(185,255,105,.18)}
+
+.planStepsV6{display:grid;gap:7px;margin-top:10px}
+.planStepsV6 article{
+  min-height:62px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;
+  padding:10px 12px;border:1px solid rgba(255,255,255,.055);border-radius:11px;background:rgba(255,255,255,.01)
+}
+.planStepsV6 article>span{
+  color:var(--lime);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:7px
+}
+.planStepsV6 strong,.planStepsV6 small{display:block}
+.planStepsV6 strong{font-size:9px}
+.planStepsV6 small{margin-top:3px;color:#66717d;font-size:7px}
+.planStepsV6 svg{color:#63705f}
+
+.planReasonV6{margin:10px 0;padding:11px 12px;border-left:2px solid rgba(185,255,105,.36);background:rgba(185,255,105,.015)}
+.planReasonV6 p{margin:5px 0 0;color:#8a959f;font-size:8px;line-height:1.55}
+.planSatisfiedV6{
+  min-height:45px;margin-top:10px;border:1px solid rgba(185,255,105,.12);border-radius:10px;
+  background:rgba(185,255,105,.025);color:#9dbd7c;display:flex;align-items:center;gap:8px;padding:0 11px;font-size:8px
+}
+
+.moreModeCardV6{padding:17px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.moreModeCardV6 strong,.moreModeCardV6 span{display:block}
+.moreModeCardV6 strong{
+  margin-top:5px;font-family:"Space Grotesk","Inter",sans-serif;font-size:24px;letter-spacing:-.035em
+}
+.moreModeCardV6 span{margin-top:4px;color:#707b86;font-size:8px}
+.moreModeCardV6 button{
+  flex:0 0 auto;height:40px;padding:0 11px;border:1px solid rgba(185,255,105,.14);
+  border-radius:10px;background:rgba(185,255,105,.03);color:var(--lime);
+  display:flex;align-items:center;gap:6px;font-size:8px
+}
+
+.moreControlGridV6{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.moreControlGridV6 button,.moreControlGridV6 article{
+  min-height:98px;padding:13px;border:1px solid rgba(255,255,255,.065);border-radius:14px;
+  background:linear-gradient(145deg,rgba(13,18,24,.9),rgba(8,11,15,.82));color:inherit;text-align:left;
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px
+}
+.moreControlGridV6 button>span,.moreControlGridV6 article>span{
+  width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--lime);
+  border:1px solid rgba(185,255,105,.13);background:rgba(185,255,105,.03)
+}
+.moreControlGridV6 strong,.moreControlGridV6 small{display:block}
+.moreControlGridV6 strong{font-size:10px}
+.moreControlGridV6 small{margin-top:4px;color:#68737e;font-size:7px;line-height:1.45}
+.moreControlGridV6 em{
+  color:#78837a;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:5.5px;font-style:normal;letter-spacing:.07em
+}
+
+.statusRowsV6{margin-top:13px;display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.statusRowsV6>div{
+  min-height:62px;padding:10px 11px;border:1px solid rgba(255,255,255,.055);
+  border-radius:11px;background:rgba(255,255,255,.01)
+}
+.statusRowsV6 span,.statusRowsV6 strong{display:block}
+.statusRowsV6 span{color:#64707b;font-size:7px}
+.statusRowsV6 strong{margin-top:5px;font-size:9px}
+
+@keyframes modePulseV6{
+  0%,100%{opacity:.55;transform:scale(.9)}
+  50%{opacity:1;transform:scale(1.14)}
+}
+@keyframes modeSweepV6{
+  0%,28%{left:-25%;opacity:0}
+  40%{opacity:1}
+  58%{left:120%;opacity:0}
+  100%{left:120%;opacity:0}
+}
+
+@media(max-width:720px){
+  .agentHeroV6,.moreHeroV6{padding:12px 7px 4px}
+  .agentHeroV6 h1,.moreHeroV6 h1{font-size:42px}
+  .agentHeroV6 p,.moreHeroV6 p{max-width:96%;font-size:9.5px}
+  .modeCardV6,.goalComposerV6,.agentPlanV6,.moreModeCardV6,.statusPanelV6{border-radius:14px}
+  .modeSwitchV6{min-height:132px;padding:14px}
+  .modeSwitchIconV6{width:50px;height:50px;border-radius:14px}
+  .modeSwitchCopyV6 strong{font-size:29px}
+  .modeSwitchCopyV6 em{font-size:7.5px;line-height:1.4}
+  .capabilityGridV6{grid-template-columns:1fr 1fr}
+  .capabilityGridV6 article{min-height:92px}
+  .goalComposerV6 textarea{min-height:126px;font-size:18px}
+  .moreControlGridV6{grid-template-columns:1fr}
+  .moreControlGridV6 button,.moreControlGridV6 article{min-height:84px}
+}
+@media(max-width:390px){
+  .agentHeroV6 h1,.moreHeroV6 h1{font-size:38px}
+  .modeSwitchV6{grid-template-columns:auto 1fr}
+  .modeFlipV6{grid-column:1/-1;flex-direction:row;justify-content:flex-end}
+  .modeSwitchCopyV6 strong{font-size:26px}
+  .statusRowsV6{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+  .modeLiveV6 i,.modeSwitchV6::after,.agentPlanEmptyV6>div{animation:none!important}
+}
+
+/* ===== END CAREL AGENT MODES V6 ===== */
