@@ -14,7 +14,6 @@ import {
   Home,
   Landmark,
   Layers3,
-  Menu,
   Network,
   Orbit,
   RefreshCw,
@@ -43,7 +42,7 @@ import styles from "./CarelApp.module.css";
 
 const ZERO = BigInt(0);
 
-type Tab = "home" | "agent" | "portfolio" | "activity" | "more";
+type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
 type QuickAction = "shield" | "withdraw" | null;
 type ExecutionMode = "shield" | "unshield";
 type PortfolioRange = "1D" | "7D" | "30D" | "90D" | "1Y";
@@ -560,7 +559,7 @@ export function CarelApp() {
             <small>Public + private capital</small>
           </button>
 
-          <button type="button" onClick={() => setTab("more")}>
+          <button type="button" onClick={() => setTab("settings")}>
             <span><CircleDollarSign size={17} /></span>
             <strong>Agent modes</strong>
             <small>Shield / Unshield + route capabilities</small>
@@ -1437,91 +1436,63 @@ export function CarelApp() {
     );
   };
 
-  const renderMore = () => (
-    <div className={styles.page} key="more">
-      <section className={styles.moreHeroV6}>
+  const renderSettings = () => (
+    <div className={styles.page} key="settings">
+      <section className={styles.s10Hero}>
         <span className={styles.eyebrow}>
-          <Menu size={13} />
-          CONTROL CENTER
+          <Settings size={13} />
+          SETTINGS
         </span>
-        <h1>
-          Configure CAREL.
-          <span>Do not duplicate the Agent.</span>
-        </h1>
-        <p>
-          Swap, Bridge, Earn and Borrow live inside the Agent route.
-          More is reserved for privacy, permissions, risk and wallet state.
-        </p>
+        <h1>Settings</h1>
+        <p>Account, points, privacy and execution controls.</p>
       </section>
 
-      <section className={styles.moreModeCardV6}>
-        <div>
-          <small>CURRENT AGENT MODE</small>
-          <strong>{executionMode === "shield" ? "Shield" : "Unshield"}</strong>
-          <span>
-            {executionMode === "shield"
-              ? "Public STRK → STRK20 Privacy Pool"
-              : "STRK20 Privacy Pool → Public Starknet"}
+      <section className={styles.s10PointsCard}>
+        <div className={styles.s10PointsGlow} />
+        <div className={styles.s10PointsTop}>
+          <div>
+            <small>POINTS & REWARDS</small>
+            <strong>— <span>PTS</span></strong>
+            <p>Points balance is not connected to a rewards source yet.</p>
+          </div>
+          <span className={styles.s10PointsIcon}>
+            <Sparkles size={22} />
           </span>
         </div>
 
-        <button type="button" onClick={() => setTab("agent")}>
-          Open Agent
-          <ChevronRight size={15} />
-        </button>
+        <div className={styles.s10PointsMeta}>
+          <div>
+            <small>STATUS</small>
+            <strong>Not synced</strong>
+          </div>
+          <div>
+            <small>HISTORY</small>
+            <strong>No rewards ledger yet</strong>
+          </div>
+        </div>
       </section>
 
-      <section className={styles.moreControlGridV6}>
-        <button type="button" onClick={() => setTab("portfolio")}>
-          <span><EyeOff size={19} /></span>
+      <section className={styles.s10Card}>
+        <div className={styles.s10CardHead}>
           <div>
-            <strong>Privacy & balances</strong>
-            <small>Reveal policy and STRK20 private state</small>
+            <small>WALLET & NETWORK</small>
+            <h2>Connected account</h2>
           </div>
-          <ChevronRight size={16} />
-        </button>
-
-        <button type="button" onClick={() => setTab("agent")}>
-          <span><Bot size={19} /></span>
-          <div>
-            <strong>Agent execution</strong>
-            <small>Shield / Unshield mode and approval flow</small>
-          </div>
-          <ChevronRight size={16} />
-        </button>
-
-        <article>
-          <span><ShieldCheck size={19} /></span>
-          <div>
-            <strong>Risk controls</strong>
-            <small>Approval remains required before irreversible execution</small>
-          </div>
-          <em>ENFORCED</em>
-        </article>
-
-        <article>
-          <span><Settings size={19} /></span>
-          <div>
-            <strong>Transaction policy</strong>
-            <small>No unrestricted automation in this testnet build</small>
-          </div>
-          <em>CONTROLLED</em>
-        </article>
-      </section>
-
-      <section className={styles.statusPanelV6}>
-        <div className={styles.statusPanelHeadV6}>
-          <div>
-            <small>TESTNET STATUS</small>
-            <h2>Execution boundary</h2>
-          </div>
-          <Network size={18} />
+          <WalletCards size={19} />
         </div>
 
-        <div className={styles.statusRowsV6}>
+        <div className={styles.s10Rows}>
           <div>
             <span>Wallet</span>
-            <strong>{wallet.connected ? "Connected" : "Disconnected"}</strong>
+            <strong>{wallet.connected ? "Ready connected" : "Disconnected"}</strong>
+          </div>
+          <div>
+            <span>Address</span>
+            <strong>
+              {wallet.address
+                ? `${wallet.address.slice(0, 8)}…${wallet.address.slice(-6)}`
+                : "—"}
+            </strong>
           </div>
           <div>
             <span>Network</span>
@@ -1531,10 +1502,99 @@ export function CarelApp() {
             <span>STRK20</span>
             <strong>{wallet.strk20Capable ? "Available" : "Unavailable"}</strong>
           </div>
+        </div>
+      </section>
+
+      <section className={styles.s10Card}>
+        <div className={styles.s10CardHead}>
           <div>
-            <span>Live boundary</span>
+            <small>PRIVACY</small>
+            <h2>Private state access</h2>
+          </div>
+          <EyeOff size={19} />
+        </div>
+
+        <div className={styles.s10PrivacyState}>
+          <div>
+            <span className={wallet.privateRevealed ? styles.s10StateLive : ""}>
+              <i />
+              {wallet.privateRevealed ? "REVEALED" : "HIDDEN"}
+            </span>
+            <strong>
+              {wallet.privateRevealed
+                ? "Private balance is visible for this session"
+                : "Private balance remains hidden"}
+            </strong>
+            <p>CAREL only reads STRK20 private balance after explicit user action.</p>
+          </div>
+
+          <button
+            type="button"
+            disabled={!wallet.connected || !isSepolia || wallet.busy}
+            onClick={() => void wallet.revealPrivateBalance()}
+          >
+            {wallet.privateRevealed ? <RefreshCw size={14} /> : <EyeOff size={14} />}
+            {wallet.privateRevealed ? "Refresh" : "Reveal"}
+          </button>
+        </div>
+      </section>
+
+      <section className={styles.s10Card}>
+        <div className={styles.s10CardHead}>
+          <div>
+            <small>AGENT PERMISSIONS</small>
+            <h2>Execution authority</h2>
+          </div>
+          <Bot size={19} />
+        </div>
+
+        <div className={styles.s10PolicyList}>
+          <article>
+            <span><ShieldCheck size={17} /></span>
+            <div>
+              <strong>Approval before execution</strong>
+              <small>CAREL cannot submit an irreversible route without user approval.</small>
+            </div>
+            <em>REQUIRED</em>
+          </article>
+
+          <article>
+            <span><EyeOff size={17} /></span>
+            <div>
+              <strong>Explicit private reveal</strong>
+              <small>Private STRK20 state is not read automatically.</small>
+            </div>
+            <em>ENFORCED</em>
+          </article>
+        </div>
+      </section>
+
+      <section className={styles.s10Card}>
+        <div className={styles.s10CardHead}>
+          <div>
+            <small>RISK & TRANSACTIONS</small>
+            <h2>Execution policy</h2>
+          </div>
+          <Settings size={19} />
+        </div>
+
+        <div className={styles.s10Rows}>
+          <div>
+            <span>Approval</span>
+            <strong>Required</strong>
+          </div>
+          <div>
+            <span>Automation</span>
+            <strong>Controlled</strong>
+          </div>
+          <div>
+            <span>Privacy mode</span>
             <strong>Shield ↔ Unshield</strong>
           </div>
+          <button type="button" onClick={() => setTab("agent")}>
+            Open Agent controls
+            <ChevronRight size={15} />
+          </button>
         </div>
       </section>
     </div>
@@ -1560,7 +1620,20 @@ export function CarelApp() {
           </div>
         </button>
 
-        <WalletStatusButton />
+        <div className={styles.headerActionsV10}>
+          <button
+            type="button"
+            className={styles.pointsPillV10}
+            onClick={() => setTab("settings")}
+            aria-label="Open points and rewards"
+          >
+            <Sparkles size={14} />
+            <strong>—</strong>
+            <small>PTS</small>
+          </button>
+
+          <WalletStatusButton />
+        </div>
       </header>
 
       <main className={styles.main}>
@@ -1568,7 +1641,7 @@ export function CarelApp() {
         {tab === "agent" && renderAgent()}
         {tab === "portfolio" && renderPortfolio()}
         {tab === "activity" && renderActivity()}
-        {tab === "more" && renderMore()}
+        {tab === "settings" && renderSettings()}
 
         {wallet.error && tab !== "portfolio" && (
           <div className={styles.pfError}>
@@ -1617,11 +1690,11 @@ export function CarelApp() {
 
         <button
           type="button"
-          className={tab === "more" ? styles.navActive : ""}
-          onClick={() => setTab("more")}
+          className={tab === "settings" ? styles.navActive : ""}
+          onClick={() => setTab("settings")}
         >
-          <Menu size={18} />
-          <span>More</span>
+          <Settings size={18} />
+          <span>Settings</span>
         </button>
       </nav>
     </div>

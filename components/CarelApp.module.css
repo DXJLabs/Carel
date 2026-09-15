@@ -1780,3 +1780,214 @@
 }
 
 /* ===== END CAREL ACTIVITY V9 ===== */
+
+/* ===== CAREL SETTINGS + POINTS V10 ===== */
+
+.headerActionsV10{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.pointsPillV10{
+  height:42px;
+  padding:0 11px;
+  border:1px solid rgba(185,255,105,.13);
+  border-radius:13px;
+  background:radial-gradient(circle at 20% 20%,rgba(185,255,105,.08),transparent 60%),rgba(255,255,255,.018);
+  color:var(--lime);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+}
+.pointsPillV10 strong{
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:13px;
+  font-variant-numeric:tabular-nums;
+}
+.pointsPillV10 small{
+  color:#7e8c72;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:6px;
+  letter-spacing:.08em;
+}
+
+.s10Hero{padding:14px 7px 4px}
+.s10Hero h1{
+  margin:12px 0 7px;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:clamp(42px,7vw,64px);
+  line-height:.95;
+  letter-spacing:-.06em;
+  font-weight:500;
+}
+.s10Hero p{margin:0;color:#7f8a95;font-size:9.5px}
+
+.s10PointsCard,.s10Card{
+  margin-top:12px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;
+  background:linear-gradient(145deg,rgba(13,18,24,.96),rgba(8,11,15,.9));
+  box-shadow:0 22px 60px rgba(0,0,0,.16);
+}
+.s10PointsCard{
+  padding:18px;
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(185,255,105,.12);
+}
+.s10PointsGlow{
+  position:absolute;
+  width:210px;
+  height:210px;
+  right:-70px;
+  top:-100px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(185,255,105,.10),transparent 70%);
+  pointer-events:none;
+}
+.s10PointsTop{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+.s10PointsTop small,.s10CardHead small,.s10Rows span{
+  display:block;
+  color:#697480;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:7px;
+  font-weight:600;
+  letter-spacing:.1em;
+}
+.s10PointsTop>div>strong{
+  display:block;
+  margin-top:7px;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:38px;
+  line-height:1;
+  letter-spacing:-.05em;
+  font-weight:500;
+}
+.s10PointsTop>div>strong span{
+  color:#7f8c74;
+  font-size:13px;
+  letter-spacing:.02em;
+}
+.s10PointsTop p{margin:8px 0 0;color:#707b86;font-size:8px}
+.s10PointsIcon{
+  width:46px;height:46px;border-radius:14px;display:grid;place-items:center;
+  color:var(--lime);border:1px solid rgba(185,255,105,.15);
+  background:rgba(185,255,105,.035);box-shadow:0 0 30px rgba(185,255,105,.05);
+}
+.s10PointsMeta{
+  position:relative;
+  z-index:1;
+  margin-top:16px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.s10PointsMeta>div{
+  min-height:61px;padding:10px;border:1px solid rgba(255,255,255,.055);
+  border-radius:10px;background:rgba(255,255,255,.01);
+}
+.s10PointsMeta small,.s10PointsMeta strong{display:block}
+.s10PointsMeta small{
+  color:#68737e;font-family:"IBM Plex Mono",monospace;font-size:6px;letter-spacing:.08em;
+}
+.s10PointsMeta strong{margin-top:7px;font-size:9px}
+
+.s10Card{padding:17px}
+.s10CardHead{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.s10CardHead h2{
+  margin:5px 0 0;font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:19px;letter-spacing:-.025em;
+}
+.s10CardHead>svg{color:#77838e}
+
+.s10Rows{
+  margin-top:13px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.s10Rows>div,.s10Rows>button{
+  min-height:64px;padding:10px 11px;border:1px solid rgba(255,255,255,.055);
+  border-radius:11px;background:rgba(255,255,255,.01);
+}
+.s10Rows strong{display:block;margin-top:6px;font-size:9px;overflow-wrap:anywhere}
+.s10Rows>button{
+  grid-column:1/-1;color:var(--lime);display:flex;align-items:center;
+  justify-content:space-between;font-size:8px;
+}
+
+.s10PrivacyState{
+  margin-top:13px;padding:12px;border:1px solid rgba(255,255,255,.055);
+  border-radius:12px;background:rgba(255,255,255,.01);
+  display:flex;align-items:center;justify-content:space-between;gap:13px;
+}
+.s10PrivacyState>div>span{
+  display:inline-flex;align-items:center;gap:6px;color:#76818b;
+  font-family:"IBM Plex Mono",monospace;font-size:6px;letter-spacing:.08em;
+}
+.s10PrivacyState>div>span i{
+  width:6px;height:6px;border-radius:50%;background:currentColor;
+}
+.s10StateLive{color:var(--lime)!important}
+.s10PrivacyState strong,.s10PrivacyState p{display:block}
+.s10PrivacyState strong{margin-top:7px;font-size:9px}
+.s10PrivacyState p{margin:5px 0 0;color:#68737e;font-size:7px;line-height:1.5}
+.s10PrivacyState>button{
+  flex:0 0 auto;min-height:37px;padding:0 10px;
+  border:1px solid rgba(185,255,105,.14);border-radius:9px;
+  background:rgba(185,255,105,.025);color:var(--lime);
+  display:flex;align-items:center;gap:6px;font-size:8px;
+}
+
+.s10PolicyList{margin-top:13px;display:grid;gap:7px}
+.s10PolicyList article{
+  min-height:76px;padding:11px;border:1px solid rgba(255,255,255,.055);
+  border-radius:11px;background:rgba(255,255,255,.01);
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;
+}
+.s10PolicyList article>span{
+  width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+  color:var(--lime);border:1px solid rgba(185,255,105,.12);
+  background:rgba(185,255,105,.025);
+}
+.s10PolicyList strong,.s10PolicyList small{display:block}
+.s10PolicyList strong{font-size:9px}
+.s10PolicyList small{margin-top:4px;color:#68737e;font-size:7px;line-height:1.45}
+.s10PolicyList em{
+  color:#81936e;font-family:"IBM Plex Mono",monospace;font-size:5.5px;
+  font-style:normal;letter-spacing:.07em;
+}
+
+@media(max-width:720px){
+  .headerActionsV10{gap:6px}
+  .pointsPillV10{height:38px;padding:0 8px}
+  .s10Hero h1{font-size:42px}
+  .s10PointsCard,.s10Card{border-radius:14px}
+  .s10Rows{grid-template-columns:1fr}
+  .s10Rows>button{grid-column:auto}
+}
+@media(max-width:430px){
+  .pointsPillV10{width:38px;padding:0;justify-content:center}
+  .pointsPillV10 strong,.pointsPillV10 small{display:none}
+}
+@media(max-width:390px){
+  .s10Hero h1{font-size:38px}
+  .s10PointsMeta{grid-template-columns:1fr}
+  .s10PrivacyState{display:block}
+  .s10PrivacyState>button{width:100%;margin-top:11px;justify-content:center}
+  .s10PolicyList article{grid-template-columns:auto 1fr}
+  .s10PolicyList em{grid-column:2}
+}
+
+/* ===== END CAREL SETTINGS + POINTS V10 ===== */
