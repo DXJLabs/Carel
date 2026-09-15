@@ -1440,3 +1440,343 @@
 }
 
 /* ===== END CAREL PORTFOLIO DASHBOARD V8 ===== */
+
+/* ===== CAREL ACTIVITY V9 ===== */
+
+.a9Hero{
+  padding:14px 7px 5px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+}
+.a9Hero h1{
+  margin:12px 0 8px;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:clamp(42px,7vw,66px);
+  line-height:.94;
+  letter-spacing:-.06em;
+  font-weight:500;
+}
+.a9Hero p{
+  max-width:650px;
+  margin:0;
+  color:#808b96;
+  font-size:9.5px;
+  line-height:1.7;
+}
+.a9SessionBadge{
+  flex:0 0 auto;
+  padding:7px 9px;
+  border:1px solid rgba(185,255,105,.13);
+  border-radius:999px;
+  color:#93a47f;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:6px;
+  letter-spacing:.09em;
+}
+
+.a9Summary{
+  margin-top:13px;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:7px;
+}
+.a9Summary>div{
+  min-height:70px;
+  padding:11px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:12px;
+  background:linear-gradient(145deg,rgba(13,18,24,.93),rgba(8,11,15,.86));
+}
+.a9Summary small,
+.a9FeedHead small,
+.a9DetailHead small,
+.a9DetailGrid small,
+.a9Hash small{
+  display:block;
+  color:#68737f;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:6.5px;
+  font-weight:600;
+  letter-spacing:.1em;
+}
+.a9Summary strong{
+  display:block;
+  margin-top:8px;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:17px;
+  font-variant-numeric:tabular-nums;
+}
+
+.a9Feed,
+.a9Detail{
+  margin-top:12px;
+  padding:17px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:16px;
+  background:linear-gradient(145deg,rgba(13,18,24,.96),rgba(8,11,15,.9));
+  box-shadow:0 22px 60px rgba(0,0,0,.16);
+}
+.a9FeedHead,
+.a9DetailHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.a9FeedHead h2,
+.a9DetailHead h2{
+  margin:5px 0 0;
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:19px;
+  letter-spacing:-.025em;
+}
+.a9FeedHead>span{
+  color:#68737e;
+  font-size:7px;
+}
+
+.a9Empty{
+  min-height:260px;
+  margin-top:13px;
+  border:1px dashed rgba(255,255,255,.06);
+  border-radius:13px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  text-align:center;
+  padding:20px;
+}
+.a9EmptyPulse{
+  width:11px;
+  height:11px;
+  border-radius:50%;
+  background:var(--mint);
+  box-shadow:0 0 22px rgba(110,240,196,.38);
+  animation:modePulseV6 1.8s ease-in-out infinite;
+}
+.a9Empty strong{
+  margin-top:17px;
+  font-size:12px;
+}
+.a9Empty p{
+  max-width:390px;
+  margin:6px 0 0;
+  color:#68737e;
+  font-size:8px;
+  line-height:1.55;
+}
+.a9Empty button{
+  margin-top:15px;
+  min-height:38px;
+  padding:0 11px;
+  border:1px solid rgba(185,255,105,.14);
+  border-radius:10px;
+  background:rgba(185,255,105,.025);
+  color:var(--lime);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:8px;
+}
+
+.a9List{
+  margin-top:13px;
+  display:grid;
+  gap:7px;
+}
+.a9Item{
+  width:100%;
+  min-height:86px;
+  padding:11px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:12px;
+  background:rgba(255,255,255,.012);
+  color:inherit;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto auto;
+  align-items:center;
+  gap:11px;
+  text-align:left;
+  transition:transform .18s ease,border-color .18s ease,background .18s ease;
+}
+.a9Item:active{
+  transform:scale(.988);
+  border-color:rgba(185,255,105,.14);
+  background:rgba(185,255,105,.018);
+}
+.a9ActionIcon{
+  width:40px;
+  height:40px;
+  border-radius:11px;
+  display:grid;
+  place-items:center;
+  color:var(--lime);
+  border:1px solid rgba(185,255,105,.13);
+  background:rgba(185,255,105,.03);
+}
+.a9ItemMain small,
+.a9ItemMain strong,
+.a9ItemMain em,
+.a9ItemMeta strong,
+.a9ItemMeta em,
+.a9ItemMeta small{
+  display:block;
+}
+.a9ItemMain small{
+  color:#77856d;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:6px;
+  letter-spacing:.08em;
+}
+.a9ItemMain strong{
+  margin-top:4px;
+  font-size:10px;
+}
+.a9ItemMain em{
+  margin-top:4px;
+  color:#68737e;
+  font-size:7px;
+  font-style:normal;
+}
+.a9ItemMeta{
+  min-width:105px;
+  text-align:right;
+}
+.a9ItemMeta>strong{
+  font-family:"Space Grotesk","Inter",sans-serif;
+  font-size:10px;
+}
+.a9ItemMeta>em{
+  margin-top:5px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:5.8px;
+  font-style:normal;
+  letter-spacing:.06em;
+}
+.a9ItemMeta>em i{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:currentColor;
+}
+.a9Confirmed{color:var(--lime)}
+.a9Pending{color:#f1c674}
+.a9ItemMeta>small{
+  margin-top:5px;
+  color:#59646f;
+  font-size:6.5px;
+}
+
+.a9Detail{
+  border-color:rgba(185,255,105,.1);
+}
+.a9DetailHead>button{
+  width:32px;
+  height:32px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:9px;
+  background:transparent;
+  color:#8a959f;
+  font-size:20px;
+  line-height:1;
+}
+.a9DetailGrid{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:7px;
+}
+.a9DetailGrid>div{
+  min-height:67px;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:10px;
+  background:rgba(255,255,255,.01);
+}
+.a9DetailGrid strong{
+  display:block;
+  margin-top:7px;
+  font-size:8.5px;
+  line-height:1.4;
+}
+.a9Hash{
+  margin-top:9px;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:10px;
+  background:rgba(2,5,8,.34);
+}
+.a9Hash code{
+  display:block;
+  margin-top:6px;
+  color:#8d98a2;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:7px;
+  line-height:1.5;
+  word-break:break-all;
+}
+.a9Explorer{
+  width:100%;
+  min-height:40px;
+  margin-top:9px;
+  border:1px solid rgba(185,255,105,.14);
+  border-radius:10px;
+  background:rgba(185,255,105,.025);
+  color:var(--lime);
+  text-decoration:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  font-size:8px;
+}
+
+@media(max-width:720px){
+  .a9Hero{
+    display:block;
+  }
+  .a9Hero h1{
+    font-size:42px;
+  }
+  .a9SessionBadge{
+    margin-top:11px;
+    display:inline-flex;
+  }
+  .a9Summary{
+    grid-template-columns:1fr 1fr;
+  }
+  .a9Feed,.a9Detail{
+    border-radius:14px;
+  }
+  .a9Item{
+    grid-template-columns:auto minmax(0,1fr) auto;
+  }
+  .a9ItemMeta{
+    grid-column:2;
+    text-align:left;
+    min-width:0;
+  }
+  .a9Item>svg{
+    grid-column:3;
+    grid-row:1 / span 2;
+  }
+  .a9DetailGrid{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media(max-width:390px){
+  .a9Hero h1{
+    font-size:38px;
+  }
+  .a9DetailGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+/* ===== END CAREL ACTIVITY V9 ===== */

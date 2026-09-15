@@ -49,6 +49,13 @@ type ExecutionMode = "shield" | "unshield";
 type PortfolioRange = "1D" | "7D" | "30D" | "90D" | "1Y";
 type PortfolioPoint = { ts: number; total: number };
 
+type ActivityRecord = {
+  hash: string;
+  label: string;
+  status: "pending" | "confirmed" | "submitted";
+  ts: number;
+};
+
 function portfolioRangeMs(range: PortfolioRange) {
   if (range === "1D") return 86400000;
   if (range === "7D") return 7 * 86400000;
@@ -108,6 +115,53 @@ function PortfolioChart({ points }: { points: PortfolioPoint[] }) {
 }
 
 
+
+function activityRoute(label: string) {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("unshield")) {
+    return "Privacy Pool → Public Starknet";
+  }
+
+  if (normalized.includes("shield")) {
+    return "Public Starknet → Privacy Pool";
+  }
+
+  if (normalized.includes("swap")) return "Swap route";
+  if (normalized.includes("bridge")) return "Bridge route";
+  if (normalized.includes("borrow")) return "Borrow route";
+  if (normalized.includes("earn") || normalized.includes("stake")) {
+    return "Earn / Stake route";
+  }
+
+  return "CAREL execution";
+}
+
+function activityAction(label: string) {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("unshield")) return "UNSHIELD";
+  if (normalized.includes("shield")) return "SHIELD";
+  if (normalized.includes("swap")) return "SWAP";
+  if (normalized.includes("bridge")) return "BRIDGE";
+  if (normalized.includes("borrow")) return "BORROW";
+  if (normalized.includes("earn") || normalized.includes("stake")) return "EARN";
+
+  return "EXECUTION";
+}
+
+function activityAmount(label: string) {
+  const match = label.match(/(\d+(?:\.\d+)?)\s*STRK/i);
+  return match ? `${match[1]} STRK` : null;
+}
+
+function activityTime(ts: number) {
+  return new Date(ts).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function fmt(value: bigint | null) {
   return value === null ? "—" : `${formatUnits18(value)} STRK`;
 }
@@ -154,6 +208,8 @@ export function CarelApp() {
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("shield");
   const [portfolioRange, setPortfolioRange] = useState<PortfolioRange>("30D");
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioPoint[]>([]);
+  const [activityHistory, setActivityHistory] = useState<ActivityRecord[]>([]);
+  const [selectedActivityHash, setSelectedActivityHash] = useState<string | null>(null);
 
   const isSepolia =
     wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
@@ -228,6 +284,66 @@ export function CarelApp() {
     const cutoff = Date.now() - portfolioRangeMs(portfolioRange);
     return portfolioHistory.filter((point) => point.ts >= cutoff);
   }, [portfolioHistory, portfolioRange]);
+
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("carel.activity.session.v1");
+      const parsed = raw ? JSON.parse(raw) : [];
+
+      if (!Array.isArray(parsed)) return;
+
+      const valid = parsed
+        .filter(
+          (item): item is ActivityRecord =>
+            item &&
+            typeof item.hash === "string" &&
+            typeof item.label === "string" &&
+            typeof item.status === "string" &&
+            typeof item.ts === "number",
+        )
+        .slice(0, 50);
+
+      setActivityHistory(valid);
+    } catch {
+      setActivityHistory([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const tx = wallet.tx;
+
+    if (tx.kind === "idle") return;
+
+    setActivityHistory((previous) => {
+      const existing = previous.find(
+        (record) => record.hash === tx.hash,
+      );
+
+      const nextRecord: ActivityRecord = {
+        hash: tx.hash,
+        label: tx.label,
+        status: tx.kind,
+        ts: existing?.ts ?? Date.now(),
+      };
+
+      const next = [
+        nextRecord,
+        ...previous.filter((record) => record.hash !== tx.hash),
+      ].slice(0, 50);
+
+      try {
+        sessionStorage.setItem(
+          "carel.activity.session.v1",
+          JSON.stringify(next),
+        );
+      } catch {
+        // Activity persistence is supplementary.
+      }
+
+      return next;
+    });
+  }, [wallet.tx]);
 
   const privateAmount = wallet.privateRevealed && wallet.privateStrk !== null ? Number(formatUnits18(wallet.privateStrk ?? ZERO, 6)) : null;
   const publicAmount = wallet.publicStrk !== null ? Number(formatUnits18(wallet.publicStrk, 6)) : null;
@@ -1119,52 +1235,207 @@ export function CarelApp() {
     </div>
   );
 
-  const renderActivity = () => (
-    <div className={styles.page} key="activity">
-      <section className={styles.pageTitle}>
-        <span className={styles.eyebrow}>
-          <Activity size={13} />
-          EXECUTION LOG
-        </span>
-        <h1>Everything inspectable.</h1>
-        <p>
-          Approved actions and transaction state stay visible instead of
-          disappearing behind automation.
-        </p>
-      </section>
+  const renderActivity = () => {
+    const selectedActivity =
+      activityHistory.find(
+        (record) => record.hash === selectedActivityHash,
+      ) ?? null;
 
-      <section className={styles.timelineCard}>
-        {wallet.tx.kind === "idle" ? (
-          <div className={styles.activityEmpty}>
-            <span className={styles.timelinePulse} />
-            <strong>No CAREL execution yet</strong>
-            <p>Approved actions in this session will appear here.</p>
+    const confirmedCount = activityHistory.filter(
+      (record) => record.status === "confirmed",
+    ).length;
+
+    const inFlightCount = activityHistory.filter(
+      (record) =>
+        record.status === "pending" || record.status === "submitted",
+    ).length;
+
+    return (
+      <div className={styles.page} key="activity">
+        <section className={styles.a9Hero}>
+          <div>
+            <span className={styles.eyebrow}>
+              <Activity size={13} />
+              ACTIVITY
+            </span>
+
+            <h1>Execution history.</h1>
+
+            <p>
+              Every route CAREL submits stays inspectable here with status,
+              privacy boundary and transaction hash.
+            </p>
           </div>
-        ) : (
-          <a
-            className={styles.activityItem}
-            href={`${SEPOLIA_EXPLORER_TX}${wallet.tx.hash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span className={styles.timelinePulse} />
-            <div>
-              <small>LATEST EXECUTION</small>
-              <strong>{wallet.tx.label}</strong>
-              <p>{wallet.tx.kind}</p>
-            </div>
-            <ChevronRight size={16} />
-          </a>
-        )}
-      </section>
 
-      <section className={styles.auditGrid}>
-        <div><small>01 / AUTHORITY</small><strong>Approval before execution</strong></div>
-        <div><small>02 / PRIVACY</small><strong>Boundary shown before action</strong></div>
-        <div><small>03 / CONTROL</small><strong>No unrestricted automation</strong></div>
-      </section>
-    </div>
-  );
+          <span className={styles.a9SessionBadge}>THIS SESSION</span>
+        </section>
+
+        <section className={styles.a9Summary}>
+          <div>
+            <small>EXECUTIONS</small>
+            <strong>{activityHistory.length}</strong>
+          </div>
+
+          <div>
+            <small>CONFIRMED</small>
+            <strong>{confirmedCount}</strong>
+          </div>
+
+          <div>
+            <small>IN FLIGHT</small>
+            <strong>{inFlightCount}</strong>
+          </div>
+
+          <div>
+            <small>NETWORK</small>
+            <strong>{isSepolia ? "Sepolia" : "—"}</strong>
+          </div>
+        </section>
+
+        <section className={styles.a9Feed}>
+          <div className={styles.a9FeedHead}>
+            <div>
+              <small>RECENT</small>
+              <h2>CAREL executions</h2>
+            </div>
+
+            <span>{activityHistory.length ? "Newest first" : "No activity"}</span>
+          </div>
+
+          {activityHistory.length === 0 ? (
+            <div className={styles.a9Empty}>
+              <span className={styles.a9EmptyPulse} />
+              <strong>No CAREL execution yet</strong>
+              <p>
+                Shield, Unshield and future multi-step agent routes will appear
+                here after they are submitted.
+              </p>
+
+              <button type="button" onClick={() => setTab("agent")}>
+                Open Agent
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className={styles.a9List}>
+              {activityHistory.map((record) => {
+                const action = activityAction(record.label);
+                const amount = activityAmount(record.label);
+
+                return (
+                  <button
+                    type="button"
+                    key={record.hash}
+                    className={styles.a9Item}
+                    onClick={() => setSelectedActivityHash(record.hash)}
+                  >
+                    <span className={styles.a9ActionIcon}>
+                      {action === "SHIELD" ? (
+                        <ArrowDownToLine size={18} />
+                      ) : action === "UNSHIELD" ? (
+                        <ArrowUpFromLine size={18} />
+                      ) : (
+                        <Activity size={18} />
+                      )}
+                    </span>
+
+                    <span className={styles.a9ItemMain}>
+                      <small>{action}</small>
+                      <strong>{record.label}</strong>
+                      <em>{activityRoute(record.label)}</em>
+                    </span>
+
+                    <span className={styles.a9ItemMeta}>
+                      {amount && <strong>{amount}</strong>}
+                      <em
+                        className={
+                          record.status === "confirmed"
+                            ? styles.a9Confirmed
+                            : styles.a9Pending
+                        }
+                      >
+                        <i />
+                        {record.status.toUpperCase()}
+                      </em>
+                      <small>{activityTime(record.ts)}</small>
+                    </span>
+
+                    <ChevronRight size={15} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {selectedActivity && (
+          <section className={styles.a9Detail}>
+            <div className={styles.a9DetailHead}>
+              <div>
+                <small>EXECUTION DETAIL</small>
+                <h2>{selectedActivity.label}</h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedActivityHash(null)}
+                aria-label="Close execution detail"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className={styles.a9DetailGrid}>
+              <div>
+                <small>ACTION</small>
+                <strong>{activityAction(selectedActivity.label)}</strong>
+              </div>
+
+              <div>
+                <small>STATUS</small>
+                <strong>{selectedActivity.status.toUpperCase()}</strong>
+              </div>
+
+              <div>
+                <small>ROUTE</small>
+                <strong>{activityRoute(selectedActivity.label)}</strong>
+              </div>
+
+              <div>
+                <small>NETWORK</small>
+                <strong>Starknet Sepolia</strong>
+              </div>
+
+              <div>
+                <small>APPROVAL</small>
+                <strong>User approved</strong>
+              </div>
+
+              <div>
+                <small>TIME</small>
+                <strong>{activityTime(selectedActivity.ts)}</strong>
+              </div>
+            </div>
+
+            <div className={styles.a9Hash}>
+              <small>TRANSACTION HASH</small>
+              <code>{selectedActivity.hash}</code>
+            </div>
+
+            <a
+              className={styles.a9Explorer}
+              href={`${SEPOLIA_EXPLORER_TX}${selectedActivity.hash}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open in Voyager
+              <ChevronRight size={14} />
+            </a>
+          </section>
+        )}
+      </div>
+    );
+  };
 
   const renderMore = () => (
     <div className={styles.page} key="more">
