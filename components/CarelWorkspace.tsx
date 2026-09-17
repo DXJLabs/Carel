@@ -14,6 +14,9 @@ import { buildLivePlan } from "@/lib/agent/livePlanner";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import { CarelOrbit } from "./CarelOrbit";
+import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
+import { parseBridgeGoal } from "@/lib/garden/protocol";
+import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
@@ -32,7 +35,7 @@ const TABS = [
 ] as const;
 const TOOLS = [
   { name: "Swap", Icon: ArrowLeftRight, prompt: "Swap 1 STRK for USDC." },
-  { name: "Bridge", Icon: Network, prompt: "Bridge 1 STRK to another network." },
+  { name: "Bridge", Icon: Network, prompt: "Bridge 0.0005 BTC to Starknet Sepolia." },
   { name: "Earn", Icon: TrendingUp, prompt: "Find an earning route for 1 STRK." },
   { name: "Borrow", Icon: Landmark, prompt: "Explore borrowing against my STRK." },
 ] as const;
@@ -79,6 +82,7 @@ export function CarelApp() {
   const [pointsOpen, setPointsOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("shield");
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+  const [bridgeIntent, setBridgeIntent] = useState<BridgeIntent | null>(null);
   const [goalText, setGoalText] = useState("Keep at least 1 STRK private.");
   const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
@@ -169,7 +173,7 @@ export function CarelApp() {
   async function refreshBalances() {
     await run(async () => { await wallet.refreshPublicBalance(); setSample(value => value + 1); });
   }
-  function chooseTool(tool: typeof TOOLS[number]) { setSelectedTool(tool.name); setGoalText(tool.prompt); setPlanned(false); setGoalError(null); }
+  function chooseTool(tool: typeof TOOLS[number]) { setSelectedTool(tool.name); setGoalText(tool.prompt); setPlanned(false); setGoalError(null); if (tool.name === "Bridge") setBridgeIntent(parseBridgeGoal(tool.prompt)); }
   function chooseBalanceGoal(nextMode = mode) {
     setSelectedTool(null); setGoalText(`Keep at least 1 STRK ${nextMode === "shield" ? "private" : "public"}.`); setPlanned(false); setGoalError(null);
   }
@@ -180,6 +184,11 @@ export function CarelApp() {
   }
   function previewPlan() {
     setPlanned(false); setGoalError(null);
+    if (/\bbridge\b/i.test(goalText)) {
+      try { setBridgeIntent(parseBridgeGoal(goalText)); setSelectedTool("Bridge"); }
+      catch (error) { setGoalError(error instanceof Error ? error.message : "Choose a supported Bitcoin bridge route."); }
+      return;
+    }
     if (/\b(swap|bridge|earn|borrow|stake|yield|lend)\b/i.test(goalText)) {
       setGoalError("This route is not available on CAREL testnet yet. You can still plan a STRK balance target below."); return;
     }
@@ -255,11 +264,13 @@ export function CarelApp() {
     return <div className={styles.narrowPage}>
       <div className={styles.intro}><p className={styles.eyebrow}>CAREL AGENT</p><h1>What’s your<br/>next move?</h1><p>Set a goal. Review every step.</p></div>
       <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setGoalError(null); setSelectedTool(null); }} spellCheck={false}/>
-        <div className={styles.modeRow}><button type="button" className={styles.modeButton} aria-pressed={mode === "shield"} aria-label={`Mode: ${mode}. Switch to ${mode === "shield" ? "Unshield" : "Shield"}`} onClick={toggleMode}>{mode === "shield" ? <ShieldCheck size={16}/> : <ShieldOff size={16}/>}<span>{mode === "shield" ? "Shield" : "Unshield"}</span><ArrowLeftRight size={14}/></button><span className={styles.helper}>{mode === "shield" ? "Private routes" : "Public routes"}</span></div>
+        <div className={styles.modeRow}><button type="button" className={styles.modeButton} disabled={busy} aria-pressed={mode === "shield"} aria-label={`Mode: ${mode}. Switch to ${mode === "shield" ? "Unshield" : "Shield"}`} onClick={toggleMode}>{mode === "shield" ? <ShieldCheck size={16}/> : <ShieldOff size={16}/>}<span>{mode === "shield" ? "Shield" : "Unshield"}</span><ArrowLeftRight size={14}/></button><span className={styles.helper}>{mode === "shield" ? "Private routes" : "Public routes"}</span></div>
       </div>
       <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
-      <div className={styles.rule}><span>Approval</span><strong>Always ask me</strong></div><div className={styles.rule}><span>Network</span><strong>Starknet Sepolia</strong></div>
-      <button type="button" className={styles.primary} onClick={previewPlan}>Preview plan<ArrowRight size={17}/></button>
+      {selectedTool === "Bridge" ? <GardenBridge mode={mode} intent={bridgeIntent} onPublicMode={() => setMode("unshield")}/> : <>
+        <div className={styles.rule}><span>Approval</span><strong>Always ask me</strong></div><div className={styles.rule}><span>Network</span><strong>Starknet Sepolia</strong></div>
+        <button type="button" className={styles.primary} onClick={previewPlan}>Preview plan<ArrowRight size={17}/></button>
+      </>}
       {goalError && <div className={styles.notice} role="alert"><p>{goalError}</p><button type="button" className={styles.textButton} onClick={() => chooseBalanceGoal()}>Use a STRK balance target<ArrowRight size={14}/></button></div>}
       {planned && <section className={styles.plan} aria-live="polite"><SectionHeading title="Your plan"><span className={styles.status}>{plan.status.replaceAll("-", " ")}</span></SectionHeading><div className={styles.panel}><h3>{plan.title}</h3><p className={styles.helper}>{plan.reason}</p>
         {plan.status === "ready" && <><div className={styles.route}><span>{plan.action === "shield" ? "Public wallet" : "Privacy pool"}</span><ArrowRight size={16}/><span>{plan.action === "shield" ? "Privacy pool" : "Public wallet"}</span></div><div className={styles.rule}><span>Amount to move</span><strong>{formatUnits18(plan.delta)} STRK</strong></div><p className={styles.privacyNote}>{plan.action === "shield" ? "The deposit is public. Funds become private after the pool’s maturity period." : "This withdrawal makes the amount and destination public."}</p><button type="button" className={styles.primary} disabled={busy} onClick={() => void executePlan()}>{busy ? <LoaderCircle size={16}/> : <ShieldCheck size={16}/>} {busy ? "Waiting for wallet…" : `Review & ${plan.action === "shield" ? "Shield" : "Unshield"}`}</button></>}
@@ -288,13 +299,15 @@ export function CarelApp() {
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
       </section>
       <section><SectionHeading title="Holdings"/><div className={styles.holdingRow}><span className={styles.coin}>S</span><div className={styles.rowCopy}><strong>STRK</strong><small>{total === null ? "Visible public balance" : "Public + private balance"}</small></div><strong className={styles.holdingAmount}>{amount(visibleBalance, hideAmounts)}<small>STRK</small></strong></div></section>
+      <GardenBalances hidden={hideAmounts}/>
       <section><SectionHeading title="Positions"/><EmptyState title="No connected positions">Supported lending, earning, and borrowing positions will appear here when available.</EmptyState></section>
     </div>;
   }
   function renderActivity() {
     return <div className={styles.narrowPage}><div className={styles.intro}><h1>Activity</h1><p>Your executions, from start to finish.</p></div><div className={styles.segment} aria-label="Execution filter">{(["all", "pending", "confirmed"] as const).map(value => <button key={value} aria-pressed={activityFilter === value} onClick={() => setActivityFilter(value)}>{value === "all" ? "All" : value === "pending" ? "Pending" : "Completed"}</button>)}</div>
-      <div className={styles.activityList}>{visibleRecords.length ? visibleRecords.map(renderExecution) : <EmptyState title={activityFilter === "all" ? "No executions yet" : "No matching executions"}>Executions from this wallet session appear here.</EmptyState>}</div>
+      <div className={styles.activityList}>{visibleRecords.length ? visibleRecords.map(renderExecution) : <EmptyState title={activityFilter === "all" ? "No STRK executions yet" : "No matching STRK executions"}>Shield and Unshield executions from this wallet session appear here.</EmptyState>}</div>
       {selectedExecution && <section className={styles.panel}><SectionHeading title={txName(selectedExecution.label)}><button className={styles.iconButton} onClick={() => setSelectedHash(null)} aria-label="Close execution detail"><X size={16}/></button></SectionHeading><p className={styles.helper}>{selectedExecution.label}</p><div className={styles.rule}><span>Status</span><strong>{selectedExecution.status}</strong></div><div className={styles.rule}><span>Network</span><strong>Starknet Sepolia</strong></div><p className={styles.hash}>{selectedExecution.hash}</p><a className={styles.secondary} href={`${SEPOLIA_EXPLORER_TX}${selectedExecution.hash}`} target="_blank" rel="noreferrer">View on explorer<ArrowUpRight size={16}/></a></section>}
+      <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("unshield")}/>
     </div>;
   }
   function renderSettings() {
@@ -302,12 +315,12 @@ export function CarelApp() {
       <details className={styles.settingsGroup} ref={walletDetails}><summary><span><WalletCards size={18}/>Wallet & network</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Account</span><strong>{wallet.address ? shortAddress(wallet.address) : "Not connected"}</strong></div><div className={styles.rule}><span>Network</span><strong>{isSepolia ? "Starknet Sepolia" : wallet.connected ? "Switch to Sepolia" : "Not connected"}</strong></div><div className={styles.rule}><span>STRK20</span><strong>{wallet.strk20Capable ? "Available" : "Unavailable"}</strong></div>{wallet.connected ? <button className={styles.secondary} disabled={busy} onClick={() => wallet.disconnect()}><LogOut size={15}/>Disconnect wallet</button> : connectButton}</div></details>
       <details className={styles.settingsGroup}><summary><span><EyeOff size={18}/>Privacy</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Hide portfolio amounts<input type="checkbox" checked={hideAmounts} onChange={event => setHideAmounts(event.target.checked)}/></label><p className={styles.helper}>Private balances are read only when you choose Reveal. Hiding amounts changes their display.</p><p className={styles.helper}>Shield deposits are public. Unshield makes the amount and destination public again.</p></div></details>
       <details className={styles.settingsGroup}><summary><span><Bot size={18}/>Agent permissions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Execution approval</span><strong>Always required</strong></div><div className={styles.rule}><span>Background execution</span><strong>Off</strong></div><p className={styles.helper}>Review the plan, then approve the transaction in your wallet.</p></div></details>
-      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Live routes</span><strong>Shield / Unshield</strong></div><p className={styles.helper}>Swap, Bridge, Earn, and Borrow are not live in this testnet build.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
+      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Garden Bridge uses public balances on Bitcoin Testnet4 and Starknet Sepolia. Available assets and quotes come from Garden. Swap, Earn, and Borrow are not live in this testnet build.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
       <details className={styles.settingsGroup}><summary><span><Moon size={18}/>Appearance</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Reduce animation<input type="checkbox" checked={reduceMotion} onChange={event => setReduceMotion(event.target.checked)}/></label><p className={styles.helper}>Your device’s reduced motion preference is always respected.</p></div></details>
     </div>;
   }
 
-  return <div className={styles.app}>
+  return <div className={styles.app} data-reduced-motion={reduceMotion ? "true" : undefined}>
     <header className={styles.header}><div className={styles.headerInner}>
       {pointsOpen ? <button type="button" className={styles.backButton} onClick={() => setPointsOpen(false)}><ArrowLeft size={19}/><span>Points</span></button> : <button type="button" className={styles.brand} onClick={() => navigate("home")} aria-label="CAREL Home"><Orbit size={24}/><span>CAREL</span></button>}
       <div className={styles.headerActions}>{!pointsOpen && <button type="button" className={styles.pointsBadge} onClick={openPoints} aria-label="Open Points detail"><Sparkles size={14}/><span>—</span><small>PTS</small></button>}
@@ -316,7 +329,9 @@ export function CarelApp() {
     <main className={styles.main}>
       <div className={styles.networkLine}><span className={styles.dot}/>Starknet Sepolia<span>Testnet</span></div>
       {wallet.connected && !isSepolia && <div className={styles.notice} role="status">Switch your wallet to Starknet Sepolia to use CAREL.</div>}
-      {pointsOpen ? renderPoints() : tab === "home" ? renderHome() : tab === "agent" ? renderAgent() : tab === "portfolio" ? renderPortfolio() : tab === "activity" ? renderActivity() : renderSettings()}
+      <div key={pointsOpen ? "points" : tab} className={styles.pageEnter}>
+        {pointsOpen ? renderPoints() : tab === "home" ? renderHome() : tab === "agent" ? renderAgent() : tab === "portfolio" ? renderPortfolio() : tab === "activity" ? renderActivity() : renderSettings()}
+      </div>
       {(wallet.error || actionError) && <div className={styles.error} role="alert"><strong>Wallet request needs attention</strong><p>{actionError || wallet.error}</p></div>}
       {wallet.tx.kind !== "idle" && !pointsOpen && tab !== "activity" && <button className={styles.txStatus} onClick={() => { navigate("activity"); if (wallet.tx.kind !== "idle") setSelectedHash(wallet.tx.hash); }}><Activity size={16}/><span>{wallet.tx.kind === "confirmed" ? "Transaction confirmed" : "Transaction submitted"}</span><ArrowRight size={15}/></button>}
     </main>

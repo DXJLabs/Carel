@@ -1,0 +1,42 @@
+.bridge { margin-top: 22px; padding: 20px; border: 1px solid #3e2b22; border-radius: 13px; background: #141414; min-width: 0; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.eyebrow { color: #aaa7a5; font: 9px/1.5 ui-monospace, monospace; letter-spacing: .07em; margin-bottom: 6px !important; }
+.tag { color: #df9d80; border: 1px solid #56301f; border-radius: 20px; padding: 4px 8px; font-size: 10px; white-space: nowrap; }
+.helper, .assetNote { color: #aaa7a5; font-size: 12px; line-height: 1.7; }
+.assetNote { margin-top: 15px !important; }
+.helper a, .links a { color: #e4b8a4; display: inline-flex; align-items: center; gap: 4px; text-decoration: underline; text-underline-offset: 3px; }
+.route { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 0; }
+.route > span { font-size: 10px; color: #aaa7a5; flex: 1; }
+.route > span:last-child { text-align: right; }
+.route strong { display: block; font-family: var(--font-carel-display), sans-serif; font-weight: 500; font-size: 22px; color: #fafafa; margin-top: 3px; }
+.field { display: grid; gap: 8px; margin-bottom: 16px; color: #aaa7a5; font-size: 12px; }
+.field input, .field select { min-width: 0; width: 100%; min-height: 48px; border: 1px solid #35302d; border-radius: 8px; background: #0d0d0d; color: #fafafa; padding: 12px; font: 16px/1.5 var(--font-carel-body), sans-serif; }
+.field input:focus-visible, .field select:focus-visible { outline: 2px solid #c53400; outline-offset: 3px; }
+.primary, .secondary, .iconButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 8px; padding: 11px 14px; font-size: 12px !important; cursor: pointer; }
+.primary { width: 100%; margin-top: 18px; background: #c53400; color: #fafafa; border: 1px solid transparent; font-weight: 600 !important; }
+.secondary { margin-top: 12px; border: 1px solid #42332b; background: #201813; color: #fafafa; }
+.iconButton { border: 1px solid #333; background: transparent; color: #aaa7a5; flex-shrink: 0; padding: 10px; width: 44px; }
+.bridge button:disabled { opacity: .45; cursor: not-allowed; }
+.detail { display: flex; justify-content: space-between; align-items: start; gap: 18px; padding: 13px 0; border-bottom: 1px solid #292929; font-size: 12px; }
+.detail > span:first-child { color: #aaa7a5; flex-shrink: 0; }
+.detail > :last-child { text-align: right; min-width: 0; font-weight: 500; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.address { overflow-wrap: anywhere; font: 11px/1.8 ui-monospace, monospace; }
+.review { margin-top: 20px; padding-top: 20px; border-top: 1px solid #3a2820; }
+.review > .helper { margin-top: 12px !important; }
+.notice { border: 1px solid #56301f; background: #21140f; padding: 13px; border-radius: 8px; margin-top: 15px !important; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.notice .secondary { display: flex; }
+.deposit { margin-top: 16px; padding: 16px; background: #1b1511; border: 1px solid #56301f; border-radius: 10px; font-size: 12px; }
+.deposit code { display: block; padding-block: 12px; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.9 ui-monospace, monospace; user-select: all; }
+.deposit .helper { margin-top: 12px !important; }
+.check { display: flex; align-items: start; gap: 10px; font-size: 12px; margin-top: 15px; }
+.check input { width: 18px; height: 18px; accent-color: #c53400; flex-shrink: 0; }
+.links { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; font-size: 11px; }
+.links a { min-height: 36px; }
+.success { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 18px !important; }
+.refund { border-top: 1px solid #292929; margin-top: 20px; padding-top: 15px; }
+.history { margin-top: 25px; }
+.history > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 72px; text-align: left; padding: 12px 0; border: 0; border-bottom: 1px solid #292929; background: transparent; color: #fafafa; font-size: 12px !important; }
+.history small { display: block; margin-top: 5px; color: #aaa7a5; font-size: 10px; }
+.history > button > span:last-child { display: flex; align-items: center; gap: 5px; color: #aaa7a5; font-size: 10px; }
+.balances { margin-top: 24px; padding-top: 18px; border-top: 1px solid #292929; }
+@media (max-width: 380px) { .bridge { padding: 16px; } .tag { font-size: 9px; padding-inline: 6px; } .heading { gap: 8px; } }

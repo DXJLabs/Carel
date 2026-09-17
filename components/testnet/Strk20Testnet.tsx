@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -15,6 +16,8 @@ import {
   WalletAccountV6,
 } from "starknet";
 import type { WALLET_API } from "@starknet-io/types-js";
+import type { BridgeCall } from "@/lib/garden/types";
+import { felt, validateFundingCalls } from "@/lib/garden/protocol";
 import {
   createStore,
   type Store,
@@ -76,6 +79,7 @@ type CarelTestnetContextValue = {
   revealPrivateBalance: () => Promise<void>;
   shield: (amount: string) => Promise<void>;
   unshield: (amount: string) => Promise<void>;
+  executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
 };
 
 const CarelTestnetContext = createContext<CarelTestnetContextValue | null>(null);
@@ -193,6 +197,9 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const [tx, setTx] = useState<TxState>({ kind: "idle" });
   const [maturityTarget, setMaturityTarget] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
+  const bridgeSubmitting = useRef(false);
+  const currentAccount = useRef(walletAccount);
+  currentAccount.current = walletAccount;
 
   const connected = Boolean(address && walletAccount);
   const strk20Capable = supportsStrk20(specs);
@@ -528,6 +535,36 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
+    if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
+    const account = walletAccount;
+    const calls = validateFundingCalls(input);
+    const assertSession = async () => {
+      const selected = account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+      const [network, accounts] = await Promise.all([walletV6.requestChainId(selected), account.requestAccounts(true)]);
+      if (currentAccount.current !== account || String(network) !== constants.StarknetChainId.SN_SEPOLIA || !accounts[0] || felt(accounts[0]) !== felt(expectedAddress) || felt(account.address) !== felt(expectedAddress)) {
+        throw new Error("Wallet account or network changed. Reconnect the intended account on Starknet Sepolia.");
+      }
+    };
+    bridgeSubmitting.current = true;
+    setBusy(true); setError(null);
+    try {
+      await assertSession();
+      const balance = await sepoliaProvider.callContract({ contractAddress: calls[0].contractAddress, entrypoint: "balance_of", calldata: [expectedAddress] });
+      if (balance.length < 2) throw new Error("Could not read the bridge token balance.");
+      const available = BigInt(balance[0]) + (BigInt(balance[1]) << 128n);
+      if (available < BigInt(calls[0].calldata[1])) throw new Error("Insufficient public token balance for this bridge.");
+      await assertSession();
+      // Wallet approval covers exact-amount approval + HTLC initiation in one transaction.
+      const response = await account.execute(calls);
+      if (!/^0x[0-9a-f]{1,64}$/i.test(response.transaction_hash)) throw new Error("The wallet did not return a valid transaction hash. Check Activity before retrying.");
+      return response.transaction_hash;
+    } finally {
+      bridgeSubmitting.current = false;
+      setBusy(false);
+    }
+  };
+
   const value = useMemo<CarelTestnetContextValue>(
     () => ({
       wallets,
@@ -551,9 +588,11 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       revealPrivateBalance,
       shield,
       unshield,
+      executeBridge,
     }),
     [
       wallets,
+      walletAccount,
       address,
       chainId,
       connected,
