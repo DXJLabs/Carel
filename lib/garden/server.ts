@@ -22,8 +22,24 @@ async function request(endpoint: string, method = "GET", body?: unknown): Promis
   let payload: Record<string, unknown>;
   try { payload = object(await response.json()); } catch { throw new BridgeError("Garden returned an unreadable response.", 502, "INVALID_RESPONSE"); }
   if (!response.ok || payload.status !== "Ok") {
-    const reason = typeof payload.error === "string" ? payload.error.slice(0, 220).replaceAll(key, "[redacted]") : "The route or action is not currently available.";
-    throw new BridgeError(`Garden: ${reason}`, response.status === 404 ? 404 : 422, "GARDEN_ERROR");
+    const rawReason = typeof payload.error === "string"
+      ? payload.error.slice(0, 220)
+      : "The route or action is not currently available.";
+    const reason = rawReason.replaceAll(key, "[redacted]");
+
+    if (/no order pair found/i.test(rawReason)) {
+      throw new BridgeError(
+        "Garden currently has no executable solver route for this pair on testnet.",
+        422,
+        "NO_ROUTE",
+      );
+    }
+
+    throw new BridgeError(
+      `Garden: ${reason}`,
+      response.status === 404 ? 404 : 422,
+      "GARDEN_ERROR",
+    );
   }
   return payload.result;
 }
