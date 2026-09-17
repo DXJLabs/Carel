@@ -1,0 +1,10 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d0d0d;
+  --bg-2: #141414;
+  --text: #fafafa;
+  --muted: #aaa7a5;
+}
+html, body { background: #0d0d0d; }
+body { font-family: var(--font-carel-body), "Helvetica Neue", Arial, sans-serif; }
+::selection { background: #c53400; color: #fafafa; }
