@@ -11,11 +11,11 @@ import {
 import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
 import { buildLivePlan } from "@/lib/agent/livePlanner";
+import { routeAgentGoal } from "@/lib/agent/router";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import { CarelOrbit } from "./CarelOrbit";
 import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
-import { parseBridgeGoal } from "@/lib/garden/protocol";
 import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
@@ -184,13 +184,34 @@ export function CarelApp() {
   }
   function previewPlan() {
     setPlanned(false); setGoalError(null);
-    if (/\bbridge\b/i.test(goalText)) {
-      try { setBridgeIntent(parseBridgeGoal(goalText)); setSelectedTool("Bridge"); }
-      catch (error) { setGoalError(error instanceof Error ? error.message : "Choose a supported Bitcoin bridge route."); }
+
+    const routed = routeAgentGoal(goalText);
+
+    if (routed.tool === "Bridge") {
+      if (routed.status !== "ready" || !routed.bridgeIntent) {
+        setSelectedTool(null);
+        setBridgeIntent(null);
+        setGoalError(routed.message || "Choose a supported Bitcoin bridge route.");
+        return;
+      }
+
+      setBridgeIntent(routed.bridgeIntent);
+      setSelectedTool("Bridge");
       return;
     }
-    if (/\b(swap|bridge|earn|borrow|stake|yield|lend)\b/i.test(goalText)) {
-      setGoalError("This route is not available on CAREL testnet yet. You can still plan a STRK balance target below."); return;
+
+    if (routed.tool !== "Balance") {
+      setSelectedTool(routed.tool);
+      setGoalError(
+        routed.message ||
+          `${routed.tool} is recognized but is not connected on CAREL testnet yet.`,
+      );
+      return;
+    }
+
+    if (routed.status === "invalid") {
+      setGoalError(routed.message || "Enter a valid goal.");
+      return;
     }
     if (!/\bSTRK\b/i.test(goalText) || /\b(USDC|USDT|ETH|BTC)\b/i.test(goalText)) {
       setGoalError("Use a STRK balance target, for example: Keep at least 1 STRK private."); return;
