@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   constants,
+  type Call,
   num,
   RpcProvider,
   transaction,
@@ -234,6 +235,102 @@ async function waitForSubmittedTransaction(
   });
 
   await Promise.race([confirmation, timeout]);
+}
+
+function validateAvnuBuiltCalls(
+  calls: Call[],
+  sellTokenAddress: string,
+  sellAmount: bigint,
+  exchangeAddress: string,
+): Call[] {
+  if (!Array.isArray(calls) || calls.length < 1 || calls.length > 3) {
+    throw new Error(
+      "CAREL blocked an unexpected AVNU transaction shape.",
+    );
+  }
+
+  const sellToken = felt(sellTokenAddress);
+  const exchange = felt(exchangeAddress);
+  let swapCalls = 0;
+
+  for (const call of calls) {
+    const target = felt(call.contractAddress);
+    const entrypoint = String(call.entrypoint ?? "");
+    const rawCalldata = call.calldata ?? [];
+
+    if (!Array.isArray(rawCalldata)) {
+      throw new Error(
+        "CAREL blocked malformed AVNU calldata.",
+      );
+    }
+
+    const calldata = rawCalldata.map(
+      (value) => String(value),
+    );
+
+    if (target === sellToken) {
+      if (
+        entrypoint !== "approve" ||
+        calldata.length !== 3
+      ) {
+        throw new Error(
+          "CAREL blocked an unexpected AVNU token call.",
+        );
+      }
+
+      if (felt(calldata[0]) !== exchange) {
+        throw new Error(
+          "CAREL blocked an AVNU approval to an unknown spender.",
+        );
+      }
+
+      let approved: bigint;
+
+      try {
+        approved =
+          BigInt(calldata[1]) +
+          (BigInt(calldata[2]) << 128n);
+      } catch {
+        throw new Error(
+          "CAREL blocked malformed AVNU approval data.",
+        );
+      }
+
+      if (approved !== sellAmount) {
+        throw new Error(
+          "CAREL blocked an AVNU approval with the wrong amount.",
+        );
+      }
+
+      continue;
+    }
+
+    if (target === exchange) {
+      if (
+        entrypoint !== "multi_route_swap" &&
+        entrypoint !== "swap_exact_token_to"
+      ) {
+        throw new Error(
+          "CAREL blocked an unexpected AVNU Exchange entrypoint.",
+        );
+      }
+
+      swapCalls += 1;
+      continue;
+    }
+
+    throw new Error(
+      "CAREL blocked an AVNU call to an unapproved contract.",
+    );
+  }
+
+  if (swapCalls !== 1) {
+    throw new Error(
+      "CAREL requires exactly one AVNU Exchange swap call.",
+    );
+  }
+
+  return calls;
 }
 
 export function CarelTestnetProvider({ children }: { children: ReactNode }) {
@@ -757,13 +854,20 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      const safeCalls = validateAvnuBuiltCalls(
+        built.calls,
+        expectedSellToken,
+        quote.sellAmount,
+        routeNetwork.avnuExchange,
+      );
+
       // Re-check wallet immediately before asking Ready to sign.
       await assertSession();
 
       let response;
 
       try {
-        response = await account.execute(built.calls);
+        response = await account.execute(safeCalls);
       } catch (cause) {
         throw new Error(
           `Ready execution failed: ${
@@ -928,9 +1032,16 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      const safePrivateCalls = validateAvnuBuiltCalls(
+        built.calls,
+        expectedSellToken,
+        quote.sellAmount,
+        network.avnuExchange,
+      );
+
       const serializedCalls =
         transaction
-          .fromCallsToExecuteCalldata_cairo1(built.calls)
+          .fromCallsToExecuteCalldata_cairo1(safePrivateCalls)
           .map((value) => num.toHex(value));
 
       const actions: WALLET_API.STRK20_ACTION[] = [
@@ -1129,10 +1240,17 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       const executorAddress =
         felt(built.executorAddress);
 
+      const safePrivateCalls = validateAvnuBuiltCalls(
+        built.calls,
+        expectedSellToken,
+        quote.sellAmount,
+        network.avnuExchange,
+      );
+
       const serializedCalls =
         transaction
           .fromCallsToExecuteCalldata_cairo1(
-            built.calls,
+            safePrivateCalls,
           )
           .map((value) => num.toHex(value));
 
@@ -1230,11 +1348,34 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const normalizedToken = felt(token);
     const ownerAddress = felt(account.address);
 
+    const assertSession = async () => {
+      const selected =
+        account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+      const [walletChain, accounts] = await Promise.all([
+        walletV6.requestChainId(selected),
+        account.requestAccounts(true),
+      ]);
+
+      if (
+        currentAccount.current !== account ||
+        String(walletChain) !== network.chainId ||
+        !accounts[0] ||
+        felt(accounts[0]) !== ownerAddress
+      ) {
+        throw new Error(
+          "Wallet account or network changed. Reconnect Ready before completing Unshield.",
+        );
+      }
+    };
+
     swapSubmitting.current = true;
     setBusy(true);
     setError(null);
 
     try {
+      await assertSession();
+
       const current = Number(
         await network.provider.getBlockNumber(),
       );
@@ -1271,12 +1412,19 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      // Do not expose unrelated private USDC that may have arrived
+      // during the maturity window. Only the reviewed minimum amount
+      // is moved back to the public wallet.
+      const withdrawAmount = minExpected;
+
+      await assertSession();
+
       const response =
         await account.strk20InvokeTransaction([
           {
             type: "withdraw",
             token: normalizedToken,
-            amount: num.toHex(received),
+            amount: num.toHex(withdrawAmount),
             recipient: ownerAddress,
           },
         ]);
@@ -1318,7 +1466,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
 
       return {
         hash,
-        amount: received,
+        amount: withdrawAmount,
       };
     } finally {
       swapSubmitting.current = false;

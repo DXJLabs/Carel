@@ -182,8 +182,17 @@ export function AvnuSwap({
       }
 
       if (
+        next.sellAmount !== sellAmount ||
+        next.buyAmount <= 0n
+      ) {
+        throw new Error(
+          "AVNU returned a quote with an unexpected amount.",
+        );
+      }
+
+      if (
         !Number.isFinite(next.priceImpact) ||
-        next.priceImpact > MAX_PRICE_IMPACT_BPS
+        Math.abs(next.priceImpact) > MAX_PRICE_IMPACT_BPS
       ) {
         throw new Error(
           "CAREL blocked this route because its price impact exceeds 5%.",
@@ -351,7 +360,8 @@ export function AvnuSwap({
         <p className={styles.helper}>
           AVNU has swapped the private STRK into private USDC.
           STRK20 requires the new note to mature before it can
-          be withdrawn to your public wallet.
+          be withdrawn to your public wallet. CAREL withdraws
+          only the reviewed minimum; positive slippage stays private.
         </p>
 
         <button
