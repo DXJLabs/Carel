@@ -13,6 +13,7 @@ import {
   constants,
   num,
   RpcProvider,
+  transaction,
   walletV6,
   WalletAccountV6,
 } from "starknet";
@@ -88,6 +89,12 @@ type CarelTestnetContextValue = {
   shield: (amount: string) => Promise<void>;
   unshield: (amount: string) => Promise<void>;
   executeSwap: (
+    quote: Quote,
+    expectedSellToken: string,
+    expectedBuyToken: string,
+    label: string,
+  ) => Promise<string>;
+  executeShieldSwap: (
     quote: Quote,
     expectedSellToken: string,
     expectedBuyToken: string,
@@ -759,6 +766,220 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const executeShieldSwap = async (
+    quote: Quote,
+    expectedSellToken: string,
+    expectedBuyToken: string,
+    label: string,
+  ): Promise<string> => {
+    if (swapSubmitting.current || busy || !walletAccount) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const { account, network } = assertPrivateReady();
+
+    if (quote.chainId !== network.chainId) {
+      throw new Error(
+        `The AVNU quote is not for ${network.label}.`,
+      );
+    }
+
+    if (
+      felt(quote.sellTokenAddress) !== felt(expectedSellToken) ||
+      felt(quote.buyTokenAddress) !== felt(expectedBuyToken)
+    ) {
+      throw new Error(
+        "The AVNU quote does not match the reviewed Shield Swap pair.",
+      );
+    }
+
+    if (quote.sellAmount <= 0n) {
+      throw new Error("Shield Swap amount must be greater than zero.");
+    }
+
+    // STRK20 Wallet API validates ADDRESS/FELT values strictly.
+    // Normalize every address to minimal canonical hex before sending
+    // the private action payload to Ready.
+    const sellToken = felt(expectedSellToken);
+    const buyToken = felt(expectedBuyToken);
+    const ownerAddress = felt(account.address);
+
+    const assertSession = async () => {
+      const selected =
+        account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+      const [walletChain, accounts] = await Promise.all([
+        walletV6.requestChainId(selected),
+        account.requestAccounts(true),
+      ]);
+
+      if (
+        currentAccount.current !== account ||
+        String(walletChain) !== network.chainId ||
+        !accounts[0] ||
+        felt(accounts[0]) !== felt(account.address)
+      ) {
+        throw new Error(
+          "Wallet account or network changed. Reconnect Ready before continuing.",
+        );
+      }
+    };
+
+    swapSubmitting.current = true;
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      let built;
+
+      try {
+        built = await quoteToCalls(
+          {
+            quoteId: quote.quoteId,
+            slippage: 0.005,
+            private: true,
+          },
+          {
+            baseUrl: network.avnuBaseUrl,
+          },
+        );
+      } catch (cause) {
+        throw new Error(
+          `AVNU private build failed: ${
+            cause instanceof Error
+              ? cause.message
+              : "Could not build the private swap."
+          }`,
+        );
+      }
+
+      if (built.chainId !== network.chainId) {
+        throw new Error(
+          "AVNU built the private swap for the wrong network.",
+        );
+      }
+
+      if (!built.executorAddress) {
+        throw new Error(
+          "AVNU did not return a private swap executor.",
+        );
+      }
+
+      const executorAddress = felt(
+        built.executorAddress,
+      );
+
+      if (!built.calls.length) {
+        throw new Error(
+          "AVNU returned an empty private swap route.",
+        );
+      }
+
+      const serializedCalls =
+        transaction
+          .fromCallsToExecuteCalldata_cairo1(built.calls)
+          .map((value) => num.toHex(value));
+
+      const actions: WALLET_API.STRK20_ACTION[] = [
+        {
+          type: "deposit",
+          token: sellToken,
+          amount: num.toHex(quote.sellAmount),
+        },
+        {
+          type: "withdraw",
+          token: sellToken,
+          amount: num.toHex(quote.sellAmount),
+          recipient: executorAddress,
+        },
+        {
+          type: "transfer",
+          token: buyToken,
+          amount: "OPEN",
+          recipient: ownerAddress,
+        },
+        {
+          type: "invoke",
+          contract: executorAddress,
+          calldata: [
+            buyToken,
+            ...serializedCalls,
+            "${openNoteIds[0]}",
+          ],
+        },
+      ];
+
+      // Re-check immediately before Ready starts proof generation.
+      await assertSession();
+
+      let response;
+
+      try {
+        response =
+          await account.strk20InvokeTransaction(actions);
+      } catch (cause) {
+        throw new Error(
+          `Ready Shield Swap failed: ${
+            cause instanceof Error
+              ? cause.message
+              : "Private wallet execution failed."
+          }`,
+        );
+      }
+
+      const hash = response.transaction_hash;
+
+      if (!/^0x[0-9a-f]{1,64}$/i.test(hash)) {
+        throw new Error(
+          "Ready did not return a valid Shield Swap transaction hash.",
+        );
+      }
+
+      setTx({
+        kind: "pending",
+        label,
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind: "confirmed",
+          label,
+          hash,
+        });
+
+        const block = Number(
+          await network.provider.getBlockNumber(),
+        );
+
+        setCurrentBlock(block);
+        setMaturityTarget(block + 10);
+      } catch {
+        setTx({
+          kind: "submitted",
+          label,
+          hash,
+        });
+      }
+
+      await refreshPublicBalance();
+
+      return hash;
+    } finally {
+      swapSubmitting.current = false;
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -813,6 +1034,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       shield,
       unshield,
       executeSwap,
+      executeShieldSwap,
       executeBridge,
     }),
     [

@@ -98,36 +98,6 @@ export function AvnuSwap({
     setError("");
   }, [mode, wallet.address]);
 
-  if (mode !== "normal") {
-    return (
-      <section className={styles.panel}>
-        <h3>
-          {mode === "shield" ? "Shield Swap" : "Unshield Swap"}
-        </h3>
-
-        <div className={styles.route}>
-          <span>
-            {mode === "shield" ? "Public balance" : "Privacy pool"}
-          </span>
-          <ArrowRight size={16} />
-          <span>
-            {mode === "shield" ? "Privacy pool" : "Public balance"}
-          </span>
-        </div>
-
-        <p className={styles.helper}>
-          {mode === "shield"
-            ? "Shield means public → private. CAREL will not mislabel a private-to-private AVNU swap as Shield."
-            : "Unshield means private → public. CAREL will not treat a normal public swap as Unshield."}
-        </p>
-
-        <p className={styles.helper}>
-          Normal public → public Swap is live below when Normal mode is selected.
-        </p>
-      </section>
-    );
-  }
-
   async function loadQuote() {
     if (loading || executing) return;
 
@@ -139,6 +109,15 @@ export function AvnuSwap({
       if (!ready || !wallet.address || !network) {
         throw new Error(
           "Connect Ready on Starknet Sepolia or Mainnet first.",
+        );
+      }
+
+      if (
+        mode !== "normal" &&
+        (!wallet.strk20Capable || !network.privacyEnabled)
+      ) {
+        throw new Error(
+          "STRK20 privacy is not available for this wallet or network.",
         );
       }
 
@@ -156,7 +135,9 @@ export function AvnuSwap({
           sellTokenAddress: STRK_TOKEN,
           buyTokenAddress: network.usdcToken,
           sellAmount,
-          takerAddress: wallet.address,
+          ...(mode === "normal"
+            ? { takerAddress: wallet.address }
+            : {}),
           size: 1,
         },
         {
@@ -213,12 +194,25 @@ export function AvnuSwap({
     setError("");
 
     try {
-      await wallet.executeSwap(
-        quote,
-        STRK_TOKEN,
-        network.usdcToken,
-        `Swap ${amount} STRK → USDC`,
-      );
+      if (mode === "shield") {
+        await wallet.executeShieldSwap(
+          quote,
+          STRK_TOKEN,
+          network.usdcToken,
+          `Shield Swap ${amount} STRK → private USDC`,
+        );
+      } else if (mode === "unshield") {
+        throw new Error(
+          "Unshield Swap execution is not connected yet.",
+        );
+      } else {
+        await wallet.executeSwap(
+          quote,
+          STRK_TOKEN,
+          network.usdcToken,
+          `Swap ${amount} STRK → USDC`,
+        );
+      }
 
       setQuote(null);
     } catch (cause) {
@@ -234,10 +228,34 @@ export function AvnuSwap({
 
   return (
     <section className={styles.panel}>
-      <h3>Swap STRK → USDC</h3>
+      <h3>
+        {mode === "normal"
+          ? "Swap STRK → USDC"
+          : mode === "shield"
+            ? "Shield Swap"
+            : "Unshield Swap"}
+      </h3>
+
+      <div className={styles.route}>
+        <span>
+          {mode === "unshield"
+            ? "Private STRK"
+            : "Public STRK"}
+        </span>
+        <ArrowRight size={16}/>
+        <span>
+          {mode === "shield"
+            ? "Private USDC"
+            : "Public USDC"}
+        </span>
+      </div>
 
       <p className={styles.helper}>
-        Public → public · routed by AVNU · {network?.label ?? "Starknet"}
+        {mode === "normal"
+          ? `Public → public · AVNU · ${network?.label ?? "Starknet"}`
+          : mode === "shield"
+            ? "Public → private · AVNU + STRK20"
+            : "Private → public · STRK20 + AVNU"}
       </p>
 
       <label
@@ -282,7 +300,11 @@ export function AvnuSwap({
           ) : (
             <ArrowRight size={16} />
           )}
-          {loading ? "Getting AVNU quote…" : "Get live quote"}
+          {loading
+            ? "Getting AVNU quote…"
+            : mode === "normal"
+              ? "Get live quote"
+              : "Get private route quote"}
         </button>
       )}
 
@@ -338,7 +360,11 @@ export function AvnuSwap({
           </div>
 
           <p className={styles.helper}>
-            Slippage limit: 0.5%. Final approval happens in Ready.
+            {mode === "normal"
+              ? "Slippage limit: 0.5%. Final approval happens in Ready."
+              : mode === "shield"
+                ? "Slippage limit: 0.5%. Ready will generate a STRK20 privacy proof; this can take longer than a normal swap."
+                : "Slippage limit: 0.5%. Unshield execution will use the private balance."}
           </p>
 
           <button
@@ -354,7 +380,11 @@ export function AvnuSwap({
             )}
             {executing
               ? "Waiting for Ready…"
-              : "Review & Swap"}
+              : mode === "normal"
+                ? "Review & Swap"
+                : mode === "shield"
+                  ? "Review Shield Swap"
+                  : "Review Unshield Swap"}
           </button>
         </>
       )}
