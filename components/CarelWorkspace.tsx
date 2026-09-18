@@ -16,11 +16,12 @@ import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import { CarelOrbit } from "./CarelOrbit";
 import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
+import { AvnuSwap } from "./swap/AvnuSwap";
 import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
-type Mode = "shield" | "unshield";
+type Mode = "normal" | "shield" | "unshield";
 type Tool = "Swap" | "Bridge" | "Earn" | "Borrow";
 type Period = "1D" | "7D" | "30D";
 type Execution = { hash: string; label: string; status: "pending" | "submitted" | "confirmed"; ts: number };
@@ -44,7 +45,13 @@ function shortAddress(address: string) { return `${address.slice(0, 6)}…${addr
 function amount(value: bigint | null, hidden = false) { return hidden ? "••••••" : value === null ? "—" : formatUnits18(value, 4); }
 function txName(label: string) {
   const value = label.toLowerCase();
-  return value.includes("unshield") ? "Unshield" : value.includes("shield") ? "Shield" : "Agent execution";
+  return value.includes("unshield")
+    ? "Unshield"
+    : value.includes("shield")
+      ? "Shield"
+      : value.includes("swap")
+        ? "Swap"
+        : "Agent execution";
 }
 function txDate(ts: number) { return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
 function SectionHeading({ title, children }: { title: string; children?: ReactNode }) {
@@ -80,10 +87,10 @@ export function CarelApp() {
   const wallet = useCarelTestnet();
   const [tab, setTab] = useState<Tab>("home");
   const [pointsOpen, setPointsOpen] = useState(false);
-  const [mode, setMode] = useState<Mode>("shield");
-  const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+  const [mode, setMode] = useState<Mode>("normal");
+  const [selectedTool, setSelectedTool] = useState<Tool | null>("Swap");
   const [bridgeIntent, setBridgeIntent] = useState<BridgeIntent | null>(null);
-  const [goalText, setGoalText] = useState("Keep at least 1 STRK private.");
+  const [goalText, setGoalText] = useState("Swap 1 STRK for USDC.");
   const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
   const [goalError, setGoalError] = useState<string | null>(null);
@@ -97,7 +104,7 @@ export function CarelApp() {
   const [executions, setExecutions] = useState<{ owner: string; records: Execution[] }>({ owner: "", records: [] });
   const [activityFilter, setActivityFilter] = useState<"all" | "pending" | "confirmed">("all");
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
-  const [quickAction, setQuickAction] = useState<Mode | null>(null);
+  const [quickAction, setQuickAction] = useState<"shield" | "unshield" | null>(null);
   const [quickAmount, setQuickAmount] = useState("1");
   const walletDetails = useRef<HTMLDetailsElement>(null);
   const sessionKey = `${wallet.chainId}:${wallet.address.toLowerCase()}`;
@@ -112,7 +119,7 @@ export function CarelApp() {
   const selectedExecution = records.find(record => record.hash === selectedHash);
 
   const plan = useMemo(() => buildLivePlan({
-    goal: mode === "shield" ? "target-private" : "target-public", targetText: planTarget,
+    goal: mode === "unshield" ? "target-public" : "target-private", targetText: planTarget,
     connected: wallet.connected, networkReady: isSepolia, strk20Capable: wallet.strk20Capable,
     publicStrk: wallet.publicStrk, privateStrk: wallet.privateStrk, privateRevealed: wallet.privateRevealed,
   }), [mode, planTarget, wallet.connected, isSepolia, wallet.strk20Capable, wallet.publicStrk, wallet.privateStrk, wallet.privateRevealed]);
@@ -189,13 +196,42 @@ export function CarelApp() {
         : null,
     );
   }
-  function chooseBalanceGoal(nextMode = mode) {
-    setSelectedTool(null); setGoalText(`Keep at least 1 STRK ${nextMode === "shield" ? "private" : "public"}.`); setPlanned(false); setGoalError(null);
+  function chooseBalanceGoal(
+    nextMode: "shield" | "unshield" =
+      mode === "unshield" ? "unshield" : "shield",
+  ) {
+    setSelectedTool(null);
+    setGoalText(
+      `Keep at least 1 STRK ${
+        nextMode === "shield" ? "private" : "public"
+      }.`,
+    );
+    setPlanned(false);
+    setGoalError(null);
   }
-  function toggleMode() {
-    const next = mode === "shield" ? "unshield" : "shield";
-    setMode(next); setPlanned(false); setGoalError(null);
-    if (!selectedTool) chooseBalanceGoal(next);
+
+  function useNormalMode() {
+    setMode("normal");
+    setPlanned(false);
+    setGoalError(null);
+
+    if (!selectedTool) {
+      setSelectedTool("Swap");
+      setGoalText("Swap 1 STRK for USDC.");
+    }
+  }
+
+  function togglePrivacyMode() {
+    const next: "shield" | "unshield" =
+      mode === "shield" ? "unshield" : "shield";
+
+    setMode(next);
+    setPlanned(false);
+    setGoalError(null);
+
+    if (!selectedTool) {
+      chooseBalanceGoal(next);
+    }
   }
   function previewPlan() {
     setPlanned(false); setGoalError(null);
@@ -215,11 +251,24 @@ export function CarelApp() {
       return;
     }
 
+    if (routed.tool === "Swap") {
+      setSelectedTool("Swap");
+      setBridgeIntent(null);
+      return;
+    }
+
     if (routed.tool !== "Balance") {
       setSelectedTool(routed.tool);
       setGoalError(
         routed.message ||
           `${routed.tool} is recognized but is not connected on CAREL testnet yet.`,
+      );
+      return;
+    }
+
+    if (mode === "normal") {
+      setGoalError(
+        "Normal mode is public → public. Choose Shield or Unshield for a privacy balance target.",
       );
       return;
     }
@@ -238,7 +287,10 @@ export function CarelApp() {
     catch { setGoalError("Use a positive STRK amount with up to 18 decimal places."); return; }
     const asksPublic = /\b(public|withdraw|unshield)\b/i.test(goalText);
     const asksPrivate = /\b(private|shield|privacy)\b/i.test(goalText);
-    if ((mode === "shield" && asksPublic) || (mode === "unshield" && asksPrivate)) {
+    if (
+      (mode === "shield" && asksPublic) ||
+      (mode === "unshield" && asksPrivate)
+    ) {
       setGoalError(`Your goal does not match ${mode === "shield" ? "Shield" : "Unshield"} mode. Switch the mode or edit the goal.`); return;
     }
     setPlanTarget(value); setPlanned(true);
@@ -300,13 +352,75 @@ export function CarelApp() {
     return <div className={styles.narrowPage}>
       <div className={styles.intro}><p className={styles.eyebrow}>CAREL AGENT</p><h1>What’s your<br/>next move?</h1><p>Set a goal. Review every step.</p></div>
       <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setGoalError(null); setSelectedTool(null); }} spellCheck={false}/>
-        <div className={styles.modeRow}><button type="button" className={styles.modeButton} disabled={busy} aria-pressed={mode === "shield"} aria-label={`Mode: ${mode}. Switch to ${mode === "shield" ? "Unshield" : "Shield"}`} onClick={toggleMode}>{mode === "shield" ? <ShieldCheck size={16}/> : <ShieldOff size={16}/>}<span>{mode === "shield" ? "Shield" : "Unshield"}</span><ArrowLeftRight size={14}/></button><span className={styles.helper}>{mode === "shield" ? "Private routes" : "Public routes"}</span></div>
+        <div className={styles.modeRow}>
+          <button
+            type="button"
+            className={styles.modeButton}
+            disabled={busy}
+            aria-pressed={mode === "normal"}
+            onClick={useNormalMode}
+          >
+            <WalletCards size={16}/>
+            <span>Normal</span>
+          </button>
+
+          <button
+            type="button"
+            className={styles.modeButton}
+            disabled={busy}
+            aria-pressed={mode !== "normal"}
+            aria-label={`Privacy mode: ${
+              mode === "unshield" ? "Unshield" : "Shield"
+            }`}
+            onClick={togglePrivacyMode}
+          >
+            {mode === "unshield"
+              ? <ShieldOff size={16}/>
+              : <ShieldCheck size={16}/>}
+            <span>
+              {mode === "unshield" ? "Unshield" : "Shield"}
+            </span>
+            <ArrowLeftRight size={14}/>
+          </button>
+
+          <span className={styles.helper}>
+            {mode === "normal"
+              ? "Public → public"
+              : mode === "shield"
+                ? "Public → private"
+                : "Private → public"}
+          </span>
+        </div>
       </div>
       <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
-      {selectedTool === "Bridge" ? <GardenBridge mode={mode} intent={bridgeIntent} onPublicMode={() => setMode("unshield")}/> : <>
-        <div className={styles.rule}><span>Approval</span><strong>Always ask me</strong></div><div className={styles.rule}><span>Network</span><strong>Starknet Sepolia</strong></div>
-        <button type="button" className={styles.primary} onClick={previewPlan}>Preview plan<ArrowRight size={17}/></button>
-      </>}
+      {selectedTool === "Bridge" ? (
+        <GardenBridge
+          mode={mode}
+          intent={bridgeIntent}
+          onPublicMode={() => setMode("normal")}
+        />
+      ) : selectedTool === "Swap" ? (
+        <AvnuSwap mode={mode} goal={goalText}/>
+      ) : (
+        <>
+          <div className={styles.rule}>
+            <span>Approval</span>
+            <strong>Always ask me</strong>
+          </div>
+          <div className={styles.rule}>
+            <span>Network</span>
+            <strong>Starknet Sepolia</strong>
+          </div>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={previewPlan}
+          >
+            Preview plan
+            <ArrowRight size={17}/>
+          </button>
+        </>
+      )}
       {goalError && <div className={styles.notice} role="alert"><p>{goalError}</p><button type="button" className={styles.textButton} onClick={() => chooseBalanceGoal()}>Use a STRK balance target<ArrowRight size={14}/></button></div>}
       {planned && <section className={styles.plan} aria-live="polite"><SectionHeading title="Your plan"><span className={styles.status}>{plan.status.replaceAll("-", " ")}</span></SectionHeading><div className={styles.panel}><h3>{plan.title}</h3><p className={styles.helper}>{plan.reason}</p>
         {plan.status === "ready" && <><div className={styles.route}><span>{plan.action === "shield" ? "Public wallet" : "Privacy pool"}</span><ArrowRight size={16}/><span>{plan.action === "shield" ? "Privacy pool" : "Public wallet"}</span></div><div className={styles.rule}><span>Amount to move</span><strong>{formatUnits18(plan.delta)} STRK</strong></div><p className={styles.privacyNote}>{plan.action === "shield" ? "The deposit is public. Funds become private after the pool’s maturity period." : "This withdrawal makes the amount and destination public."}</p><button type="button" className={styles.primary} disabled={busy} onClick={() => void executePlan()}>{busy ? <LoaderCircle size={16}/> : <ShieldCheck size={16}/>} {busy ? "Waiting for wallet…" : `Review & ${plan.action === "shield" ? "Shield" : "Unshield"}`}</button></>}
@@ -343,7 +457,7 @@ export function CarelApp() {
     return <div className={styles.narrowPage}><div className={styles.intro}><h1>Activity</h1><p>Your executions, from start to finish.</p></div><div className={styles.segment} aria-label="Execution filter">{(["all", "pending", "confirmed"] as const).map(value => <button key={value} aria-pressed={activityFilter === value} onClick={() => setActivityFilter(value)}>{value === "all" ? "All" : value === "pending" ? "Pending" : "Completed"}</button>)}</div>
       <div className={styles.activityList}>{visibleRecords.length ? visibleRecords.map(renderExecution) : <EmptyState title={activityFilter === "all" ? "No STRK executions yet" : "No matching STRK executions"}>Shield and Unshield executions from this wallet session appear here.</EmptyState>}</div>
       {selectedExecution && <section className={styles.panel}><SectionHeading title={txName(selectedExecution.label)}><button className={styles.iconButton} onClick={() => setSelectedHash(null)} aria-label="Close execution detail"><X size={16}/></button></SectionHeading><p className={styles.helper}>{selectedExecution.label}</p><div className={styles.rule}><span>Status</span><strong>{selectedExecution.status}</strong></div><div className={styles.rule}><span>Network</span><strong>Starknet Sepolia</strong></div><p className={styles.hash}>{selectedExecution.hash}</p><a className={styles.secondary} href={`${SEPOLIA_EXPLORER_TX}${selectedExecution.hash}`} target="_blank" rel="noreferrer">View on explorer<ArrowUpRight size={16}/></a></section>}
-      <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("unshield")}/>
+      <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("normal")}/>
     </div>;
   }
   function renderSettings() {
@@ -351,7 +465,7 @@ export function CarelApp() {
       <details className={styles.settingsGroup} ref={walletDetails}><summary><span><WalletCards size={18}/>Wallet & network</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Account</span><strong>{wallet.address ? shortAddress(wallet.address) : "Not connected"}</strong></div><div className={styles.rule}><span>Network</span><strong>{isSepolia ? "Starknet Sepolia" : wallet.connected ? "Switch to Sepolia" : "Not connected"}</strong></div><div className={styles.rule}><span>STRK20</span><strong>{wallet.strk20Capable ? "Available" : "Unavailable"}</strong></div>{wallet.connected ? <button className={styles.secondary} disabled={busy} onClick={() => wallet.disconnect()}><LogOut size={15}/>Disconnect wallet</button> : connectButton}</div></details>
       <details className={styles.settingsGroup}><summary><span><EyeOff size={18}/>Privacy</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Hide portfolio amounts<input type="checkbox" checked={hideAmounts} onChange={event => setHideAmounts(event.target.checked)}/></label><p className={styles.helper}>Private balances are read only when you choose Reveal. Hiding amounts changes their display.</p><p className={styles.helper}>Shield deposits are public. Unshield makes the amount and destination public again.</p></div></details>
       <details className={styles.settingsGroup}><summary><span><Bot size={18}/>Agent permissions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Execution approval</span><strong>Always required</strong></div><div className={styles.rule}><span>Background execution</span><strong>Off</strong></div><p className={styles.helper}>Review the plan, then approve the transaction in your wallet.</p></div></details>
-      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Garden Bridge uses public balances on Bitcoin Testnet4 and Starknet Sepolia. Available assets and quotes come from Garden. Swap, Earn, and Borrow are not live in this testnet build.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
+      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Normal / Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Normal Swap uses AVNU public routing. Shield means public → private. Unshield means private → public. Garden Bridge currently uses the Normal public route. Earn and Borrow are not live yet.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
       <details className={styles.settingsGroup}><summary><span><Moon size={18}/>Appearance</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Reduce animation<input type="checkbox" checked={reduceMotion} onChange={event => setReduceMotion(event.target.checked)}/></label><p className={styles.helper}>Your device’s reduced motion preference is always respected.</p></div></details>
     </div>;
   }

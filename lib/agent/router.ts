@@ -48,13 +48,12 @@ export function routeAgentGoal(goal: string): AgentRoute {
   if (/\b(swap|exchange)\b/i.test(text)) {
     return {
       tool: "Swap",
-      status: "unsupported",
+      status: "ready",
       provider: "AVNU",
-      message: "Swap routing is recognized, but AVNU execution is not connected yet.",
     };
   }
 
-  if (/\b(earn|stake|yield|lend)\b/i.test(text)) {
+  if (/\b(earn|earning|stake|staking|yield|lend|lending)\b/i.test(text)) {
     return {
       tool: "Earn",
       status: "unsupported",
@@ -63,7 +62,7 @@ export function routeAgentGoal(goal: string): AgentRoute {
     };
   }
 
-  if (/\b(borrow|loan)\b/i.test(text)) {
+  if (/\b(borrow|borrowing|loan)\b/i.test(text)) {
     return {
       tool: "Borrow",
       status: "unsupported",

@@ -48,7 +48,7 @@ function explorer(hash: string | null, bitcoin: boolean) {
   return bitcoin ? `https://mempool.space/testnet4/tx/${clean}` : `https://sepolia.voyager.online/tx/${clean}`;
 }
 
-export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, activityFilter = "all" }: { mode: "shield" | "unshield"; onPublicMode: () => void; historyOnly?: boolean; intent?: BridgeIntent | null; activityFilter?: "all" | "pending" | "confirmed" }) {
+export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, activityFilter = "all" }: { mode: "normal" | "shield" | "unshield"; onPublicMode: () => void; historyOnly?: boolean; intent?: BridgeIntent | null; activityFilter?: "all" | "pending" | "confirmed" }) {
   const wallet = useCarelTestnet();
   const ready = wallet.connected && wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
   const owner = ready ? felt(wallet.address) : "";
@@ -163,7 +163,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     locked.current = true; setBusy(true); setError(""); setNotice("");
     const version = inputVersion.current, capturedOwner = owner;
     try {
-      if (!ready || mode !== "unshield") throw new Error("Use a connected Sepolia wallet and the public bridge route.");
+      if (!ready || mode !== "normal") throw new Error("Use a connected Sepolia wallet and Normal public route.");
       parseBitcoinAmount(amount); bitcoinAddress(btcAddress);
       const result = await post<BridgeQuote>({ action: "quote", direction, assetId, amount });
       if (current(capturedOwner) && version === inputVersion.current) { setQuote(result); setNow(Date.now()); }
@@ -175,7 +175,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     locked.current = true; setBusy(true); setError(""); setNotice("");
     const capturedOwner = owner;
     try {
-      if (!capturedOwner || mode !== "unshield" || Date.now() >= quote.expiresAt) throw new Error("Get a fresh quote before creating the bridge.");
+      if (!capturedOwner || mode !== "normal" || Date.now() >= quote.expiresAt) throw new Error("Get a fresh quote in Normal mode before creating the bridge.");
       const request = { direction, assetId, amount, bitcoinAddress: bitcoinAddress(btcAddress), starknetAddress: capturedOwner, expectedReceive: quote.destinationAmount };
       const fingerprint = JSON.stringify(request), draftKey = `carel.garden.draft:${capturedOwner}`;
       const bytes = crypto.getRandomValues(new Uint32Array(2));
@@ -198,12 +198,12 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     locked.current = true; setBusy(true); setError(""); setNotice("");
     const capturedOwner = owner, id = activeId;
     try {
-      if (mode !== "unshield") throw new Error("Switch to the public route before approving a Garden bridge.");
+      if (mode !== "normal") throw new Error("Switch to Normal before approving a Garden bridge.");
       const previous = savedOrders(capturedOwner).find(row => row.id === id);
       if (previous?.fundingTx || (previous?.fundingAttempted && !retryChecked)) throw new Error("Check the previous wallet request before retrying.");
       const prepared = await post<{ calls: BridgeCall[]; order: BridgeOrder }>({ action: "fund", id, owner: capturedOwner });
       if (!current(capturedOwner)) return;
-      if (modeRef.current !== "unshield") throw new Error("The privacy mode changed. Review the public bridge route again.");
+      if (modeRef.current !== "normal") throw new Error("The mode changed. Review the Normal public bridge route again.");
       if (prepared.order.id !== id || prepared.order.direction !== order.direction || prepared.order.recipientAddress !== order.recipientAddress || prepared.order.sourceAmount !== order.sourceAmount || prepared.order.destinationAmount !== order.destinationAmount || prepared.order.asset.id !== order.asset.id || prepared.order.asset.tokenAddress !== order.asset.tokenAddress || prepared.order.asset.htlcAddress !== order.asset.htlcAddress) throw new Error("The bridge details changed. Refresh and review the order.");
       const calls = validateFundingCalls(prepared.calls);
       if (calls[0].contractAddress !== prepared.order.asset.tokenAddress || calls[1].contractAddress !== prepared.order.asset.htlcAddress || BigInt(calls[0].calldata[1]).toString() !== prepared.order.sourceAmount) throw new Error("Funding calls do not match the reviewed bridge.");
@@ -234,7 +234,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     } catch { setError("Copy unavailable. Select the address above to copy it."); }
   }
 
-  const needsPublicMode = mode === "shield" && !historyOnly;
+  const needsPublicMode = mode !== "normal" && !historyOnly;
   const selectedAsset = catalog?.starknet.find(asset => asset.id === assetId);
   const sourceSymbol = direction === "to-starknet" ? "BTC" : selectedAsset?.symbol || "BTC";
   const destinationSymbol = direction === "to-starknet" ? selectedAsset?.symbol || "BTC" : "BTC";
@@ -268,7 +268,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
       {order && <><div className={styles.detail}><span>Send</span><strong>{formatBitcoinAmount(order.sourceAmount)} {order.direction === "to-starknet" ? "BTC" : order.asset.symbol}</strong></div><div className={styles.detail}><span>Receive</span><strong>{formatBitcoinAmount(order.destinationAmount)} {order.direction === "to-starknet" ? order.asset.symbol : "BTC"}</strong></div>
         <div className={styles.detail}><span>Recipient</span><span className={styles.address}>{order.recipientAddress}</span></div>
         {order.state === "awaiting-deposit" && order.direction === "to-starknet" && order.depositAddress && !orderError && <div className={styles.deposit}><p>Send exactly <strong>{formatBitcoinAmount(order.sourceAmount)} BTC</strong> on Bitcoin Testnet4 to:</p><code>{order.depositAddress}</code><button className={styles.secondary} onClick={() => void copyDeposit()}>{copied ? <Check size={15}/> : <Copy size={15}/>} {copied ? "Copied" : "Copy deposit address"}</button><p className={styles.helper}>Fund this order within one hour of creation. Do not send again after your deposit appears.</p></div>}
-        {order.state === "awaiting-deposit" && order.direction === "to-bitcoin" && <><p className={styles.helper}>Approve the exact token amount and deposit it into Garden in one wallet request. Refund timelock: {order.refundAfterBlocks.toLocaleString()} Starknet blocks.</p>{activeRecord?.fundingTx ? <p className={styles.notice}>Funding submitted. Waiting for Garden to detect it.</p> : <>{activeRecord?.fundingAttempted && <label className={styles.check}><input type="checkbox" checked={retryChecked} onChange={event => setRetryChecked(event.target.checked)}/>I checked my wallet: this order has not been funded.</label>}{mode === "shield" ? <button className={styles.secondary} onClick={onPublicMode}>Use public route</button> : <button className={styles.primary} disabled={working || !ready || Boolean(orderError) || Boolean(activeRecord?.fundingAttempted && !retryChecked)} onClick={() => void fund()}>{busy ? "Check your wallet…" : "Approve & fund bridge"}</button>}</>}</>}
+        {order.state === "awaiting-deposit" && order.direction === "to-bitcoin" && <><p className={styles.helper}>Approve the exact token amount and deposit it into Garden in one wallet request. Refund timelock: {order.refundAfterBlocks.toLocaleString()} Starknet blocks.</p>{activeRecord?.fundingTx ? <p className={styles.notice}>Funding submitted. Waiting for Garden to detect it.</p> : <>{activeRecord?.fundingAttempted && <label className={styles.check}><input type="checkbox" checked={retryChecked} onChange={event => setRetryChecked(event.target.checked)}/>I checked my wallet: this order has not been funded.</label>}{mode !== "normal" ? <button className={styles.secondary} onClick={onPublicMode}>Use Normal public route</button> : <button className={styles.primary} disabled={working || !ready || Boolean(orderError) || Boolean(activeRecord?.fundingAttempted && !retryChecked)} onClick={() => void fund()}>{busy ? "Check your wallet…" : "Approve & fund bridge"}</button>}</>}</>}
         {order.state === "confirming" && <p className={styles.helper}>{order.confirmations} / {order.requiredConfirmations} source confirmations</p>}
         {["exchanging", "settling"].includes(order.state) && <p className={styles.helper}>Garden is settling the bridge. No second deposit is needed.</p>}
         {order.state === "completed" && <p className={styles.success}><Check size={17}/>Delivery is recorded on the destination chain.</p>}

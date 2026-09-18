@@ -16,6 +16,11 @@ import {
   WalletAccountV6,
 } from "starknet";
 import type { WALLET_API } from "@starknet-io/types-js";
+import {
+  executeSwap as executeAvnuSwap,
+  SEPOLIA_BASE_URL,
+  type Quote,
+} from "@avnu/avnu-sdk";
 import type { BridgeCall } from "@/lib/garden/types";
 import { felt, validateFundingCalls } from "@/lib/garden/protocol";
 import {
@@ -79,6 +84,12 @@ type CarelTestnetContextValue = {
   revealPrivateBalance: () => Promise<void>;
   shield: (amount: string) => Promise<void>;
   unshield: (amount: string) => Promise<void>;
+  executeSwap: (
+    quote: Quote,
+    expectedSellToken: string,
+    expectedBuyToken: string,
+    label: string,
+  ) => Promise<string>;
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
 };
 
@@ -198,6 +209,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const [maturityTarget, setMaturityTarget] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
   const bridgeSubmitting = useRef(false);
+  const swapSubmitting = useRef(false);
   const currentAccount = useRef(walletAccount);
   currentAccount.current = walletAccount;
 
@@ -535,6 +547,112 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const executeSwap = async (
+    quote: Quote,
+    expectedSellToken: string,
+    expectedBuyToken: string,
+    label: string,
+  ): Promise<string> => {
+    if (swapSubmitting.current || busy || !walletAccount) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account = walletAccount;
+
+    const assertSession = async () => {
+      const selected =
+        account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+      const [network, accounts] = await Promise.all([
+        walletV6.requestChainId(selected),
+        account.requestAccounts(true),
+      ]);
+
+      if (
+        currentAccount.current !== account ||
+        String(network) !== constants.StarknetChainId.SN_SEPOLIA ||
+        !accounts[0] ||
+        felt(accounts[0]) !== felt(account.address)
+      ) {
+        throw new Error(
+          "Wallet account or network changed. Reconnect Ready on Starknet Sepolia.",
+        );
+      }
+    };
+
+    if (
+      quote.chainId !== constants.StarknetChainId.SN_SEPOLIA
+    ) {
+      throw new Error("The AVNU quote is not for Starknet Sepolia.");
+    }
+
+    if (
+      felt(quote.sellTokenAddress) !== felt(expectedSellToken) ||
+      felt(quote.buyTokenAddress) !== felt(expectedBuyToken)
+    ) {
+      throw new Error(
+        "The AVNU quote does not match the reviewed token pair.",
+      );
+    }
+
+    swapSubmitting.current = true;
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      const response = await executeAvnuSwap(
+        {
+          provider: account,
+          quote,
+          slippage: 0.005,
+        },
+        {
+          baseUrl: SEPOLIA_BASE_URL,
+        },
+      );
+
+      const hash = response.transactionHash;
+
+      if (!/^0x[0-9a-f]{1,64}$/i.test(hash)) {
+        throw new Error(
+          "Ready did not return a valid swap transaction hash.",
+        );
+      }
+
+      setTx({
+        kind: "pending",
+        label,
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(hash);
+        setTx({
+          kind: "confirmed",
+          label,
+          hash,
+        });
+      } catch {
+        setTx({
+          kind: "submitted",
+          label,
+          hash,
+        });
+      }
+
+      await refreshPublicBalance();
+
+      return hash;
+    } finally {
+      swapSubmitting.current = false;
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -588,6 +706,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       revealPrivateBalance,
       shield,
       unshield,
+      executeSwap,
       executeBridge,
     }),
     [
