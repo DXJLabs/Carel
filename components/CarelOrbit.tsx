@@ -18,19 +18,22 @@ export function CarelOrbit({ className, paused = false, centered = false }: {
     let visible = true;
     let frame = 0;
     let previous = 0;
+    let accumulated = 0;
     let phase = 0;
+    const frameInterval = 1000 / 30;
     let width = 430;
     let height = 250;
 
     function draw() {
       if (!canvas || !context) return;
       const w = width, h = height;
-      const cx = w * (centered ? 0.5 : 0.74), cy = h * 0.5;
-      const radius = Math.min(w * 0.25, h * 0.38);
-      const t = phase * 0.00018;
+      const t = phase * 0.00022;
+      const cx = w * (centered ? 0.5 : 0.74) + Math.sin(t * 0.9) * 2;
+      const cy = h * 0.5 + Math.sin(t * 0.67) * 2;
+      const radius = Math.min(w * 0.25, h * 0.38) * (1 + Math.sin(t * 1.4) * 0.012);
       context.clearRect(0, 0, w, h);
       const glow = context.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.4);
-      glow.addColorStop(0, "rgba(197,52,0,.15)");
+      glow.addColorStop(0, `rgba(197,52,0,${0.17 + Math.sin(t * 0.95) * 0.015})`);
       glow.addColorStop(0.55, "rgba(197,52,0,.035)");
       glow.addColorStop(1, "rgba(197,52,0,0)");
       context.fillStyle = glow;
@@ -65,8 +68,8 @@ export function CarelOrbit({ className, paused = false, centered = false }: {
       context.lineCap = "round";
       for (const { a, b, ring, u, z } of segments) {
         const depth = Math.max(0.2, Math.min(1, (z / radius + 1) * 0.5));
-        const strength = (0.15 + 0.5 * depth) * (0.38 + 0.62 * u);
-        context.strokeStyle = `rgba(${ring === 1 ? "250,250,250" : "197,52,0"},${strength * (ring === 1 ? 0.37 : 1)})`;
+        const strength = (0.17 + 0.55 * depth) * (0.38 + 0.62 * u);
+        context.strokeStyle = `rgba(${ring === 1 ? "250,250,250" : "197,52,0"},${strength * (ring === 1 ? 0.42 : 1)})`;
         context.lineWidth = (ring === 1 ? 0.7 : 1.5) * a.scale;
         context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
       }
@@ -85,9 +88,12 @@ export function CarelOrbit({ className, paused = false, centered = false }: {
     function tick(time: number) {
       frame = 0;
       if (!canAnimate()) return;
-      if (time - previous >= 50) {
-        phase += Math.min(time - previous, 80);
-        previous = time;
+      const elapsed = Math.min(time - previous, 80);
+      previous = time;
+      phase += elapsed;
+      accumulated += elapsed;
+      if (accumulated >= frameInterval) {
+        accumulated %= frameInterval;
         draw();
       }
       frame = requestAnimationFrame(tick);
@@ -97,6 +103,7 @@ export function CarelOrbit({ className, paused = false, centered = false }: {
       frame = 0;
       draw();
       previous = performance.now();
+      accumulated = 0;
       if (canAnimate()) frame = requestAnimationFrame(tick);
     }
     function resize() {

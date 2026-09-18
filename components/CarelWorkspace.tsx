@@ -173,7 +173,22 @@ export function CarelApp() {
   async function refreshBalances() {
     await run(async () => { await wallet.refreshPublicBalance(); setSample(value => value + 1); });
   }
-  function chooseTool(tool: typeof TOOLS[number]) { setSelectedTool(tool.name); setGoalText(tool.prompt); setPlanned(false); setGoalError(null); if (tool.name === "Bridge") setBridgeIntent(parseBridgeGoal(tool.prompt)); }
+  function chooseTool(tool: typeof TOOLS[number]) {
+    const routed = routeAgentGoal(tool.prompt);
+
+    setSelectedTool(tool.name);
+    setGoalText(tool.prompt);
+    setPlanned(false);
+    setGoalError(null);
+
+    setBridgeIntent(
+      routed.tool === "Bridge" &&
+        routed.status === "ready" &&
+        routed.bridgeIntent
+        ? routed.bridgeIntent
+        : null,
+    );
+  }
   function chooseBalanceGoal(nextMode = mode) {
     setSelectedTool(null); setGoalText(`Keep at least 1 STRK ${nextMode === "shield" ? "private" : "public"}.`); setPlanned(false); setGoalError(null);
   }

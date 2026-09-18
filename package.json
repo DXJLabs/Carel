@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@avnu/avnu-sdk": "^4.2.0",
     "@starknet-io/get-starknet-discovery": "^6.0.3",
     "@starknet-io/get-starknet-wallet-standard": "^6.0.3",
     "lucide-react": "^0.542.0",
