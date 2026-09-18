@@ -2,22 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRight, LoaderCircle } from "lucide-react";
-import { constants } from "starknet";
 import {
   getQuotes,
-  SEPOLIA_BASE_URL,
   type Quote,
 } from "@avnu/avnu-sdk";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
+import {
+  getCarelNetwork,
+  STRK_TOKEN,
+} from "@/lib/carel/networks";
 import styles from "../CarelWorkspace.module.css";
 
 type SwapMode = "normal" | "shield" | "unshield";
-
-const STRK =
-  "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-
-const USDC =
-  "0x0512feac6339ff7889822cb5aa2a86c848e9d392bb0e3e237c008674feed8343";
 
 const STRK_DECIMALS = 18;
 const USDC_DECIMALS = 6;
@@ -82,9 +78,10 @@ export function AvnuSwap({
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState("");
 
+  const network = getCarelNetwork(wallet.chainId);
   const ready =
     wallet.connected &&
-    wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
+    network !== null;
 
   useEffect(() => {
     const match = goal.match(
@@ -139,9 +136,9 @@ export function AvnuSwap({
     setQuote(null);
 
     try {
-      if (!ready || !wallet.address) {
+      if (!ready || !wallet.address || !network) {
         throw new Error(
-          "Connect Ready on Starknet Sepolia first.",
+          "Connect Ready on Starknet Sepolia or Mainnet first.",
         );
       }
 
@@ -156,14 +153,14 @@ export function AvnuSwap({
 
       const quotes = await getQuotes(
         {
-          sellTokenAddress: STRK,
-          buyTokenAddress: USDC,
+          sellTokenAddress: STRK_TOKEN,
+          buyTokenAddress: network.usdcToken,
           sellAmount,
           takerAddress: wallet.address,
           size: 1,
         },
         {
-          baseUrl: SEPOLIA_BASE_URL,
+          baseUrl: network.avnuBaseUrl,
         },
       );
 
@@ -171,21 +168,19 @@ export function AvnuSwap({
 
       if (!next) {
         throw new Error(
-          "No AVNU STRK → USDC route is available on Starknet Sepolia right now.",
+          `No AVNU STRK → USDC route is available on ${network.label} right now.`,
         );
       }
 
-      if (
-        next.chainId !== constants.StarknetChainId.SN_SEPOLIA
-      ) {
+      if (next.chainId !== network.chainId) {
         throw new Error(
           "AVNU returned a quote for the wrong network.",
         );
       }
 
       if (
-        !sameAddress(next.sellTokenAddress, STRK) ||
-        !sameAddress(next.buyTokenAddress, USDC)
+        !sameAddress(next.sellTokenAddress, STRK_TOKEN) ||
+        !sameAddress(next.buyTokenAddress, network.usdcToken)
       ) {
         throw new Error(
           "AVNU returned a quote for a different token pair.",
@@ -207,14 +202,21 @@ export function AvnuSwap({
   async function execute() {
     if (!quote || executing) return;
 
+    if (!network) {
+      setError(
+        "Connect Ready on Starknet Sepolia or Mainnet first.",
+      );
+      return;
+    }
+
     setExecuting(true);
     setError("");
 
     try {
       await wallet.executeSwap(
         quote,
-        STRK,
-        USDC,
+        STRK_TOKEN,
+        network.usdcToken,
         `Swap ${amount} STRK → USDC`,
       );
 
@@ -235,7 +237,7 @@ export function AvnuSwap({
       <h3>Swap STRK → USDC</h3>
 
       <p className={styles.helper}>
-        Public → public · routed by AVNU
+        Public → public · routed by AVNU · {network?.label ?? "Starknet"}
       </p>
 
       <label

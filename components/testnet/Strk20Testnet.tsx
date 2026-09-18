@@ -12,13 +12,13 @@ import {
 import {
   constants,
   num,
+  RpcProvider,
   walletV6,
   WalletAccountV6,
 } from "starknet";
 import type { WALLET_API } from "@starknet-io/types-js";
 import {
   executeSwap as executeAvnuSwap,
-  SEPOLIA_BASE_URL,
   type Quote,
 } from "@avnu/avnu-sdk";
 import type { BridgeCall } from "@/lib/garden/types";
@@ -55,6 +55,9 @@ import {
   parseUnits18,
   sameFelt,
 } from "@/lib/strk20/units";
+import {
+  getCarelNetwork,
+} from "@/lib/carel/networks";
 
 type TxState =
   | { kind: "idle" }
@@ -137,8 +140,11 @@ function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-async function readPublicStrk(address: string): Promise<bigint> {
-  const result = await sepoliaProvider.callContract({
+async function readPublicStrk(
+  address: string,
+  provider: RpcProvider = sepoliaProvider,
+): Promise<bigint> {
+  const result = await provider.callContract({
     contractAddress: STRK_TOKEN,
     entrypoint: "balance_of",
     calldata: [address],
@@ -177,8 +183,11 @@ function readPrivateStrkFromResponse(raw: unknown): bigint {
   return 0n;
 }
 
-async function waitForSubmittedTransaction(hash: string) {
-  const confirmation = sepoliaProvider.waitForTransaction(hash, {
+async function waitForSubmittedTransaction(
+  hash: string,
+  provider: RpcProvider = sepoliaProvider,
+) {
+  const confirmation = provider.waitForTransaction(hash, {
     retries: 120,
     retryInterval: 3000,
   });
@@ -290,7 +299,19 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const balance = await readPublicStrk(address);
+      const network = getCarelNetwork(chainId);
+
+      if (!network) {
+        throw new Error(
+          "CAREL supports Starknet Sepolia and Starknet Mainnet.",
+        );
+      }
+
+      const balance = await readPublicStrk(
+        address,
+        network.provider,
+      );
+
       setPublicStrk(balance);
       setError(null);
     } catch (cause) {
@@ -366,16 +387,24 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       const selectedV6 =
         selected as unknown as WalletWithStarknetFeaturesV6;
 
+      const nextChainId = String(
+        await walletV6.requestChainId(selectedV6),
+      );
+
+      const network = getCarelNetwork(nextChainId);
+
+      if (!network) {
+        throw new Error(
+          "CAREL supports Starknet Sepolia and Starknet Mainnet.",
+        );
+      }
+
       const account = await WalletAccountV6.connect(
-        { nodeUrl: SEPOLIA_RPC },
+        { nodeUrl: network.rpcUrl },
         selectedV6,
       );
 
       const nextAddress = account.address;
-
-      const nextChainId = String(
-        await walletV6.requestChainId(selectedV6),
-      );
 
       // Capability check only: does not request private balances.
       const supported =
@@ -394,7 +423,12 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setTx({ kind: "idle" });
 
       try {
-        setPublicStrk(await readPublicStrk(nextAddress));
+        setPublicStrk(
+          await readPublicStrk(
+            nextAddress,
+            network.provider,
+          ),
+        );
       } catch {
         setPublicStrk(null);
       }
@@ -560,6 +594,13 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
 
     const account = walletAccount;
+    const routeNetwork = getCarelNetwork(chainId);
+
+    if (!routeNetwork) {
+      throw new Error(
+        "CAREL supports Starknet Sepolia and Starknet Mainnet.",
+      );
+    }
 
     const assertSession = async () => {
       const selected =
@@ -572,20 +613,20 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
 
       if (
         currentAccount.current !== account ||
-        String(network) !== constants.StarknetChainId.SN_SEPOLIA ||
+        String(network) !== routeNetwork.chainId ||
         !accounts[0] ||
         felt(accounts[0]) !== felt(account.address)
       ) {
         throw new Error(
-          "Wallet account or network changed. Reconnect Ready on Starknet Sepolia.",
+          "Wallet account or network changed. Reconnect Ready on the intended Starknet network.",
         );
       }
     };
 
-    if (
-      quote.chainId !== constants.StarknetChainId.SN_SEPOLIA
-    ) {
-      throw new Error("The AVNU quote is not for Starknet Sepolia.");
+    if (quote.chainId !== routeNetwork.chainId) {
+      throw new Error(
+        `The AVNU quote is not for ${routeNetwork.label}.`,
+      );
     }
 
     if (
@@ -611,7 +652,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           slippage: 0.005,
         },
         {
-          baseUrl: SEPOLIA_BASE_URL,
+          baseUrl: routeNetwork.avnuBaseUrl,
         },
       );
 
@@ -630,7 +671,10 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        await waitForSubmittedTransaction(hash);
+        await waitForSubmittedTransaction(
+          hash,
+          routeNetwork.provider,
+        );
         setTx({
           kind: "confirmed",
           label,
