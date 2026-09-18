@@ -109,25 +109,26 @@ export function CarelApp() {
   const [quickAmount, setQuickAmount] = useState("1");
   const walletDetails = useRef<HTMLDetailsElement>(null);
   const sessionKey = `${wallet.chainId}:${wallet.address.toLowerCase()}`;
-  const isSepolia =
-    wallet.chainId === constants.StarknetChainId.SN_SEPOLIA;
   const activeNetwork = getCarelNetwork(wallet.chainId);
   const publicReady =
     wallet.connected && activeNetwork !== null;
+  const privacyReady =
+    wallet.connected &&
+    activeNetwork?.privacyEnabled === true;
   const privateBalance = wallet.privateRevealed ? wallet.privateStrk : null;
   const total = wallet.publicStrk !== null && privateBalance !== null ? wallet.publicStrk + privateBalance : null;
   const visibleBalance = total ?? wallet.publicStrk;
   const busy = wallet.busy || executing || wallet.connecting;
-  const ready = wallet.connected && isSepolia;
+  const ready = privacyReady;
   const records = executions.owner === sessionKey && wallet.connected ? executions.records : [];
   const visibleRecords = records.filter(record => activityFilter === "all" || (activityFilter === "pending" ? record.status !== "confirmed" : record.status === "confirmed"));
   const selectedExecution = records.find(record => record.hash === selectedHash);
 
   const plan = useMemo(() => buildLivePlan({
     goal: mode === "unshield" ? "target-public" : "target-private", targetText: planTarget,
-    connected: wallet.connected, networkReady: isSepolia, strk20Capable: wallet.strk20Capable,
+    connected: wallet.connected, networkReady: privacyReady, strk20Capable: wallet.strk20Capable,
     publicStrk: wallet.publicStrk, privateStrk: wallet.privateStrk, privateRevealed: wallet.privateRevealed,
-  }), [mode, planTarget, wallet.connected, isSepolia, wallet.strk20Capable, wallet.publicStrk, wallet.privateStrk, wallet.privateRevealed]);
+  }), [mode, planTarget, wallet.connected, privacyReady, wallet.strk20Capable, wallet.publicStrk, wallet.privateStrk, wallet.privateRevealed]);
 
   useEffect(() => {
     setPlanned(false); setActionError(null); setSelectedHash(null); setQuickAction(null);
@@ -440,7 +441,7 @@ export function CarelApp() {
     const privateShare = total !== null && total > ZERO && privateBalance !== null ? Number(privateBalance * BigInt(10000) / total) / 100 : null;
     return <div className={styles.portfolioPage}>
       <div className={styles.intro}><h1>Portfolio</h1><p>Your capital, at a glance.</p></div>
-      <section className={styles.portfolioOverview}><div className={styles.overviewTop}><div><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p></div><button type="button" className={styles.iconButton} disabled={!ready || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button></div><p className={styles.helper}>{balanceHelp}</p>
+      <section className={styles.portfolioOverview}><div className={styles.overviewTop}><div><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p></div><button type="button" className={styles.iconButton} disabled={!publicReady || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button></div><p className={styles.helper}>{balanceHelp}</p>
         {!wallet.connected && connectButton}<SectionHeading title="Performance"/><PerformanceChart points={chartPoints} hidden={hideAmounts}/>
         <div className={styles.segment} aria-label="Performance period">{(["1D", "7D", "30D"] as const).map(value => <button key={value} aria-pressed={period === value} onClick={() => setPeriod(value)}>{value}</button>)}</div>
       </section>

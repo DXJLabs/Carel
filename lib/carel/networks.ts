@@ -54,10 +54,7 @@ export const CAREL_NETWORKS = {
     usdcToken:
       "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
     gardenEnabled: false,
-
-    // Jangan aktifkan private mainnet sampai flow Wallet V6
-    // mainnet kita test sendiri.
-    privacyEnabled: false,
+    privacyEnabled: true,
   },
 } as const;
 

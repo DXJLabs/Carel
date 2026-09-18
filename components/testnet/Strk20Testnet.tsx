@@ -273,11 +273,16 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!maturityTarget) return;
 
+    const network = getCarelNetwork(chainId);
+    if (!network?.privacyEnabled) return;
+
     let cancelled = false;
 
     const poll = async () => {
       try {
-        const block = Number(await sepoliaProvider.getBlockNumber());
+        const block = Number(
+          await network.provider.getBlockNumber(),
+        );
         if (!cancelled) setCurrentBlock(block);
       } catch {
         // The tracker is supplementary; transaction state remains visible.
@@ -291,7 +296,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [maturityTarget]);
+  }, [maturityTarget, chainId]);
 
   const refreshPublicBalance = async () => {
     if (!address) return;
@@ -464,15 +469,24 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       throw new Error("Connect a wallet first.");
     }
 
-    if (chainId !== constants.StarknetChainId.SN_SEPOLIA) {
-      throw new Error("Switch the connected wallet to Starknet Sepolia first.");
+    const network = getCarelNetwork(chainId);
+
+    if (!network?.privacyEnabled) {
+      throw new Error(
+        "STRK20 privacy is not enabled for this Starknet network.",
+      );
     }
 
     if (!strk20Capable) {
-      throw new Error("This wallet does not report STRK20 Wallet API support (>= 0.10).");
+      throw new Error(
+        "This wallet does not report STRK20 Wallet API support (>= 0.10).",
+      );
     }
 
-    return walletAccount;
+    return {
+      account: walletAccount,
+      network,
+    };
   };
 
   const revealPrivateBalance = async () => {
@@ -480,7 +494,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const account = assertPrivateReady();
+      const { account } = assertPrivateReady();
       const result = await account.strk20Balances([STRK_TOKEN]);
       setPrivateStrk(readPrivateStrkFromResponse(result));
       setPrivateRevealed(true);
@@ -496,18 +510,24 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     actions: WALLET_API.STRK20_ACTION[],
     trackMaturity: boolean,
   ) => {
-    const account = assertPrivateReady();
-    const response = await account.strk20InvokeTransaction(actions);
+    const { account, network } = assertPrivateReady();
+    const response =
+      await account.strk20InvokeTransaction(actions);
     const hash = response.transaction_hash;
 
     setTx({ kind: "pending", label, hash });
 
     try {
-      await waitForSubmittedTransaction(hash);
+      await waitForSubmittedTransaction(
+        hash,
+        network.provider,
+      );
       setTx({ kind: "confirmed", label, hash });
 
       if (trackMaturity) {
-        const block = Number(await sepoliaProvider.getBlockNumber());
+        const block = Number(
+          await network.provider.getBlockNumber(),
+        );
         setCurrentBlock(block);
         setMaturityTarget(block + 10);
       }
@@ -567,7 +587,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
 
       if (privateRevealed) {
         try {
-          const account = assertPrivateReady();
+          const { account } = assertPrivateReady();
           const result = await account.strk20Balances([STRK_TOKEN]);
           setPrivateStrk(readPrivateStrkFromResponse(result));
         } catch {
