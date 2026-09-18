@@ -314,7 +314,7 @@ export function AvnuSwap({
             <span>Price impact</span>
             <strong>
               {Number.isFinite(quote.priceImpact)
-                ? `${quote.priceImpact.toFixed(4)}%`
+                ? `${(quote.priceImpact / 100).toFixed(4)}%`
                 : "—"}
             </strong>
           </div>

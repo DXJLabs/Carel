@@ -18,7 +18,7 @@ import {
 } from "starknet";
 import type { WALLET_API } from "@starknet-io/types-js";
 import {
-  executeSwap as executeAvnuSwap,
+  quoteToCalls,
   type Quote,
 } from "@avnu/avnu-sdk";
 import type { BridgeCall } from "@/lib/garden/types";
@@ -645,18 +645,60 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     try {
       await assertSession();
 
-      const response = await executeAvnuSwap(
-        {
-          provider: account,
-          quote,
-          slippage: 0.005,
-        },
-        {
-          baseUrl: routeNetwork.avnuBaseUrl,
-        },
-      );
+      let built;
 
-      const hash = response.transactionHash;
+      try {
+        built = await quoteToCalls(
+          {
+            quoteId: quote.quoteId,
+            takerAddress: account.address,
+            slippage: 0.005,
+            executeApprove: true,
+          },
+          {
+            baseUrl: routeNetwork.avnuBaseUrl,
+          },
+        );
+      } catch (cause) {
+        throw new Error(
+          `AVNU build failed: ${
+            cause instanceof Error
+              ? cause.message
+              : "Could not build swap calls."
+          }`,
+        );
+      }
+
+      if (built.chainId !== routeNetwork.chainId) {
+        throw new Error(
+          "AVNU built the swap for the wrong Starknet network.",
+        );
+      }
+
+      if (!built.calls.length) {
+        throw new Error(
+          "AVNU returned an empty swap transaction.",
+        );
+      }
+
+      // Re-check wallet immediately before asking Ready to sign.
+      await assertSession();
+
+      let response;
+
+      try {
+        response = await account.execute(built.calls);
+      } catch (cause) {
+        throw new Error(
+          `Ready execution failed: ${
+            cause instanceof Error
+              ? cause.message
+              : "Wallet execution failed."
+          }`,
+        );
+      }
+
+      const hash = response.transaction_hash;
 
       if (!/^0x[0-9a-f]{1,64}$/i.test(hash)) {
         throw new Error(
