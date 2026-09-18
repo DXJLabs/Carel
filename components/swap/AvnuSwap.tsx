@@ -18,6 +18,10 @@ type SwapMode = "normal" | "shield" | "unshield";
 const STRK_DECIMALS = 18;
 const USDC_DECIMALS = 6;
 
+// AVNU priceImpact is expressed in basis-point style:
+// 500 => 5.00%.
+const MAX_PRICE_IMPACT_BPS = 500;
+
 function sameAddress(a: string, b: string) {
   try {
     return BigInt(a) === BigInt(b);
@@ -77,6 +81,14 @@ export function AvnuSwap({
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [unshieldStage, setUnshieldStage] = useState<{
+    hash: string;
+    privateBuyBefore: bigint;
+    minExpected: bigint;
+    maturityTarget: number;
+    sellAmount: string;
+  } | null>(null);
 
   const network = getCarelNetwork(wallet.chainId);
   const ready =
@@ -96,6 +108,7 @@ export function AvnuSwap({
   useEffect(() => {
     setQuote(null);
     setError("");
+    setSuccess("");
   }, [mode, wallet.address]);
 
   async function loadQuote() {
@@ -168,6 +181,15 @@ export function AvnuSwap({
         );
       }
 
+      if (
+        !Number.isFinite(next.priceImpact) ||
+        next.priceImpact > MAX_PRICE_IMPACT_BPS
+      ) {
+        throw new Error(
+          "CAREL blocked this route because its price impact exceeds 5%.",
+        );
+      }
+
       setQuote(next);
     } catch (cause) {
       setError(
@@ -202,9 +224,23 @@ export function AvnuSwap({
           `Shield Swap ${amount} STRK → private USDC`,
         );
       } else if (mode === "unshield") {
-        throw new Error(
-          "Unshield Swap execution is not connected yet.",
-        );
+        const minExpected =
+          quote.buyAmount -
+          (quote.buyAmount * 50n) / 10_000n;
+
+        const stage =
+          await wallet.executeUnshieldSwapStart(
+            quote,
+            STRK_TOKEN,
+            network.usdcToken,
+            `Unshield Swap · private STRK → private USDC`,
+          );
+
+        setUnshieldStage({
+          ...stage,
+          minExpected,
+          sellAmount: amount,
+        });
       } else {
         await wallet.executeSwap(
           quote,
@@ -224,6 +260,123 @@ export function AvnuSwap({
     } finally {
       setExecuting(false);
     }
+  }
+
+  async function completeUnshield() {
+    if (
+      !unshieldStage ||
+      !network ||
+      executing
+    ) {
+      return;
+    }
+
+    setExecuting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result =
+        await wallet.completeUnshieldSwap(
+          network.usdcToken,
+          unshieldStage.privateBuyBefore,
+          unshieldStage.minExpected,
+          unshieldStage.maturityTarget,
+          `Unshield Swap ${unshieldStage.sellAmount} STRK → public USDC`,
+        );
+
+      setSuccess(
+        `Unshield complete: ${formatAmount(
+          result.amount,
+          USDC_DECIMALS,
+        )} USDC moved to your public wallet.`,
+      );
+
+      setUnshieldStage(null);
+      setQuote(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not complete Unshield Swap.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  if (
+    mode === "unshield" &&
+    unshieldStage
+  ) {
+    const matured =
+      wallet.currentBlock !== null &&
+      wallet.currentBlock >=
+        unshieldStage.maturityTarget;
+
+    return (
+      <section className={styles.panel}>
+        <h3>Unshield Swap</h3>
+
+        <div className={styles.route}>
+          <span>Private STRK</span>
+          <ArrowRight size={16}/>
+          <span>Public USDC</span>
+        </div>
+
+        <div className={styles.rule}>
+          <span>Step</span>
+          <strong>2 of 2</strong>
+        </div>
+
+        <div className={styles.rule}>
+          <span>Private swap</span>
+          <strong>Confirmed</strong>
+        </div>
+
+        <div className={styles.rule}>
+          <span>USDC maturity block</span>
+          <strong>
+            {unshieldStage.maturityTarget.toLocaleString()}
+          </strong>
+        </div>
+
+        <div className={styles.rule}>
+          <span>Current block</span>
+          <strong>
+            {wallet.currentBlock?.toLocaleString() ?? "Checking…"}
+          </strong>
+        </div>
+
+        <p className={styles.helper}>
+          AVNU has swapped the private STRK into private USDC.
+          STRK20 requires the new note to mature before it can
+          be withdrawn to your public wallet.
+        </p>
+
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={!matured || executing || wallet.busy}
+          onClick={() => void completeUnshield()}
+        >
+          {executing
+            ? <LoaderCircle size={16}/>
+            : <ArrowRight size={16}/>}
+          {executing
+            ? "Waiting for Ready…"
+            : matured
+              ? "Complete Unshield"
+              : "Waiting for maturity"}
+        </button>
+
+        {error && (
+          <p className={styles.notice} role="alert">
+            {error}
+          </p>
+        )}
+      </section>
+    );
   }
 
   return (
@@ -364,7 +517,7 @@ export function AvnuSwap({
               ? "Slippage limit: 0.5%. Final approval happens in Ready."
               : mode === "shield"
                 ? "Slippage limit: 0.5%. Ready will generate a STRK20 privacy proof; this can take longer than a normal swap."
-                : "Slippage limit: 0.5%. Unshield execution will use the private balance."}
+                : "Step 1 swaps private STRK into private USDC. After the new note matures, CAREL will ask Ready for a second approval to withdraw that USDC publicly."}
           </p>
 
           <button
@@ -392,6 +545,12 @@ export function AvnuSwap({
       {error && (
         <p className={styles.notice} role="alert">
           {error}
+        </p>
+      )}
+
+      {success && (
+        <p className={styles.notice} role="status">
+          {success}
         </p>
       )}
     </section>

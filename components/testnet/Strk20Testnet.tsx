@@ -100,6 +100,26 @@ type CarelTestnetContextValue = {
     expectedBuyToken: string,
     label: string,
   ) => Promise<string>;
+  executeUnshieldSwapStart: (
+    quote: Quote,
+    expectedSellToken: string,
+    expectedBuyToken: string,
+    label: string,
+  ) => Promise<{
+    hash: string;
+    privateBuyBefore: bigint;
+    maturityTarget: number;
+  }>;
+  completeUnshieldSwap: (
+    token: string,
+    privateBuyBefore: bigint,
+    minExpected: bigint,
+    maturityTarget: number,
+    label: string,
+  ) => Promise<{
+    hash: string;
+    amount: bigint;
+  }>;
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
 };
 
@@ -163,7 +183,10 @@ async function readPublicStrk(
   return low + (high << 128n);
 }
 
-function readPrivateStrkFromResponse(raw: unknown): bigint {
+function readPrivateTokenFromResponse(
+  raw: unknown,
+  expectedToken: string,
+): bigint {
   const payload =
     raw && typeof raw === "object" && "value" in raw
       ? (raw as { value: unknown }).value
@@ -178,7 +201,7 @@ function readPrivateStrkFromResponse(raw: unknown): bigint {
     const token = row.token ?? row.token_address ?? row[0];
     const amount = row.amount ?? row.balance ?? row[1];
 
-    if (sameFelt(token, STRK_TOKEN)) {
+    if (sameFelt(token, expectedToken)) {
       try {
         return BigInt(String(amount ?? "0"));
       } catch {
@@ -188,6 +211,10 @@ function readPrivateStrkFromResponse(raw: unknown): bigint {
   }
 
   return 0n;
+}
+
+function readPrivateStrkFromResponse(raw: unknown): bigint {
+  return readPrivateTokenFromResponse(raw, STRK_TOKEN);
 }
 
 async function waitForSubmittedTransaction(
@@ -518,6 +545,28 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     trackMaturity: boolean,
   ) => {
     const { account, network } = assertPrivateReady();
+
+    // Security boundary: wallet/network may have changed after React
+    // rendered but before Ready receives the privacy request.
+    const selected =
+      account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+    const [walletChain, accounts] = await Promise.all([
+      walletV6.requestChainId(selected),
+      account.requestAccounts(true),
+    ]);
+
+    if (
+      currentAccount.current !== account ||
+      String(walletChain) !== network.chainId ||
+      !accounts[0] ||
+      felt(accounts[0]) !== felt(account.address)
+    ) {
+      throw new Error(
+        "Wallet account or network changed. Reconnect Ready before continuing.",
+      );
+    }
+
     const response =
       await account.strk20InvokeTransaction(actions);
     const hash = response.transaction_hash;
@@ -558,7 +607,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         [
           {
             type: "deposit",
-            token: STRK_TOKEN,
+            token: felt(STRK_TOKEN),
             amount: num.toHex(units),
           },
         ],
@@ -584,9 +633,9 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         [
           {
             type: "withdraw",
-            token: STRK_TOKEN,
+            token: felt(STRK_TOKEN),
             amount: num.toHex(units),
-            recipient: address,
+            recipient: felt(address),
           },
         ],
         false,
@@ -980,6 +1029,303 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const executeUnshieldSwapStart = async (
+    quote: Quote,
+    expectedSellToken: string,
+    expectedBuyToken: string,
+    label: string,
+  ): Promise<{
+    hash: string;
+    privateBuyBefore: bigint;
+    maturityTarget: number;
+  }> => {
+    if (swapSubmitting.current || busy || !walletAccount) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const { account, network } = assertPrivateReady();
+
+    if (quote.chainId !== network.chainId) {
+      throw new Error(
+        `The AVNU quote is not for ${network.label}.`,
+      );
+    }
+
+    if (
+      felt(quote.sellTokenAddress) !== felt(expectedSellToken) ||
+      felt(quote.buyTokenAddress) !== felt(expectedBuyToken)
+    ) {
+      throw new Error(
+        "The AVNU quote does not match the reviewed Unshield Swap pair.",
+      );
+    }
+
+    const sellToken = felt(expectedSellToken);
+    const buyToken = felt(expectedBuyToken);
+    const ownerAddress = felt(account.address);
+
+    const assertSession = async () => {
+      const selected =
+        account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+      const [walletChain, accounts] = await Promise.all([
+        walletV6.requestChainId(selected),
+        account.requestAccounts(true),
+      ]);
+
+      if (
+        currentAccount.current !== account ||
+        String(walletChain) !== network.chainId ||
+        !accounts[0] ||
+        felt(accounts[0]) !== felt(account.address)
+      ) {
+        throw new Error(
+          "Wallet account or network changed. Reconnect Ready before continuing.",
+        );
+      }
+    };
+
+    swapSubmitting.current = true;
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      // Snapshot private USDC before the swap so CAREL can later
+      // withdraw exactly the newly received private output.
+      const beforeResult =
+        await account.strk20Balances([buyToken]);
+
+      const privateBuyBefore =
+        readPrivateTokenFromResponse(
+          beforeResult,
+          buyToken,
+        );
+
+      const built = await quoteToCalls(
+        {
+          quoteId: quote.quoteId,
+          slippage: 0.005,
+          private: true,
+        },
+        {
+          baseUrl: network.avnuBaseUrl,
+        },
+      );
+
+      if (
+        built.chainId !== network.chainId ||
+        !built.executorAddress ||
+        !built.calls.length
+      ) {
+        throw new Error(
+          "AVNU returned an invalid private swap route.",
+        );
+      }
+
+      const executorAddress =
+        felt(built.executorAddress);
+
+      const serializedCalls =
+        transaction
+          .fromCallsToExecuteCalldata_cairo1(
+            built.calls,
+          )
+          .map((value) => num.toHex(value));
+
+      const actions: WALLET_API.STRK20_ACTION[] = [
+        {
+          type: "withdraw",
+          token: sellToken,
+          amount: num.toHex(quote.sellAmount),
+          recipient: executorAddress,
+        },
+        {
+          type: "transfer",
+          token: buyToken,
+          amount: "OPEN",
+          recipient: ownerAddress,
+        },
+        {
+          type: "invoke",
+          contract: executorAddress,
+          calldata: [
+            buyToken,
+            ...serializedCalls,
+            "${openNoteIds[0]}",
+          ],
+        },
+      ];
+
+      await assertSession();
+
+      const response =
+        await account.strk20InvokeTransaction(actions);
+
+      const hash = response.transaction_hash;
+
+      if (!/^0x[0-9a-f]{1,64}$/i.test(hash)) {
+        throw new Error(
+          "Ready did not return a valid private swap transaction hash.",
+        );
+      }
+
+      setTx({
+        kind: "pending",
+        label,
+        hash,
+      });
+
+      await waitForSubmittedTransaction(
+        hash,
+        network.provider,
+      );
+
+      setTx({
+        kind: "confirmed",
+        label,
+        hash,
+      });
+
+      const block = Number(
+        await network.provider.getBlockNumber(),
+      );
+
+      const target = block + 10;
+
+      setCurrentBlock(block);
+      setMaturityTarget(target);
+
+      return {
+        hash,
+        privateBuyBefore,
+        maturityTarget: target,
+      };
+    } finally {
+      swapSubmitting.current = false;
+      setBusy(false);
+    }
+  };
+
+  const completeUnshieldSwap = async (
+    token: string,
+    privateBuyBefore: bigint,
+    minExpected: bigint,
+    targetBlock: number,
+    label: string,
+  ): Promise<{
+    hash: string;
+    amount: bigint;
+  }> => {
+    if (swapSubmitting.current || busy || !walletAccount) {
+      throw new Error(
+        "Finish the current wallet request first.",
+      );
+    }
+
+    const { account, network } = assertPrivateReady();
+    const normalizedToken = felt(token);
+    const ownerAddress = felt(account.address);
+
+    swapSubmitting.current = true;
+    setBusy(true);
+    setError(null);
+
+    try {
+      const current = Number(
+        await network.provider.getBlockNumber(),
+      );
+
+      if (current < targetBlock) {
+        throw new Error(
+          `Private USDC is still maturing. Wait until block ${targetBlock.toLocaleString()}.`,
+        );
+      }
+
+      const balanceResult =
+        await account.strk20Balances([
+          normalizedToken,
+        ]);
+
+      const privateBuyAfter =
+        readPrivateTokenFromResponse(
+          balanceResult,
+          normalizedToken,
+        );
+
+      const received =
+        privateBuyAfter - privateBuyBefore;
+
+      if (received <= 0n) {
+        throw new Error(
+          "No new private USDC output was found.",
+        );
+      }
+
+      if (received < minExpected) {
+        throw new Error(
+          "Private USDC output is below the reviewed minimum. Do not withdraw automatically.",
+        );
+      }
+
+      const response =
+        await account.strk20InvokeTransaction([
+          {
+            type: "withdraw",
+            token: normalizedToken,
+            amount: num.toHex(received),
+            recipient: ownerAddress,
+          },
+        ]);
+
+      const hash = response.transaction_hash;
+
+      if (!/^0x[0-9a-f]{1,64}$/i.test(hash)) {
+        throw new Error(
+          "Ready did not return a valid Unshield transaction hash.",
+        );
+      }
+
+      setTx({
+        kind: "pending",
+        label,
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind: "confirmed",
+          label,
+          hash,
+        });
+      } catch {
+        setTx({
+          kind: "submitted",
+          label,
+          hash,
+        });
+      }
+
+      setMaturityTarget(null);
+
+      return {
+        hash,
+        amount: received,
+      };
+    } finally {
+      swapSubmitting.current = false;
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -1035,6 +1381,8 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       unshield,
       executeSwap,
       executeShieldSwap,
+      executeUnshieldSwapStart,
+      completeUnshieldSwap,
       executeBridge,
     }),
     [
