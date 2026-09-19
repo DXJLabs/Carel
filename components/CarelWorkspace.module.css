@@ -253,6 +253,70 @@
   width: 100%;
 }
 
+
+.closePositionPanel {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #4b2d24;
+}
+
+.closePositionTitle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.closePositionTitle > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #d06b47;
+}
+
+.closePositionTitle strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.closePositionTitle small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.closePositionPanel > .secondary {
+  width: 100%;
+}
+
+.closeActions {
+  display: grid;
+  grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.dangerButton {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #8a3b27;
+  border-radius: 8px;
+  background: #3a180f;
+  color: #f3ddd5;
+  padding: 10px 13px;
+  font-size: 12px !important;
+  font-weight: 550;
+}
+
+.dangerButton:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 .borrowPanel {
   padding: 18px;
   border: 1px solid var(--border);
@@ -402,6 +466,7 @@
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (hover: hover) {
   .primary:hover:not(:disabled) { background: #a02a00; }
+  .dangerButton:hover:not(:disabled) { background: #522014; border-color: #ad4b30; }
   .secondary:hover:not(:disabled), .tools button:hover { border-color: #705244; }
   .pointsBadge:hover, .pointsCard:hover, .walletButton:hover:not(:disabled) { border-color: #705244; }
   .textButton:hover, .nav button:hover { color: var(--text) !important; }
@@ -409,6 +474,10 @@
 @media (max-width: 420px) {
   .repayPanel {
     margin-left: 0;
+  }
+
+  .closeActions {
+    grid-template-columns: 1fr;
   }
 
   .positionEnd {

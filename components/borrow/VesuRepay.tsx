@@ -32,6 +32,8 @@ import type {
   VesuRepayExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
 
+import { VesuClosePosition } from "./VesuClosePosition";
+
 import styles from "../CarelWorkspace.module.css";
 
 type RepayPrepareResponse =
@@ -92,6 +94,7 @@ function responseObject(
 export function VesuRepay({
   poolId,
   poolName,
+  collateralAsset,
   debtAsset,
   debtAmount,
   hidden,
@@ -100,6 +103,7 @@ export function VesuRepay({
 }: {
   poolId: string;
   poolName: string;
+  collateralAsset: AssetRef;
   debtAsset: AssetRef;
   debtAmount: bigint;
   hidden: boolean;
@@ -491,6 +495,23 @@ export function VesuRepay({
           ? "Waiting for wallet…"
           : "Review & Repay"}
       </button>
+
+      <VesuClosePosition
+        poolId={poolId}
+        poolName={poolName}
+        collateralAsset={
+          collateralAsset
+        }
+        debtAsset={
+          debtAsset
+        }
+        hidden={
+          hidden
+        }
+        onComplete={
+          onComplete
+        }
+      />
 
       {error && (
         <div

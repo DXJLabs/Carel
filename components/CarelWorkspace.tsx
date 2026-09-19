@@ -67,6 +67,9 @@ function txName(label: string) {
         ? "Swap"
         : value.includes("borrow")
           ? "Borrow"
+          : value.includes("close vesu") ||
+            value.includes("close position")
+          ? "Close Position"
           : value.includes("repay")
             ? "Repay"
             : value.includes("stake")
@@ -864,6 +867,10 @@ export function CarelApp() {
                       poolName={
                         position.borrow
                           .poolName
+                      }
+                      collateralAsset={
+                        position.borrow
+                          .collateralAsset
                       }
                       debtAsset={
                         position.asset
