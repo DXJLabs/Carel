@@ -1,4 +1,8 @@
 import type {
+  RpcProvider,
+} from "starknet";
+
+import type {
   AssetRef,
 } from "@/lib/carel/core/assets";
 
@@ -16,6 +20,11 @@ import {
   loadStakingPosition,
 } from "@/lib/carel/ecosystems/starknet/protocols/endur/staking";
 
+import {
+  discoverVesuBorrowPositions,
+  vesuPositionFractionToBps,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/positions";
+
 export type StarknetPortfolioPositions =
   Readonly<{
     positions: readonly PortfolioPosition[];
@@ -28,15 +37,19 @@ export type StarknetPortfolioPositions =
  */
 export async function loadStarknetPortfolioPositions({
   owner,
+  provider,
   baseUrl,
   stakeAsset,
+  borrowAsset,
   liquidStakingAsset,
   balances,
   privateRevealed,
 }: {
   owner: string;
+  provider: RpcProvider;
   baseUrl: string;
   stakeAsset: AssetRef;
+  borrowAsset: AssetRef;
   liquidStakingAsset: AssetRef | null;
   balances: readonly AssetBalance[];
   privateRevealed: boolean;
@@ -156,6 +169,78 @@ export async function loadStarknetPortfolioPositions({
               : "Public liquid staking token",
       });
     }
+  }
+
+  try {
+    const borrowPositions =
+      await discoverVesuBorrowPositions({
+        provider,
+        owner,
+        collateralAsset:
+          stakeAsset,
+        debtAsset:
+          borrowAsset,
+      });
+
+    for (
+      const position
+      of borrowPositions
+    ) {
+      positions.push({
+        id:
+          `starknet:vesu-borrow:${position.pool.id}:${owner}`,
+
+        protocol:
+          "Vesu",
+
+        kind:
+          "borrow",
+
+        asset:
+          position.debtAsset,
+
+        amount:
+          position.debtAmount,
+
+        visibility:
+          "public",
+
+        label:
+          `Vesu Borrow · ${position.pool.name}`,
+
+        detail:
+          position.collateralized
+            ? "Public lending position"
+            : "Public lending position · collateral check failed",
+
+        borrow: {
+          collateralAsset:
+            position.collateralAsset,
+
+          collateralAmount:
+            position.collateralAmount,
+
+          currentLtvBps:
+            vesuPositionFractionToBps(
+              position.currentLtv,
+            ),
+
+          maxLtvBps:
+            vesuPositionFractionToBps(
+              position.maxLtv,
+            ),
+
+          collateralized:
+            position.collateralized,
+        },
+      });
+    }
+  } catch (cause) {
+    warnings.push(
+      cause instanceof Error
+        ? cause.message
+        : "Could not load Vesu Borrow positions.",
+    );
   }
 
   return {

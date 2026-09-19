@@ -33,6 +33,24 @@ export type PortfolioVisibility =
   | "private"
   | "mixed";
 
+export type PortfolioBorrowMetrics =
+  Readonly<{
+    collateralAsset:
+      AssetRef;
+
+    collateralAmount:
+      bigint;
+
+    currentLtvBps:
+      number;
+
+    maxLtvBps:
+      number;
+
+    collateralized:
+      boolean;
+  }>;
+
 export type PortfolioPosition =
   Readonly<{
     id: string;
@@ -43,6 +61,8 @@ export type PortfolioPosition =
     visibility: PortfolioVisibility;
     label: string;
     detail: string;
+    borrow?:
+      PortfolioBorrowMetrics;
   }>;
 
 /**

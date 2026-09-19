@@ -262,14 +262,25 @@ export function CarelApp() {
           await loadStarknetPortfolioPositions({
             owner:
               wallet.address,
+
+            provider:
+              activeNetwork.provider,
+
             baseUrl:
               activeNetwork.avnuBaseUrl,
+
             stakeAsset:
               activeNetwork.assets.strk,
+
+            borrowAsset:
+              activeNetwork.assets.usdc,
+
             liquidStakingAsset:
               activeNetwork.assets.xstrk,
+
             balances:
               wallet.balances,
+
             privateRevealed:
               wallet.privateRevealed,
           });
@@ -740,6 +751,39 @@ export function CarelApp() {
                     {" · "}
                     {position.detail}
                   </small>
+
+                  {position.borrow && (
+                    <small>
+                      Collateral{" "}
+                      {formatPortfolioAmount(
+                        position.borrow
+                          .collateralAmount,
+                        position.borrow
+                          .collateralAsset,
+                        hideAmounts,
+                      )}{" "}
+                      {
+                        position.borrow
+                          .collateralAsset
+                          .symbol
+                      }
+                      {" · "}
+                      LTV{" "}
+                      {(
+                        position.borrow
+                          .currentLtvBps /
+                        100
+                      ).toFixed(2)}
+                      %
+                      {" / max "}
+                      {(
+                        position.borrow
+                          .maxLtvBps /
+                        100
+                      ).toFixed(2)}
+                      %
+                    </small>
+                  )}
                 </div>
 
                 <strong
@@ -766,15 +810,14 @@ export function CarelApp() {
           </p>
         ) : (
           <EmptyState title="No visible positions">
-            Public staking and revealed private
-            liquid-staking positions will appear
-            here.
+            Staking, liquid-staking, and public
+            Borrow positions will appear here.
           </EmptyState>
         )}
 
         {portfolioPositionWarning && (
           <p className={styles.helper}>
-            Public staking position unavailable:
+            Some protocol positions unavailable:
             {" "}
             {portfolioPositionWarning}
           </p>
@@ -794,7 +837,7 @@ export function CarelApp() {
       <details className={styles.settingsGroup} ref={walletDetails}><summary><span><WalletCards size={18}/>Wallet & network</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Account</span><strong>{wallet.address ? shortAddress(wallet.address) : "Not connected"}</strong></div><div className={styles.rule}><span>Network</span><strong>{activeNetwork?.label ?? (wallet.connected ? "Unsupported Starknet network" : "Not connected")}</strong></div><div className={styles.rule}><span>STRK20</span><strong>{wallet.strk20Capable ? "Available" : "Unavailable"}</strong></div>{wallet.connected ? <button className={styles.secondary} disabled={busy} onClick={() => wallet.disconnect()}><LogOut size={15}/>Disconnect wallet</button> : connectButton}</div></details>
       <details className={styles.settingsGroup}><summary><span><EyeOff size={18}/>Privacy</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Hide portfolio amounts<input type="checkbox" checked={hideAmounts} onChange={event => setHideAmounts(event.target.checked)}/></label><p className={styles.helper}>Private balances are read only when you choose Reveal. Hiding amounts changes their display.</p><p className={styles.helper}>Shield deposits are public. Unshield makes the amount and destination public again.</p></div></details>
       <details className={styles.settingsGroup}><summary><span><Bot size={18}/>Agent permissions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Execution approval</span><strong>Always required</strong></div><div className={styles.rule}><span>Background execution</span><strong>Off</strong></div><p className={styles.helper}>Review the plan, then approve the transaction in your wallet.</p></div></details>
-      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Normal / Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Normal Swap uses AVNU public routing. Shield means public → private. Unshield means private → public. Garden Bridge currently uses the Normal public route. Staking is live on Mainnet. Borrow is not live yet.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
+      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Normal / Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Normal Swap uses AVNU public routing. Shield means public → private. Unshield means private → public. Garden Bridge currently uses the Normal public route. Staking is live on Mainnet. Public Borrow uses verified Vesu Mainnet markets.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
       <details className={styles.settingsGroup}><summary><span><Moon size={18}/>Appearance</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Reduce animation<input type="checkbox" checked={reduceMotion} onChange={event => setReduceMotion(event.target.checked)}/></label><p className={styles.helper}>Your device’s reduced motion preference is always respected.</p></div></details>
     </div>;
   }
