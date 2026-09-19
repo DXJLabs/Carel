@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:garden": "node --test tests/garden.test.cjs",
+    "test:vesu": "node --test tests/vesu.test.cjs",
+    "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@avnu/avnu-sdk": "^4.2.0",
