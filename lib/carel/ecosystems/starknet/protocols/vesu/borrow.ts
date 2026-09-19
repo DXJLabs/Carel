@@ -368,3 +368,177 @@ export function buildVesuBorrowCalls({
     },
   ];
 }
+
+
+export type VesuBorrowExecutionPayload =
+  Readonly<{
+    chainId: string;
+    poolId: string;
+    poolAddress: string;
+
+    owner: string;
+
+    collateralAssetId: string;
+    debtAssetId: string;
+
+    collateralAmount: string;
+    borrowAmount: string;
+
+    preparedAt: number;
+    expiresAt: number;
+
+    calls: readonly Call[];
+  }>;
+
+/**
+ * Normalizes one Starknet call's calldata and rejects missing calldata.
+ */
+function vesuCallData(
+  call: Call,
+): string[] {
+  if (
+    !Array.isArray(
+      call.calldata,
+    )
+  ) {
+    throw new Error(
+      "CAREL received malformed Vesu calldata.",
+    );
+  }
+
+  return call.calldata.map(
+    (value) =>
+      String(value),
+  );
+}
+
+/**
+ * Compares numeric Starknet calldata words without depending on hex padding.
+ */
+function sameVesuWord(
+  actual: string,
+  expected: string,
+): boolean {
+  try {
+    return (
+      BigInt(actual) ===
+      BigInt(expected)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifies server-prepared Vesu calls against CAREL's locally reconstructed
+ * Borrow transaction.
+ *
+ * The returned calls are the locally reconstructed calls, never the raw
+ * server response, so an API response cannot inject another contract call.
+ */
+export function validateVesuBorrowCalls({
+  calls,
+  market,
+  owner,
+  intent,
+}: {
+  calls: readonly Call[];
+  market: VesuBorrowMarket;
+  owner: string;
+  intent: BorrowIntent;
+}): Call[] {
+  if (calls.length !== 2) {
+    throw new Error(
+      "CAREL requires exactly two Vesu Borrow calls.",
+    );
+  }
+
+  const expected =
+    buildVesuBorrowCalls({
+      market,
+      owner,
+      intent,
+    });
+
+  for (
+    let callIndex = 0;
+    callIndex <
+    expected.length;
+    callIndex += 1
+  ) {
+    const actualCall =
+      calls[callIndex];
+
+    const expectedCall =
+      expected[callIndex];
+
+    if (
+      !sameStarknetAddress(
+        actualCall.contractAddress,
+        expectedCall.contractAddress,
+      ) ||
+      actualCall.entrypoint !==
+        expectedCall.entrypoint
+    ) {
+      throw new Error(
+        "CAREL blocked a mismatched Vesu Borrow call.",
+      );
+    }
+
+    const actualData =
+      vesuCallData(
+        actualCall,
+      );
+
+    const expectedData =
+      vesuCallData(
+        expectedCall,
+      );
+
+    if (
+      actualData.length !==
+      expectedData.length
+    ) {
+      throw new Error(
+        "CAREL blocked malformed Vesu Borrow calldata.",
+      );
+    }
+
+    const addressIndexes =
+      callIndex === 0
+        ? new Set([0])
+        : new Set([
+            0,
+            1,
+            2,
+          ]);
+
+    for (
+      let index = 0;
+      index <
+      expectedData.length;
+      index += 1
+    ) {
+      const matches =
+        addressIndexes.has(
+          index,
+        )
+          ? sameStarknetAddress(
+              actualData[index],
+              expectedData[index],
+            )
+          : sameVesuWord(
+              actualData[index],
+              expectedData[index],
+            );
+
+      if (!matches) {
+        throw new Error(
+          "CAREL blocked altered Vesu Borrow calldata.",
+        );
+      }
+    }
+  }
+
+  return expected;
+}

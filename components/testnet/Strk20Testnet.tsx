@@ -77,6 +77,20 @@ import {
   readStrk20TokenAmount,
 } from "@/lib/carel/ecosystems/starknet/balances";
 
+import type {
+  BorrowIntent,
+} from "@/lib/carel/core/execution";
+
+import {
+  validateVesuBorrowCalls,
+  type VesuBorrowExecutionPayload,
+  type VesuBorrowMarket,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
+
+import {
+  getVesuPool,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
+
 type StakingAction =
   | "stake"
   | "initiateUnstake"
@@ -165,6 +179,10 @@ type CarelTestnetContextValue = {
     label: string,
   ) => Promise<string>;
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
+  executeBorrow: (
+    payload: VesuBorrowExecutionPayload,
+    label: string,
+  ) => Promise<string>;
 };
 
 const CarelTestnetContext = createContext<CarelTestnetContextValue | null>(null);
@@ -555,6 +573,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const bridgeSubmitting = useRef(false);
   const swapSubmitting = useRef(false);
   const stakingSubmitting = useRef(false);
+  const borrowSubmitting = useRef(false);
   const currentAccount = useRef(walletAccount);
   currentAccount.current = walletAccount;
 
@@ -2432,6 +2451,312 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Executes a server-prepared public Vesu Borrow only after rebuilding
+   * and validating the complete transaction locally.
+   */
+  const executeBorrow = async (
+    payload: VesuBorrowExecutionPayload,
+    label: string,
+  ): Promise<string> => {
+    if (
+      borrowSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account =
+      walletAccount;
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !== "mainnet"
+    ) {
+      throw new Error(
+        "CAREL Borrow is currently enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+      network.chainId
+    ) {
+      throw new Error(
+        "Prepared Borrow belongs to another Starknet network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Borrow review expired. Refresh the market and review it again.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(pool.address) !==
+        felt(payload.poolAddress)
+    ) {
+      throw new Error(
+        "Prepared Borrow references an unapproved Vesu pool.",
+      );
+    }
+
+    const owner =
+      felt(
+        account.address,
+      );
+
+    if (
+      felt(payload.owner) !==
+      owner
+    ) {
+      throw new Error(
+        "Prepared Borrow belongs to another account.",
+      );
+    }
+
+    if (
+      payload.collateralAssetId !==
+        network.assets.strk.id ||
+      payload.debtAssetId !==
+        network.assets.usdc.id
+    ) {
+      throw new Error(
+        "Prepared Borrow does not match CAREL's reviewed STRK/USDC pair.",
+      );
+    }
+
+    let collateralAmount:
+      bigint;
+
+    let borrowAmount:
+      bigint;
+
+    try {
+      collateralAmount =
+        BigInt(
+          payload.collateralAmount,
+        );
+
+      borrowAmount =
+        BigInt(
+          payload.borrowAmount,
+        );
+    } catch {
+      throw new Error(
+        "Prepared Borrow contains invalid amounts.",
+      );
+    }
+
+    if (
+      collateralAmount <= 0n ||
+      borrowAmount <= 0n
+    ) {
+      throw new Error(
+        "Prepared Borrow amounts must be greater than zero.",
+      );
+    }
+
+    const market:
+      VesuBorrowMarket = {
+        id:
+          `vesu:${pool.id}:STRK:USDC`,
+        chainId:
+          network.chainId,
+        poolAddress:
+          pool.address,
+        collateralAsset:
+          network.assets.strk,
+        debtAsset:
+          network.assets.usdc,
+      };
+
+    const intent:
+      BorrowIntent = {
+        action:
+          "borrow",
+        collateralAssetId:
+          network.assets.strk.id,
+        borrowAssetId:
+          network.assets.usdc.id,
+        collateralAmount,
+        borrowAmount,
+        privacy:
+          "public",
+      };
+
+    const safeCalls =
+      validateVesuBorrowCalls({
+        calls:
+          payload.calls,
+        market,
+        owner,
+        intent,
+      });
+
+    const knownCollateral =
+      findAssetBalance(
+        balances,
+        network.assets.strk.id,
+        "public",
+      )?.amount;
+
+    if (
+      knownCollateral !==
+        null &&
+      knownCollateral !==
+        undefined &&
+      knownCollateral <
+        collateralAmount
+    ) {
+      throw new Error(
+        "Insufficient public STRK balance for this Borrow collateral.",
+      );
+    }
+
+    /**
+     * Re-checks account and chain immediately before signing.
+     */
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    borrowSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Borrow review expired before signing. Refresh and review again.",
+        );
+      }
+
+      await assertSession();
+
+      const response =
+        await account.execute(
+          safeCalls,
+        );
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Borrow transaction hash.",
+        );
+      }
+
+      setTx({
+        kind:
+          "pending",
+        label,
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind:
+            "confirmed",
+          label,
+          hash,
+        });
+      } catch {
+        setTx({
+          kind:
+            "submitted",
+          label,
+          hash,
+        });
+      }
+
+      try {
+        await refreshPublicBalance();
+      } catch {
+        // Public balances remain refreshable from Portfolio.
+      }
+
+      return hash;
+    } finally {
+      borrowSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -2496,6 +2821,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeStakingAction,
       executeShieldStaking,
       executeBridge,
+      executeBorrow,
     }),
     [
       wallets,
