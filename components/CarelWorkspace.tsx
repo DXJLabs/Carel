@@ -116,8 +116,22 @@ export function CarelApp() {
   const privacyReady =
     wallet.connected &&
     activeNetwork?.privacyEnabled === true;
-  const privateBalance = wallet.privateRevealed ? wallet.privateStrk : null;
-  const total = wallet.publicStrk !== null && privateBalance !== null ? wallet.publicStrk + privateBalance : null;
+  const privateBalance =
+    wallet.privateRevealed
+      ? wallet.privateStrk
+      : null;
+
+  const privateXstrk =
+    wallet.privateRevealed
+      ? wallet.privateXstrk
+      : null;
+
+  const total =
+    wallet.publicStrk !== null &&
+    privateBalance !== null
+      ? wallet.publicStrk +
+        privateBalance
+      : null;
   const visibleBalance = total ?? wallet.publicStrk;
   const busy = wallet.busy || executing || wallet.connecting;
   const ready = privacyReady;
@@ -334,7 +348,12 @@ export function CarelApp() {
     </button>;
   }
   const connectButton = <button type="button" className={styles.secondary} disabled={wallet.connecting} onClick={() => void run(() => wallet.connect())}><WalletCards size={16}/>{wallet.connecting ? "Connecting…" : "Connect wallet"}</button>;
-  const balanceHelp = !wallet.connected ? "Connect your wallet to see your capital." : total !== null ? "Public + revealed private STRK" : "Private balance excluded until you reveal it.";
+  const balanceHelp =
+    !wallet.connected
+      ? "Connect your wallet to see your capital."
+      : total !== null
+        ? "Public + revealed private STRK · xSTRK is listed separately in Holdings."
+        : "Private assets are excluded until you reveal them.";
 
   function renderHome() {
     return <div className={styles.homeGrid}>
@@ -467,9 +486,83 @@ export function CarelApp() {
       {quickAction && <div className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
       </section>
-      <section><SectionHeading title="Holdings"/><div className={styles.holdingRow}><span className={styles.coin}>S</span><div className={styles.rowCopy}><strong>STRK</strong><small>{total === null ? "Visible public balance" : "Public + private balance"}</small></div><strong className={styles.holdingAmount}>{amount(visibleBalance, hideAmounts)}<small>STRK</small></strong></div></section>
+      <section>
+        <SectionHeading title="Holdings"/>
+
+        <div className={styles.holdingRow}>
+          <span className={styles.coin}>S</span>
+          <div className={styles.rowCopy}>
+            <strong>STRK</strong>
+            <small>
+              {total === null
+                ? "Visible public balance"
+                : "Public + private balance"}
+            </small>
+          </div>
+          <strong className={styles.holdingAmount}>
+            {amount(
+              visibleBalance,
+              hideAmounts,
+            )}
+            <small>STRK</small>
+          </strong>
+        </div>
+
+        {activeNetwork?.id === "mainnet" && (
+          <div className={styles.holdingRow}>
+            <span className={styles.coin}>x</span>
+            <div className={styles.rowCopy}>
+              <strong>Endur xSTRK</strong>
+              <small>
+                Shielded liquid staking token
+              </small>
+            </div>
+            <strong className={styles.holdingAmount}>
+              {amount(
+                privateXstrk,
+                hideAmounts ||
+                  !wallet.privateRevealed,
+              )}
+              <small>xSTRK</small>
+            </strong>
+          </div>
+        )}
+      </section>
+
       <GardenBalances hidden={hideAmounts}/>
-      <section><SectionHeading title="Positions"/><EmptyState title="No connected positions">Supported staking, lending, and borrowing positions will appear here when available.</EmptyState></section>
+
+      <section>
+        <SectionHeading title="Positions"/>
+
+        {activeNetwork?.id === "mainnet" &&
+        wallet.privateRevealed &&
+        privateXstrk !== null &&
+        privateXstrk > ZERO ? (
+          <div className={styles.holdingRow}>
+            <span className={styles.coin}>x</span>
+
+            <div className={styles.rowCopy}>
+              <strong>Endur Shield Staking</strong>
+              <small>
+                Private liquid staking position
+              </small>
+            </div>
+
+            <strong className={styles.holdingAmount}>
+              {amount(
+                privateXstrk,
+                hideAmounts,
+              )}
+              <small>xSTRK</small>
+            </strong>
+          </div>
+        ) : (
+          <EmptyState title="No visible positions">
+            Reveal private balances to load your
+            shielded Endur xSTRK position.
+          </EmptyState>
+        )}
+      </section>
     </div>;
   }
   function renderActivity() {

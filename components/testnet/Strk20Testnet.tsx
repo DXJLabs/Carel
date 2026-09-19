@@ -85,6 +85,7 @@ type CarelTestnetContextValue = {
   specs: string[];
   publicStrk: bigint | null;
   privateStrk: bigint | null;
+  privateXstrk: bigint | null;
   privateRevealed: boolean;
   busy: boolean;
   error: string | null;
@@ -577,6 +578,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const [specs, setSpecs] = useState<string[]>([]);
   const [publicStrk, setPublicStrk] = useState<bigint | null>(null);
   const [privateStrk, setPrivateStrk] = useState<bigint | null>(null);
+  const [privateXstrk, setPrivateXstrk] = useState<bigint | null>(null);
   const [privateRevealed, setPrivateRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -791,6 +793,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setChainId(nextChainId);
       setSpecs(nextSpecs);
       setPrivateStrk(null);
+      setPrivateXstrk(null);
       setPrivateRevealed(false);
       setTx({ kind: "idle" });
 
@@ -824,6 +827,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setSpecs([]);
     setPublicStrk(null);
     setPrivateStrk(null);
+    setPrivateXstrk(null);
     setPrivateRevealed(false);
     setTx({ kind: "idle" });
     setMaturityTarget(null);
@@ -861,12 +865,48 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const { account } = assertPrivateReady();
-      const result = await account.strk20Balances([STRK_TOKEN]);
-      setPrivateStrk(readPrivateStrkFromResponse(result));
+      const {
+        account,
+        network,
+      } = assertPrivateReady();
+
+      const tokens =
+        network.id === "mainnet"
+          ? [
+              STRK_TOKEN,
+              ENDUR_XSTRK_TOKEN,
+            ]
+          : [
+              STRK_TOKEN,
+            ];
+
+      const result =
+        await account.strk20Balances(
+          tokens,
+        );
+
+      setPrivateStrk(
+        readPrivateStrkFromResponse(
+          result,
+        ),
+      );
+
+      setPrivateXstrk(
+        network.id === "mainnet"
+          ? readPrivateTokenFromResponse(
+              result,
+              ENDUR_XSTRK_TOKEN,
+            )
+          : null,
+      );
+
       setPrivateRevealed(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not read private balance.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not read private balances.",
+      );
     } finally {
       setBusy(false);
     }
@@ -1553,6 +1593,12 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setCurrentBlock(block);
       setMaturityTarget(target);
 
+      // The private xSTRK and STRK observations
+      // are stale after the private swap.
+      setPrivateStrk(null);
+      setPrivateXstrk(null);
+      setPrivateRevealed(false);
+
       return {
         hash,
         privateBuyBefore,
@@ -1618,7 +1664,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
 
       if (current < targetBlock) {
         throw new Error(
-          `Private USDC is still maturing. Wait until block ${targetBlock.toLocaleString()}.`,
+          `Private output is still maturing. Wait until block ${targetBlock.toLocaleString()}.`,
         );
       }
 
@@ -1638,17 +1684,17 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
 
       if (received <= 0n) {
         throw new Error(
-          "No new private USDC output was found.",
+          "No new private output was found.",
         );
       }
 
       if (received < minExpected) {
         throw new Error(
-          "Private USDC output is below the reviewed minimum. Do not withdraw automatically.",
+          "Private output is below the reviewed minimum. Do not withdraw automatically.",
         );
       }
 
-      // Do not expose unrelated private USDC that may have arrived
+      // Do not expose unrelated private output that may have arrived
       // during the maturity window. Only the reviewed minimum amount
       // is moved back to the public wallet.
       const withdrawAmount = minExpected;
@@ -1699,6 +1745,9 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       }
 
       setMaturityTarget(null);
+      setPrivateStrk(null);
+      setPrivateXstrk(null);
+      setPrivateRevealed(false);
 
       return {
         hash,
@@ -2301,6 +2350,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       // The old private STRK observation is
       // stale after this operation.
       setPrivateStrk(null);
+      setPrivateXstrk(null);
       setPrivateRevealed(false);
 
       return hash;
@@ -2353,6 +2403,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       specs,
       publicStrk,
       privateStrk,
+      privateXstrk,
       privateRevealed,
       busy,
       error,
@@ -2385,6 +2436,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       specs,
       publicStrk,
       privateStrk,
+      privateXstrk,
       privateRevealed,
       busy,
       error,

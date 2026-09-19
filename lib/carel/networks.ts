@@ -35,6 +35,9 @@ export const ENDUR_DEPOSIT_ANONYMIZER =
 export const ENDUR_PRIVACY_POOL =
   "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
 
+export const ENDUR_AVNU_FEE_RECIPIENT =
+  "0x0066c76374a9adb11d4d283ac400331ec6a691c61029168bd70cea5d97dfc971";
+
 export const CAREL_NETWORKS = {
   sepolia: {
     id: "sepolia",

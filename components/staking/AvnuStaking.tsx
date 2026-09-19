@@ -9,6 +9,10 @@ import {
   LoaderCircle,
   RefreshCw,
 } from "lucide-react";
+import {
+  getQuotes,
+  type Quote,
+} from "@avnu/avnu-sdk";
 type StakingPool = {
   poolAddress: string;
   tokenAddress: string;
@@ -26,6 +30,7 @@ import {
   useCarelTestnet,
 } from "@/components/testnet/Strk20Testnet";
 import {
+  ENDUR_AVNU_FEE_RECIPIENT,
   ENDUR_DEPOSIT_ANONYMIZER,
   ENDUR_XSTRK_TOKEN,
   getCarelNetwork,
@@ -314,6 +319,23 @@ export function AvnuStaking({
     useState(false);
   const [executing, setExecuting] =
     useState(false);
+  const [
+    unshieldQuoteLoading,
+    setUnshieldQuoteLoading,
+  ] = useState(false);
+  const [
+    unshieldQuote,
+    setUnshieldQuote,
+  ] = useState<Quote | null>(null);
+  const [
+    unshieldStage,
+    setUnshieldStage,
+  ] = useState<{
+    privateBuyBefore: bigint;
+    minExpected: bigint;
+    maturityTarget: number;
+    sellAmount: string;
+  } | null>(null);
   const [error, setError] =
     useState("");
   const [success, setSuccess] =
@@ -513,6 +535,255 @@ export function AvnuStaking({
     wallet.chainId,
   ]);
 
+  useEffect(() => {
+    setUnshieldQuote(null);
+    setUnshieldStage(null);
+    setSuccess("");
+    setError("");
+  }, [
+    mode,
+    wallet.address,
+    wallet.chainId,
+  ]);
+
+  async function loadUnshieldQuote() {
+    if (
+      unshieldQuoteLoading ||
+      executing
+    ) {
+      return;
+    }
+
+    setUnshieldQuoteLoading(true);
+    setUnshieldQuote(null);
+    setError("");
+    setSuccess("");
+
+    try {
+      if (
+        !wallet.connected ||
+        !wallet.address ||
+        !network ||
+        network.id !== "mainnet"
+      ) {
+        throw new Error(
+          "Connect Ready on Starknet Mainnet first.",
+        );
+      }
+
+      if (
+        !wallet.strk20Capable ||
+        !network.privacyEnabled
+      ) {
+        throw new Error(
+          "Ready STRK20 privacy support is required for Unshield Staking.",
+        );
+      }
+
+      const sellAmount =
+        parseUnits18(amount);
+
+      if (sellAmount <= 0n) {
+        throw new Error(
+          "Enter a positive xSTRK amount.",
+        );
+      }
+
+      const quotes =
+        await getQuotes(
+          {
+            sellTokenAddress:
+              ENDUR_XSTRK_TOKEN,
+            buyTokenAddress:
+              STRK_TOKEN,
+            sellAmount,
+            takerAddress:
+              wallet.address,
+            size: 1,
+            integratorFees: 3n,
+            integratorFeeRecipient:
+              ENDUR_AVNU_FEE_RECIPIENT,
+            integratorName:
+              "Endur",
+          },
+          {
+            baseUrl:
+              network.avnuBaseUrl,
+          },
+        );
+
+      const quote =
+        quotes[0];
+
+      if (!quote) {
+        throw new Error(
+          "No live AVNU xSTRK → STRK route is available for this amount. Try a larger amount.",
+        );
+      }
+
+      if (
+        quote.chainId !==
+        network.chainId
+      ) {
+        throw new Error(
+          "AVNU returned an Unshield route for the wrong network.",
+        );
+      }
+
+      if (
+        !sameAddress(
+          quote.sellTokenAddress,
+          ENDUR_XSTRK_TOKEN,
+        ) ||
+        !sameAddress(
+          quote.buyTokenAddress,
+          STRK_TOKEN,
+        )
+      ) {
+        throw new Error(
+          "AVNU returned a different token pair.",
+        );
+      }
+
+      if (
+        quote.sellAmount !==
+          sellAmount ||
+        quote.buyAmount <= 0n
+      ) {
+        throw new Error(
+          "AVNU returned an unexpected Unshield amount.",
+        );
+      }
+
+      if (
+        !Number.isFinite(
+          quote.priceImpact,
+        ) ||
+        Math.abs(
+          quote.priceImpact,
+        ) > 500
+      ) {
+        throw new Error(
+          "CAREL blocked this route because its price impact exceeds 5%.",
+        );
+      }
+
+      setUnshieldQuote(
+        quote,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not load the xSTRK → STRK route.",
+      );
+    } finally {
+      setUnshieldQuoteLoading(
+        false,
+      );
+    }
+  }
+
+  async function executeUnshieldStart() {
+    if (
+      !unshieldQuote ||
+      executing ||
+      wallet.busy
+    ) {
+      return;
+    }
+
+    setExecuting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const minExpected =
+        unshieldQuote.buyAmount -
+        (
+          unshieldQuote.buyAmount *
+          50n
+        ) /
+          10_000n;
+
+      const stage =
+        await wallet
+          .executeUnshieldSwapStart(
+            unshieldQuote,
+            ENDUR_XSTRK_TOKEN,
+            STRK_TOKEN,
+            `Unshield Staking · private ${amount} xSTRK → private STRK`,
+          );
+
+      setUnshieldStage({
+        privateBuyBefore:
+          stage.privateBuyBefore,
+        minExpected,
+        maturityTarget:
+          stage.maturityTarget,
+        sellAmount:
+          amount,
+      });
+
+      setUnshieldQuote(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Private xSTRK swap failed.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  async function completeUnshieldStaking() {
+    if (
+      !unshieldStage ||
+      executing ||
+      wallet.busy
+    ) {
+      return;
+    }
+
+    setExecuting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result =
+        await wallet
+          .completeUnshieldSwap(
+            STRK_TOKEN,
+            unshieldStage
+              .privateBuyBefore,
+            unshieldStage
+              .minExpected,
+            unshieldStage
+              .maturityTarget,
+            `Unshield Staking ${unshieldStage.sellAmount} xSTRK → public STRK`,
+          );
+
+      setSuccess(
+        `Unshield complete: ${formatUnits18(
+          result.amount,
+          6,
+        )} STRK moved to your public wallet.`,
+      );
+
+      setUnshieldStage(null);
+      setUnshieldQuote(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not complete Unshield Staking.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   async function executeShield() {
     if (
       shieldFee === null ||
@@ -525,19 +796,15 @@ export function AvnuStaking({
     setError("");
     setSuccess("");
 
+    let stakeAmount: bigint;
+
     try {
-      const parsed =
+      stakeAmount =
         parseUnits18(amount);
 
-      if (
-        parsed <=
-        shieldFee
-      ) {
+      if (stakeAmount <= 0n) {
         throw new Error(
-          `Amount must be greater than the current privacy fee (${formatUnits18(
-            shieldFee,
-            4,
-          )} STRK).`,
+          "Stake amount must be greater than zero.",
         );
       }
     } catch (cause) {
@@ -550,13 +817,19 @@ export function AvnuStaking({
       return;
     }
 
+    const totalRequired =
+      stakeAmount + shieldFee;
+
     setExecuting(true);
 
     try {
       const hash =
         await wallet
           .executeShieldStaking(
-            amount,
+            formatUnits18(
+              totalRequired,
+              18,
+            ),
             shieldFee.toString(),
             `Shield Stake ${amount} STRK`,
           );
@@ -782,18 +1055,54 @@ export function AvnuStaking({
           </strong>
         </div>
 
+        {shieldFee !== null && (() => {
+          try {
+            const stake =
+              parseUnits18(amount || "0");
+
+            const total =
+              stake + shieldFee;
+
+            return (
+              <>
+                <div className={styles.rule}>
+                  <span>Amount staked</span>
+                  <strong>
+                    {formatUnits18(
+                      stake,
+                      6,
+                    )} STRK
+                  </strong>
+                </div>
+
+                <div className={styles.rule}>
+                  <span>Total required</span>
+                  <strong>
+                    {formatUnits18(
+                      total,
+                      6,
+                    )} STRK
+                  </strong>
+                </div>
+              </>
+            );
+          } catch {
+            return null;
+          }
+        })()}
+
         <p className={styles.privacyNote}>
-          CAREL shields the public STRK first,
-          privately funds Endur&apos;s deposit
-          anonymizer, then receives xSTRK as a
-          private STRK20 note.
+          CAREL adds the current privacy fee
+          on top of the amount you choose to stake,
+          then privately funds Endur and receives
+          xSTRK as a private STRK20 note.
         </p>
 
         <label
           className={styles.fieldLabel}
           htmlFor="carel-shield-stake-amount"
         >
-          Public STRK to Shield &amp; Stake
+          STRK amount to stake
         </label>
 
         <input
@@ -862,6 +1171,114 @@ export function AvnuStaking({
   }
 
   if (mode === "unshield") {
+    if (
+      wallet.connected &&
+      network?.id !== "mainnet"
+    ) {
+      return (
+        <section className={styles.panel}>
+          <h3>Unshield Staking</h3>
+
+          <p className={styles.notice}>
+            Unshield Staking is currently enabled
+            on Starknet Mainnet. Switch Ready to
+            Mainnet to continue.
+          </p>
+        </section>
+      );
+    }
+
+    if (unshieldStage) {
+      const matured =
+        wallet.currentBlock !== null &&
+        wallet.currentBlock >=
+          unshieldStage.maturityTarget;
+
+      return (
+        <section className={styles.panel}>
+          <h3>Unshield Staking</h3>
+
+          <div className={styles.route}>
+            <span>Private xSTRK</span>
+            <ArrowRight size={16}/>
+            <span>Public STRK</span>
+          </div>
+
+          <div className={styles.rule}>
+            <span>Step</span>
+            <strong>2 of 2</strong>
+          </div>
+
+          <div className={styles.rule}>
+            <span>Private swap</span>
+            <strong>Confirmed</strong>
+          </div>
+
+          <div className={styles.rule}>
+            <span>STRK maturity block</span>
+            <strong>
+              {unshieldStage
+                .maturityTarget
+                .toLocaleString()}
+            </strong>
+          </div>
+
+          <div className={styles.rule}>
+            <span>Current block</span>
+            <strong>
+              {wallet.currentBlock
+                ?.toLocaleString() ??
+                "Checking…"}
+            </strong>
+          </div>
+
+          <p className={styles.helper}>
+            AVNU converted the private xSTRK into
+            private STRK. The new STRK20 note must
+            mature before CAREL can withdraw the
+            reviewed amount to your public wallet.
+          </p>
+
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={
+              !matured ||
+              executing ||
+              wallet.busy
+            }
+            onClick={() =>
+              void completeUnshieldStaking()
+            }
+          >
+            {executing
+              ? <LoaderCircle size={16}/>
+              : <ArrowRight size={16}/>}
+            {executing
+              ? "Waiting for Ready…"
+              : matured
+                ? "Complete Unshield"
+                : "Waiting for maturity"}
+          </button>
+
+          {error && (
+            <p
+              className={styles.notice}
+              role="alert"
+            >
+              {error}
+            </p>
+          )}
+
+          {success && (
+            <p className={styles.inlineStatus}>
+              {success}
+            </p>
+          )}
+        </section>
+      );
+    }
+
     return (
       <section className={styles.panel}>
         <h3>Unshield Staking</h3>
@@ -873,18 +1290,157 @@ export function AvnuStaking({
         </div>
 
         <p className={styles.helper}>
-          Unshield Staking is the next route.
-          Shield Staking is now handled separately
-          through Endur.
+          Endur xSTRK · AVNU private routing ·
+          STRK20 · wallet approval required
         </p>
+
+        <div className={styles.rule}>
+          <span>Sell token</span>
+          <strong>Private xSTRK</strong>
+        </div>
+
+        <div className={styles.rule}>
+          <span>Receive token</span>
+          <strong>Public STRK</strong>
+        </div>
+
+        <label
+          className={styles.fieldLabel}
+          htmlFor="carel-unshield-stake-amount"
+        >
+          Private xSTRK to unstake
+        </label>
+
+        <input
+          id="carel-unshield-stake-amount"
+          className={styles.amountInput}
+          inputMode="decimal"
+          value={amount}
+          disabled={
+            unshieldQuoteLoading ||
+            executing
+          }
+          onChange={(event) => {
+            setAmount(
+              event.target.value.replace(
+                /[^0-9.]/g,
+                "",
+              ),
+            );
+            setUnshieldQuote(null);
+            setSuccess("");
+            setError("");
+          }}
+        />
+
+        {!unshieldQuote ? (
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={
+              !wallet.connected ||
+              !wallet.strk20Capable ||
+              unshieldQuoteLoading ||
+              executing ||
+              wallet.busy
+            }
+            onClick={() =>
+              void loadUnshieldQuote()
+            }
+          >
+            {unshieldQuoteLoading
+              ? <LoaderCircle size={16}/>
+              : <ArrowRight size={16}/>}
+            {unshieldQuoteLoading
+              ? "Getting AVNU route…"
+              : "Get Unshield route"}
+          </button>
+        ) : (
+          <>
+            <div className={styles.rule}>
+              <span>You send</span>
+              <strong>
+                {formatUnits18(
+                  unshieldQuote.sellAmount,
+                  6,
+                )} xSTRK
+              </strong>
+            </div>
+
+            <div className={styles.rule}>
+              <span>Estimated STRK</span>
+              <strong>
+                {formatUnits18(
+                  unshieldQuote.buyAmount,
+                  6,
+                )} STRK
+              </strong>
+            </div>
+
+            <div className={styles.rule}>
+              <span>Price impact</span>
+              <strong>
+                {Number.isFinite(
+                  unshieldQuote.priceImpact,
+                )
+                  ? `${(
+                      unshieldQuote
+                        .priceImpact / 100
+                    ).toFixed(4)}%`
+                  : "—"}
+              </strong>
+            </div>
+
+            <p className={styles.privacyNote}>
+              Step 1 keeps the STRK output private.
+              After the new note matures, Step 2
+              withdraws only the reviewed minimum
+              amount to your public wallet.
+            </p>
+
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={
+                executing ||
+                wallet.busy
+              }
+              onClick={() =>
+                void executeUnshieldStart()
+              }
+            >
+              {executing
+                ? <LoaderCircle size={16}/>
+                : <ArrowRight size={16}/>}
+              {executing
+                ? "Waiting for Ready…"
+                : "Review Unshield Staking"}
+            </button>
+          </>
+        )}
 
         <button
           type="button"
-          className={styles.secondary}
+          className={styles.textButton}
           onClick={onPublicMode}
         >
           Use Normal mode
         </button>
+
+        {error && (
+          <p
+            className={styles.notice}
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
+
+        {success && (
+          <p className={styles.inlineStatus}>
+            {success}
+          </p>
+        )}
       </section>
     );
   }
