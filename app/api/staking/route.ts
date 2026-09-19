@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   BASE_URL,
+  claimRewardsToCalls,
+  initiateUnstakeToCalls,
   stakeToCalls,
+  unstakeToCalls,
 } from "@avnu/avnu-sdk";
 import { constants } from "starknet";
 import { STRK_TOKEN } from "@/lib/carel/networks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type StakingAction =
+  | "stake"
+  | "initiateUnstake"
+  | "completeUnstake"
+  | "claimRewards";
 
 const FELT_LIMIT =
   (1n << 251n) +
@@ -28,14 +37,11 @@ class StakingError extends Error {
   }
 }
 
-function reply(
-  data: unknown,
-  status = 200,
-) {
-  return NextResponse.json(
-    data,
-    { status, headers },
-  );
+function reply(data: unknown, status = 200) {
+  return NextResponse.json(data, {
+    status,
+    headers,
+  });
 }
 
 function failure(error: unknown) {
@@ -224,10 +230,7 @@ function rateLimit(
 ) {
   const now = Date.now();
 
-  for (
-    const [key, bucket]
-    of buckets
-  ) {
+  for (const [key, bucket] of buckets) {
     if (bucket.reset <= now) {
       buckets.delete(key);
     }
@@ -266,6 +269,55 @@ function rateLimit(
   buckets.set(ip, bucket);
 }
 
+function readAction(
+  value: unknown,
+): StakingAction {
+  if (
+    value === undefined ||
+    value === "stake"
+  ) {
+    return "stake";
+  }
+
+  if (
+    value === "initiateUnstake" ||
+    value === "completeUnstake" ||
+    value === "claimRewards"
+  ) {
+    return value;
+  }
+
+  throw new StakingError(
+    "Unsupported staking action.",
+  );
+}
+
+function readAmount(
+  value: unknown,
+) {
+  if (
+    typeof value !== "string" ||
+    !/^[1-9][0-9]*$/.test(value)
+  ) {
+    throw new StakingError(
+      "Invalid staking amount.",
+    );
+  }
+
+  const amount = BigInt(value);
+
+  if (
+    amount <= 0n ||
+    amount >= (1n << 128n)
+  ) {
+    throw new StakingError(
+      "Staking amount is outside the supported range.",
+    );
+  }
+
+  return amount;
+}
+
 export async function POST(
   request: NextRequest,
 ) {
@@ -276,9 +328,7 @@ export async function POST(
     if (
       !request.headers
         .get("content-type")
-        ?.startsWith(
-          "application/json",
-        )
+        ?.startsWith("application/json")
     ) {
       throw new StakingError(
         "Use a JSON staking request.",
@@ -309,10 +359,8 @@ export async function POST(
       );
     }
 
-    let body: Record<
-      string,
-      unknown
-    >;
+    let body:
+      Record<string, unknown>;
 
     try {
       const parsed =
@@ -333,6 +381,9 @@ export async function POST(
       );
     }
 
+    const action =
+      readAction(body.action);
+
     const owner =
       canonicalFelt(
         body.owner,
@@ -344,29 +395,6 @@ export async function POST(
         body.poolAddress,
         "staking pool",
       );
-
-    if (
-      typeof body.amount !== "string" ||
-      !/^[1-9][0-9]*$/.test(
-        body.amount,
-      )
-    ) {
-      throw new StakingError(
-        "Invalid staking amount.",
-      );
-    }
-
-    const amount =
-      BigInt(body.amount);
-
-    if (
-      amount <= 0n ||
-      amount >= (1n << 128n)
-    ) {
-      throw new StakingError(
-        "Staking amount is outside the supported range.",
-      );
-    }
 
     const official =
       await getOfficialStrkPool();
@@ -383,18 +411,87 @@ export async function POST(
       );
     }
 
-    const built =
-      await stakeToCalls(
-        {
-          poolAddress:
-            official.poolAddress,
-          userAddress: owner,
-          amount,
-        },
-        {
-          baseUrl: BASE_URL,
-        },
+    let built;
+
+    try {
+      switch (action) {
+        case "stake": {
+          const amount =
+            readAmount(body.amount);
+
+          built =
+            await stakeToCalls(
+              {
+                poolAddress:
+                  official.poolAddress,
+                userAddress: owner,
+                amount,
+              },
+              {
+                baseUrl: BASE_URL,
+              },
+            );
+          break;
+        }
+
+        case "initiateUnstake": {
+          const amount =
+            readAmount(body.amount);
+
+          built =
+            await initiateUnstakeToCalls(
+              {
+                poolAddress:
+                  official.poolAddress,
+                userAddress: owner,
+                amount,
+              },
+              {
+                baseUrl: BASE_URL,
+              },
+            );
+          break;
+        }
+
+        case "completeUnstake":
+          built =
+            await unstakeToCalls(
+              {
+                poolAddress:
+                  official.poolAddress,
+                userAddress: owner,
+              },
+              {
+                baseUrl: BASE_URL,
+              },
+            );
+          break;
+
+        case "claimRewards":
+          built =
+            await claimRewardsToCalls(
+              {
+                poolAddress:
+                  official.poolAddress,
+                userAddress: owner,
+                restake: false,
+              },
+              {
+                baseUrl: BASE_URL,
+              },
+            );
+          break;
+      }
+    } catch (cause) {
+      throw new StakingError(
+        `AVNU staking build failed: ${
+          cause instanceof Error
+            ? cause.message
+            : "Unknown AVNU error."
+        }`,
+        502,
       );
+    }
 
     if (
       built.chainId !==
@@ -417,6 +514,7 @@ export async function POST(
     }
 
     return reply({
+      action,
       chainId: built.chainId,
       poolAddress:
         official.poolAddress,

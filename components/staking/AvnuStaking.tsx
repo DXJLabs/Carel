@@ -19,6 +19,8 @@ type StakingPool = {
 type StakingPosition = {
   amount: bigint;
   unclaimedRewards: bigint;
+  unpoolAmount: bigint;
+  unpoolTime: number | null;
 };
 import {
   useCarelTestnet,
@@ -120,6 +122,30 @@ function numberValue(
 
   return value;
 }
+
+function timestampValue(
+  value: unknown,
+): number | null {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  try {
+    const seconds =
+      bigintValue(
+        value,
+        "unstake time",
+      );
+
+    return Number(seconds) * 1000;
+  } catch {
+    return null;
+  }
+}
+
 
 async function loadStrkPool(
   baseUrl: string,
@@ -241,6 +267,13 @@ async function loadPosition(
       row.unclaimedRewards,
       "staking rewards",
     ),
+    unpoolAmount: bigintValue(
+      row.unpoolAmount ?? "0",
+      "pending unstake amount",
+    ),
+    unpoolTime: timestampValue(
+      row.unpoolTime,
+    ),
   };
 }
 
@@ -259,6 +292,10 @@ export function AvnuStaking({
 
   const [amount, setAmount] =
     useState("1");
+  const [
+    unstakeAmount,
+    setUnstakeAmount,
+  ] = useState("1");
   const [pool, setPool] =
     useState<StakingPool | null>(null);
   const [position, setPosition] =
@@ -401,6 +438,102 @@ export function AvnuStaking({
       setExecuting(false);
     }
   }
+
+  async function runPositionAction(
+    action:
+      | "initiateUnstake"
+      | "completeUnstake"
+      | "claimRewards",
+  ) {
+    if (
+      !pool ||
+      executing ||
+      wallet.busy
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    let actionAmount:
+      string | null = null;
+
+    if (
+      action ===
+      "initiateUnstake"
+    ) {
+      try {
+        const parsed =
+          parseUnits18(
+            unstakeAmount,
+          );
+
+        if (
+          parsed <= 0n ||
+          !position ||
+          parsed >
+            position.amount
+        ) {
+          throw new Error();
+        }
+      } catch {
+        setError(
+          "Enter an unstake amount greater than zero and not above your current stake.",
+        );
+        return;
+      }
+
+      actionAmount =
+        unstakeAmount;
+    }
+
+    setExecuting(true);
+
+    try {
+      const label =
+        action ===
+          "initiateUnstake"
+          ? `Unstake ${unstakeAmount} STRK`
+          : action ===
+              "completeUnstake"
+            ? "Complete STRK unstake"
+            : "Claim staking rewards";
+
+      const hash =
+        await wallet
+          .executeStakingAction(
+            action,
+            actionAmount,
+            pool.poolAddress,
+            pool.tokenAddress,
+            label,
+          );
+
+      setSuccess(
+        `${
+          action ===
+          "initiateUnstake"
+            ? "Unstake initiated"
+            : action ===
+                "completeUnstake"
+              ? "Withdrawal submitted"
+              : "Rewards claim submitted"
+        }: ${hash.slice(0, 10)}…${hash.slice(-6)}`,
+      );
+
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Staking action failed.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
 
   if (mode !== "normal") {
     return (
@@ -561,6 +694,152 @@ export function AvnuStaking({
             {executing
               ? "Waiting for Ready…"
               : "Review & Stake"}
+          </button>
+
+          {position &&
+            position.amount > 0n && (
+            <>
+              <div className={styles.rule}>
+                <span>
+                  Unstake
+                </span>
+                <strong>
+                  Exit request required
+                </strong>
+              </div>
+
+              <label
+                className={
+                  styles.fieldLabel
+                }
+                htmlFor={
+                  "carel-unstake-amount"
+                }
+              >
+                Amount to unstake
+              </label>
+
+              <input
+                id={
+                  "carel-unstake-amount"
+                }
+                className={
+                  styles.amountInput
+                }
+                inputMode="decimal"
+                value={
+                  unstakeAmount
+                }
+                onChange={(event) => {
+                  setUnstakeAmount(
+                    event.target.value.replace(
+                      /[^0-9.]/g,
+                      "",
+                    ),
+                  );
+                  setSuccess("");
+                }}
+              />
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={
+                  executing ||
+                  wallet.busy
+                }
+                onClick={() =>
+                  void runPositionAction(
+                    "initiateUnstake",
+                  )
+                }
+              >
+                Review & Unstake
+              </button>
+            </>
+          )}
+
+          {position &&
+            position.unpoolAmount >
+              0n && (
+            <>
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Pending withdrawal
+                </span>
+                <strong>
+                  {formatUnits18(
+                    position.unpoolAmount,
+                    4,
+                  )} STRK
+                </strong>
+              </div>
+
+              {position.unpoolTime !==
+                null && (
+                <p
+                  className={
+                    styles.helper
+                  }
+                >
+                  Available after{" "}
+                  {new Date(
+                    position.unpoolTime,
+                  ).toLocaleString()}
+                </p>
+              )}
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={
+                  executing ||
+                  wallet.busy ||
+                  (
+                    position.unpoolTime !==
+                      null &&
+                    Date.now() <
+                      position.unpoolTime
+                  )
+                }
+                onClick={() =>
+                  void runPositionAction(
+                    "completeUnstake",
+                  )
+                }
+              >
+                Complete withdrawal
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            className={
+              styles.secondary
+            }
+            disabled={
+              executing ||
+              wallet.busy ||
+              !position ||
+              position.unclaimedRewards <=
+                0n
+            }
+            onClick={() =>
+              void runPositionAction(
+                "claimRewards",
+              )
+            }
+          >
+            Claim rewards
           </button>
 
           <button

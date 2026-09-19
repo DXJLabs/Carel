@@ -61,6 +61,12 @@ import {
   getCarelNetwork,
 } from "@/lib/carel/networks";
 
+type StakingAction =
+  | "stake"
+  | "initiateUnstake"
+  | "completeUnstake"
+  | "claimRewards";
+
 type TxState =
   | { kind: "idle" }
   | { kind: "pending"; label: string; hash: string }
@@ -123,6 +129,13 @@ type CarelTestnetContextValue = {
   }>;
   executeStaking: (
     amount: string,
+    poolAddress: string,
+    tokenAddress: string,
+    label: string,
+  ) => Promise<string>;
+  executeStakingAction: (
+    action: StakingAction,
+    amount: string | null,
     poolAddress: string,
     tokenAddress: string,
     label: string,
@@ -342,12 +355,91 @@ function validateAvnuBuiltCalls(
 
 function validateAvnuStakingCalls(
   calls: Call[],
+  action: StakingAction,
   tokenAddress: string,
   poolAddress: string,
   ownerAddress: string,
-  amount: bigint,
+  amount: bigint | null,
 ): Call[] {
+  const token = felt(tokenAddress);
+  const pool = felt(poolAddress);
+  const owner = felt(ownerAddress);
+
   if (
+    action !== "stake"
+  ) {
+    if (calls.length !== 1) {
+      throw new Error(
+        "CAREL blocked an unexpected staking action shape.",
+      );
+    }
+
+    const call = calls[0];
+
+    if (
+      felt(call.contractAddress) !== pool
+    ) {
+      throw new Error(
+        "CAREL blocked a staking action to an unknown contract.",
+      );
+    }
+
+    const rawCalldata =
+      call.calldata ?? [];
+
+    if (
+      !Array.isArray(rawCalldata)
+    ) {
+      throw new Error(
+        "CAREL blocked malformed staking calldata.",
+      );
+    }
+
+    const calldata =
+      rawCalldata.map(String);
+
+    if (
+      action ===
+        "initiateUnstake"
+    ) {
+      if (
+        call.entrypoint !==
+          "exit_delegation_pool_intent" ||
+        calldata.length !== 1 ||
+        amount === null ||
+        BigInt(calldata[0]) !==
+          amount
+      ) {
+        throw new Error(
+          "CAREL blocked an unexpected unstake intent.",
+        );
+      }
+
+      return calls;
+    }
+
+    const expectedEntrypoint =
+      action ===
+        "completeUnstake"
+        ? "exit_delegation_pool_action"
+        : "claim_rewards";
+
+    if (
+      call.entrypoint !==
+        expectedEntrypoint ||
+      calldata.length !== 1 ||
+      felt(calldata[0]) !== owner
+    ) {
+      throw new Error(
+        "CAREL blocked an unexpected staking account action.",
+      );
+    }
+
+    return calls;
+  }
+
+  if (
+    amount === null ||
     !Array.isArray(calls) ||
     calls.length < 1 ||
     calls.length > 2
@@ -357,27 +449,31 @@ function validateAvnuStakingCalls(
     );
   }
 
-  const token = felt(tokenAddress);
-  const pool = felt(poolAddress);
-  const owner = felt(ownerAddress);
-
   let approvals = 0;
   let poolCalls = 0;
 
   for (const call of calls) {
-    const target = felt(call.contractAddress);
-    const entrypoint = String(call.entrypoint ?? "");
-    const rawCalldata = call.calldata ?? [];
+    const target =
+      felt(call.contractAddress);
 
-    if (!Array.isArray(rawCalldata)) {
+    const entrypoint =
+      String(
+        call.entrypoint ?? "",
+      );
+
+    const rawCalldata =
+      call.calldata ?? [];
+
+    if (
+      !Array.isArray(rawCalldata)
+    ) {
       throw new Error(
         "CAREL blocked malformed staking calldata.",
       );
     }
 
-    const calldata = rawCalldata.map((value) =>
-      String(value),
-    );
+    const calldata =
+      rawCalldata.map(String);
 
     if (target === token) {
       if (
@@ -389,25 +485,24 @@ function validateAvnuStakingCalls(
         );
       }
 
-      if (felt(calldata[0]) !== pool) {
+      if (
+        felt(calldata[0]) !== pool
+      ) {
         throw new Error(
           "CAREL blocked staking approval to an unknown spender.",
         );
       }
 
-      let approved: bigint;
-
-      try {
-        approved =
-          BigInt(calldata[1]) +
-          (BigInt(calldata[2]) << 128n);
-      } catch {
-        throw new Error(
-          "CAREL blocked malformed staking approval data.",
+      const approved =
+        BigInt(calldata[1]) +
+        (
+          BigInt(calldata[2]) <<
+          128n
         );
-      }
 
-      if (approved !== amount) {
+      if (
+        approved !== amount
+      ) {
         throw new Error(
           "CAREL blocked staking approval with the wrong amount.",
         );
@@ -426,39 +521,25 @@ function validateAvnuStakingCalls(
 
     if (target === pool) {
       if (
-        entrypoint !== "enter_delegation_pool" &&
-        entrypoint !== "add_to_delegation_pool"
+        entrypoint !==
+          "enter_delegation_pool" &&
+        entrypoint !==
+          "add_to_delegation_pool"
       ) {
         throw new Error(
           "CAREL blocked an unexpected staking pool entrypoint.",
         );
       }
 
-      if (calldata.length !== 2) {
+      if (
+        calldata.length !== 2 ||
+        felt(calldata[0]) !==
+          owner ||
+        BigInt(calldata[1]) !==
+          amount
+      ) {
         throw new Error(
-          "CAREL blocked malformed staking pool calldata.",
-        );
-      }
-
-      if (felt(calldata[0]) !== owner) {
-        throw new Error(
-          "CAREL blocked staking for a different account.",
-        );
-      }
-
-      let callAmount: bigint;
-
-      try {
-        callAmount = BigInt(calldata[1]);
-      } catch {
-        throw new Error(
-          "CAREL blocked malformed staking amount data.",
-        );
-      }
-
-      if (callAmount !== amount) {
-        throw new Error(
-          "CAREL blocked staking with an unexpected amount.",
+          "CAREL blocked staking with unexpected calldata.",
         );
       }
 
@@ -1622,8 +1703,9 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const executeStaking = async (
-    amount: string,
+  const executeStakingAction = async (
+    action: StakingAction,
+    amount: string | null,
     poolAddress: string,
     tokenAddress: string,
     label: string,
@@ -1638,100 +1720,127 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    const account = walletAccount;
-    const network = getCarelNetwork(chainId);
+    const account =
+      walletAccount;
 
-    if (!network || network.id !== "mainnet") {
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !== "mainnet"
+    ) {
       throw new Error(
         "CAREL Staking is currently enabled on Starknet Mainnet only.",
       );
     }
 
     if (
-      felt(tokenAddress) !== felt(STRK_TOKEN)
+      felt(tokenAddress) !==
+      felt(STRK_TOKEN)
     ) {
       throw new Error(
         "CAREL only supports STRK staking in this route.",
       );
     }
 
-    const stakeAmount = parseUnits18(amount);
+    const parsedAmount =
+      amount === null
+        ? null
+        : parseUnits18(amount);
 
-    if (stakeAmount <= 0n) {
+    if (
+      (
+        action === "stake" ||
+        action ===
+          "initiateUnstake"
+      ) &&
+      (
+        parsedAmount === null ||
+        parsedAmount <= 0n
+      )
+    ) {
       throw new Error(
-        "Stake amount must be greater than zero.",
+        "Staking amount must be greater than zero.",
       );
     }
 
-    // Starknet staking Amount is u128.
-    if (stakeAmount >= (1n << 128n)) {
+    if (
+      parsedAmount !== null &&
+      parsedAmount >=
+        (1n << 128n)
+    ) {
       throw new Error(
-        "Stake amount exceeds the supported staking range.",
+        "Staking amount exceeds the supported staking range.",
       );
     }
 
-    const pool = felt(poolAddress);
-    const token = felt(tokenAddress);
-    const owner = felt(account.address);
+    const pool =
+      felt(poolAddress);
 
-    const assertSession = async () => {
-      const selected =
-        account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+    const token =
+      felt(tokenAddress);
 
-      const [walletChain, accounts] =
-        await Promise.all([
-          walletV6.requestChainId(selected),
-          account.requestAccounts(true),
-        ]);
+    const owner =
+      felt(account.address);
 
-      if (
-        currentAccount.current !== account ||
-        String(walletChain) !== network.chainId ||
-        !accounts[0] ||
-        felt(accounts[0]) !== owner
-      ) {
-        throw new Error(
-          "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
-        );
-      }
-    };
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
 
-    stakingSubmitting.current = true;
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    stakingSubmitting.current =
+      true;
+
     setBusy(true);
     setError(null);
 
     try {
-      try {
-        await assertSession();
-      } catch (cause) {
-        throw new Error(
-          `Ready session check failed: ${
-            cause instanceof Error
-              ? cause.message
-              : "Could not verify the connected wallet."
-          }`,
-        );
-      }
+      await assertSession();
 
-      // Do not make a browser-side RPC request here.
-      // Some mobile wallet browsers block/fail public RPC requests,
-      // which previously stopped staking before CAREL reached its API.
-      //
-      // Use the already-observed balance only when available.
-      // Ready + the staking contract remain the final balance authority.
       if (
+        action === "stake" &&
+        parsedAmount !== null &&
         publicStrk !== null &&
-        publicStrk < stakeAmount
+        publicStrk < parsedAmount
       ) {
         throw new Error(
           "Insufficient public STRK balance for this stake.",
         );
       }
 
-      let built;
-
-      try {
-        const response = await fetch(
+      const response =
+        await fetch(
           "/api/staking",
           {
             method: "POST",
@@ -1739,123 +1848,104 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
               "Content-Type":
                 "application/json",
             },
-            body: JSON.stringify({
-              owner: account.address,
-              poolAddress: pool,
-              amount:
-                stakeAmount.toString(),
-            }),
+            body:
+              JSON.stringify({
+                action,
+                owner:
+                  account.address,
+                poolAddress:
+                  pool,
+                ...(parsedAmount !==
+                null
+                  ? {
+                      amount:
+                        parsedAmount.toString(),
+                    }
+                  : {}),
+              }),
           },
         );
 
-        const raw: unknown =
-          await response.json();
+      const raw: unknown =
+        await response.json();
 
-        if (
-          !raw ||
-          typeof raw !== "object"
-        ) {
-          throw new Error(
-            "CAREL staking API returned an invalid response.",
-          );
-        }
-
-        const result =
-          raw as Record<
-            string,
-            unknown
-          >;
-
-        if (!response.ok) {
-          throw new Error(
-            typeof result.error ===
-              "string"
-              ? result.error
-              : "Could not build staking calls.",
-          );
-        }
-
-        if (
-          typeof result.chainId !==
-            "string" ||
-          !Array.isArray(
-            result.calls,
-          )
-        ) {
-          throw new Error(
-            "CAREL staking API returned malformed calls.",
-          );
-        }
-
-        if (
-          typeof result.poolAddress !==
-            "string" ||
-          felt(result.poolAddress) !==
-            pool
-        ) {
-          throw new Error(
-            "CAREL staking API returned a different staking pool.",
-          );
-        }
-
-        built = {
-          chainId:
-            result.chainId,
-          calls:
-            result.calls as Call[],
-        };
-      } catch (cause) {
+      if (
+        !raw ||
+        typeof raw !== "object"
+      ) {
         throw new Error(
-          `AVNU staking build failed: ${
-            cause instanceof Error
-              ? cause.message
-              : "Could not build staking calls."
-          }`,
+          "CAREL staking API returned an invalid response.",
         );
       }
 
-      if (built.chainId !== network.chainId) {
+      const result =
+        raw as Record<
+          string,
+          unknown
+        >;
+
+      if (!response.ok) {
+        throw new Error(
+          typeof result.error ===
+            "string"
+            ? result.error
+            : "Could not build staking calls.",
+        );
+      }
+
+      if (
+        result.action !==
+          action ||
+        typeof result.chainId !==
+          "string" ||
+        !Array.isArray(
+          result.calls,
+        ) ||
+        typeof result.poolAddress !==
+          "string" ||
+        felt(
+          result.poolAddress,
+        ) !== pool
+      ) {
+        throw new Error(
+          "CAREL staking API returned malformed or mismatched calls.",
+        );
+      }
+
+      if (
+        result.chainId !==
+        network.chainId
+      ) {
         throw new Error(
           "AVNU built staking calls for the wrong Starknet network.",
         );
       }
 
-      if (!built.calls.length) {
-        throw new Error(
-          "AVNU returned an empty staking transaction.",
-        );
-      }
-
       const safeCalls =
         validateAvnuStakingCalls(
-          built.calls,
+          result.calls as Call[],
+          action,
           token,
           pool,
           owner,
-          stakeAmount,
+          parsedAmount,
         );
 
       await assertSession();
 
-      let response;
-
-      try {
-        response = await account.execute(
+      const walletResponse =
+        await account.execute(
           safeCalls,
         );
-      } catch (cause) {
-        throw new Error(
-          `Ready staking execution failed: ${
-            cause instanceof Error
-              ? cause.message
-              : "Wallet execution failed."
-          }`,
-        );
-      }
 
-      const hash = response.transaction_hash;
+      const hash =
+        walletResponse.transaction_hash;
 
-      if (!/^0x[0-9a-f]{1,64}$/i.test(hash)) {
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
         throw new Error(
           "Ready did not return a valid staking transaction hash.",
         );
@@ -1886,14 +1976,40 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      await refreshPublicBalance();
+      if (
+        action === "stake" ||
+        action ===
+          "completeUnstake"
+      ) {
+        try {
+          await refreshPublicBalance();
+        } catch {
+          // Position refresh remains available separately.
+        }
+      }
 
       return hash;
     } finally {
-      stakingSubmitting.current = false;
+      stakingSubmitting.current =
+        false;
+
       setBusy(false);
     }
   };
+
+  const executeStaking = async (
+    amount: string,
+    poolAddress: string,
+    tokenAddress: string,
+    label: string,
+  ) =>
+    executeStakingAction(
+      "stake",
+      amount,
+      poolAddress,
+      tokenAddress,
+      label,
+    );
 
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
@@ -1953,6 +2069,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeUnshieldSwapStart,
       completeUnshieldSwap,
       executeStaking,
+      executeStakingAction,
       executeBridge,
     }),
     [
