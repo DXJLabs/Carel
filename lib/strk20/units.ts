@@ -1,40 +1,50 @@
-const ZERO = BigInt(0);
-const TEN = BigInt(10);
-const DECIMALS = BigInt(18);
-const SCALE = TEN ** DECIMALS;
+import {
+  formatUnits,
+  parseUnits,
+} from "@/lib/carel/core/amounts";
 
-export function parseUnits18(value: string): bigint {
-  const normalized = value.trim();
+import {
+  sameStarknetFelt,
+} from "@/lib/carel/ecosystems/starknet/addresses";
 
-  if (!/^\d+(\.\d{0,18})?$/.test(normalized)) {
-    throw new Error("Enter a valid amount with up to 18 decimals.");
-  }
+const STRK_DECIMALS = 18;
 
-  const [whole = "0", fraction = ""] = normalized.split(".");
-  const padded = `${fraction}000000000000000000`.slice(0, 18);
-
-  return BigInt(whole) * SCALE + BigInt(padded || "0");
+/**
+ * Compatibility wrapper for existing STRK20 code.
+ * New multi-asset code should call core parseUnits with the asset decimals.
+ */
+export function parseUnits18(
+  value: string,
+): bigint {
+  return parseUnits(
+    value,
+    STRK_DECIMALS,
+  );
 }
 
-export function formatUnits18(value: bigint, maxDecimals = 4): string {
-  const negative = value < ZERO;
-  const absolute = negative ? -value : value;
-  const whole = absolute / SCALE;
-  const rawFraction = (absolute % SCALE)
-    .toString()
-    .padStart(18, "0");
-
-  const fraction = rawFraction
-    .slice(0, maxDecimals)
-    .replace(/0+$/, "");
-
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+/**
+ * Compatibility wrapper for existing STRK20 display code.
+ */
+export function formatUnits18(
+  value: bigint,
+  maxDecimals = 4,
+): string {
+  return formatUnits(
+    value,
+    STRK_DECIMALS,
+    maxDecimals,
+  );
 }
 
-export function sameFelt(a: unknown, b: unknown): boolean {
-  try {
-    return BigInt(String(a)) === BigInt(String(b));
-  } catch {
-    return false;
-  }
+/**
+ * Preserves the old sameFelt API while moving comparison logic out of STRK20.
+ */
+export function sameFelt(
+  left: unknown,
+  right: unknown,
+): boolean {
+  return sameStarknetFelt(
+    left,
+    right,
+  );
 }

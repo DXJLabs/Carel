@@ -2,32 +2,57 @@ import {
   BASE_URL,
   SEPOLIA_BASE_URL,
 } from "@avnu/avnu-sdk";
+
 import {
-  constants,
   RpcProvider,
 } from "starknet";
 
+import {
+  STARKNET_MAINNET,
+  STARKNET_SEPOLIA,
+  getStarknetChain,
+} from "@/lib/carel/ecosystems/starknet/chains";
+
+import {
+  ENDUR_XSTRK_ADDRESS,
+  STARKNET_MAINNET_STRK,
+  STARKNET_MAINNET_USDC,
+  STARKNET_MAINNET_USDC_ADDRESS,
+  STARKNET_SEPOLIA_STRK,
+  STARKNET_SEPOLIA_USDC,
+  STARKNET_SEPOLIA_USDC_ADDRESS,
+  STRK_TOKEN_ADDRESS,
+} from "@/lib/carel/ecosystems/starknet/assets";
+
 const SEPOLIA_RPC =
-  process.env.NEXT_PUBLIC_STARKNET_SEPOLIA_RPC ??
+  process.env
+    .NEXT_PUBLIC_STARKNET_SEPOLIA_RPC ??
   "https://starknet-sepolia-rpc.publicnode.com";
 
 const MAINNET_RPC =
-  process.env.NEXT_PUBLIC_STARKNET_MAINNET_RPC ??
+  process.env
+    .NEXT_PUBLIC_STARKNET_MAINNET_RPC ??
   "https://starknet-rpc.publicnode.com";
 
-const sepoliaProvider = new RpcProvider({
-  nodeUrl: SEPOLIA_RPC,
-});
+const sepoliaProvider =
+  new RpcProvider({
+    nodeUrl: SEPOLIA_RPC,
+  });
 
-const mainnetProvider = new RpcProvider({
-  nodeUrl: MAINNET_RPC,
-});
+const mainnetProvider =
+  new RpcProvider({
+    nodeUrl: MAINNET_RPC,
+  });
 
+/**
+ * Legacy exports remain available while existing Starknet components migrate
+ * to the generic CAREL asset registry.
+ */
 export const STRK_TOKEN =
-  "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+  STRK_TOKEN_ADDRESS;
 
 export const ENDUR_XSTRK_TOKEN =
-  "0x028d709c875c0ceac3dce7065bec5328186dc89fe254527084d1689910954b0a";
+  ENDUR_XSTRK_ADDRESS;
 
 export const ENDUR_DEPOSIT_ANONYMIZER =
   "0x030dee638065962eb3642ca54aa48e9e2cd98536bc90b64b99bb306c1db30698";
@@ -41,53 +66,79 @@ export const ENDUR_AVNU_FEE_RECIPIENT =
 export const CAREL_NETWORKS = {
   sepolia: {
     id: "sepolia",
-    chainId: constants.StarknetChainId.SN_SEPOLIA,
-    label: "Starknet Sepolia",
+    chain: STARKNET_SEPOLIA,
+    chainId:
+      STARKNET_SEPOLIA.chainId,
+    label:
+      STARKNET_SEPOLIA.name,
     tag: "Testnet",
     rpcUrl: SEPOLIA_RPC,
     provider: sepoliaProvider,
-    avnuBaseUrl: SEPOLIA_BASE_URL,
+    avnuBaseUrl:
+      SEPOLIA_BASE_URL,
     avnuExchange:
       "0x02c56e8b00dbe2a71e57472685378fc8988bba947e9a99b26a00fade2b4fe7c2",
-    explorerTx: "https://sepolia.voyager.online/tx/",
+    explorerTx:
+      "https://sepolia.voyager.online/tx/",
     usdcToken:
-      "0x0512feac6339ff7889822cb5aa2a86c848e9d392bb0e3e237c008674feed8343",
+      STARKNET_SEPOLIA_USDC_ADDRESS,
+    assets: {
+      strk:
+        STARKNET_SEPOLIA_STRK,
+      usdc:
+        STARKNET_SEPOLIA_USDC,
+    },
     gardenEnabled: true,
     privacyEnabled: true,
   },
 
   mainnet: {
     id: "mainnet",
-    chainId: constants.StarknetChainId.SN_MAIN,
-    label: "Starknet Mainnet",
+    chain: STARKNET_MAINNET,
+    chainId:
+      STARKNET_MAINNET.chainId,
+    label:
+      STARKNET_MAINNET.name,
     tag: "Mainnet",
     rpcUrl: MAINNET_RPC,
     provider: mainnetProvider,
-    avnuBaseUrl: BASE_URL,
+    avnuBaseUrl:
+      BASE_URL,
     avnuExchange:
       "0x04270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
-    explorerTx: "https://voyager.online/tx/",
+    explorerTx:
+      "https://voyager.online/tx/",
     usdcToken:
-      "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+      STARKNET_MAINNET_USDC_ADDRESS,
+    assets: {
+      strk:
+        STARKNET_MAINNET_STRK,
+      usdc:
+        STARKNET_MAINNET_USDC,
+    },
     gardenEnabled: false,
     privacyEnabled: true,
   },
 } as const;
 
-export function getCarelNetwork(chainId: string) {
-  if (
-    chainId ===
-    constants.StarknetChainId.SN_SEPOLIA
-  ) {
-    return CAREL_NETWORKS.sepolia;
+/**
+ * Compatibility resolver for the current Starknet-first UI.
+ * The generic ChainRef is resolved first, then mapped to legacy network config.
+ */
+export function getCarelNetwork(
+  chainId: string,
+) {
+  const chain =
+    getStarknetChain(
+      chainId,
+    );
+
+  if (!chain) {
+    return null;
   }
 
-  if (
-    chainId ===
-    constants.StarknetChainId.SN_MAIN
-  ) {
-    return CAREL_NETWORKS.mainnet;
-  }
-
-  return null;
+  return chain.id ===
+    STARKNET_SEPOLIA.id
+    ? CAREL_NETWORKS.sepolia
+    : CAREL_NETWORKS.mainnet;
 }
