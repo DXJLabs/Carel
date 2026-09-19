@@ -15,6 +15,7 @@ import {
 import type {
   BorrowIntent,
   ExecutionPrivacy,
+  RepayIntent,
 } from "@/lib/carel/core/execution";
 
 import {
@@ -93,6 +94,49 @@ export function toUint256Calldata(
 }
 
 /**
+ * Serializes Vesu AmountDenomination::Assets with Alexandria i257.
+ *
+ * Cairo serde order is:
+ * denomination, abs.low, abs.high, is_negative.
+ *
+ * Zero is always encoded as non-negative.
+ */
+export function encodeVesuAssetAmount(
+  value: bigint,
+): readonly [
+  string,
+  string,
+  string,
+  string,
+] {
+  const negative =
+    value < 0n;
+
+  const absolute =
+    negative
+      ? -value
+      : value;
+
+  const [
+    low,
+    high,
+  ] =
+    toUint256Calldata(
+      absolute,
+    );
+
+  return [
+    "1",
+    low,
+    high,
+    negative &&
+    absolute !== 0n
+      ? "1"
+      : "0",
+  ];
+}
+
+/**
  * Serializes Vesu's Amount { denomination: Assets, value: positive i257 }.
  *
  * Assets is enum discriminant 1. The positive i257 is encoded as
@@ -112,20 +156,9 @@ export function encodePositiveVesuAssetAmount(
     );
   }
 
-  const [
-    low,
-    high,
-  ] =
-    toUint256Calldata(
-      value,
-    );
-
-  return [
-    "1",
-    low,
-    high,
-    "0",
-  ];
+  return encodeVesuAssetAmount(
+    value,
+  );
 }
 
 /**
@@ -535,6 +568,261 @@ export function validateVesuBorrowCalls({
       if (!matches) {
         throw new Error(
           "CAREL blocked altered Vesu Borrow calldata.",
+        );
+      }
+    }
+  }
+
+  return expected;
+}
+
+
+export type VesuRepayExecutionPayload =
+  Readonly<{
+    chainId: string;
+    poolId: string;
+    poolAddress: string;
+
+    owner: string;
+
+    collateralAssetId: string;
+    debtAssetId: string;
+
+    repayAmount: string;
+
+    preparedAt: number;
+    expiresAt: number;
+
+    calls: readonly Call[];
+  }>;
+
+/**
+ * Builds exact-approval + modify_position calls for a partial Vesu Repay.
+ *
+ * Collateral delta is zero and debt delta is negative Assets denomination.
+ * Full position close is intentionally handled separately because Vesu
+ * requires Native denomination for block-accurate nominal debt repayment.
+ */
+export function buildVesuRepayCalls({
+  market,
+  owner,
+  intent,
+}: {
+  market: VesuBorrowMarket;
+  owner: string;
+  intent: RepayIntent;
+}): Call[] {
+  validateVesuBorrowMarket(
+    market,
+  );
+
+  if (
+    intent.privacy !==
+      undefined &&
+    intent.privacy !==
+      "public"
+  ) {
+    throw new Error(
+      "Direct private Vesu repayment is not enabled in this adapter.",
+    );
+  }
+
+  if (
+    intent.assetId !==
+    market.debtAsset.id
+  ) {
+    throw new Error(
+      "Repay intent does not match the reviewed Vesu debt asset.",
+    );
+  }
+
+  if (
+    intent.positionId &&
+    intent.positionId !==
+      market.id
+  ) {
+    throw new Error(
+      "Repay intent does not match the reviewed Vesu position.",
+    );
+  }
+
+  if (intent.amount <= 0n) {
+    throw new Error(
+      "Repay amount must be greater than zero.",
+    );
+  }
+
+  const pool =
+    normalizeStarknetAddress(
+      market.poolAddress,
+    );
+
+  const account =
+    normalizeStarknetAddress(
+      owner,
+    );
+
+  const collateralToken =
+    requireVesuAssetAddress(
+      market.collateralAsset,
+    );
+
+  const debtToken =
+    requireVesuAssetAddress(
+      market.debtAsset,
+    );
+
+  const approval =
+    toUint256Calldata(
+      intent.amount,
+    );
+
+  const collateral =
+    encodeVesuAssetAmount(
+      0n,
+    );
+
+  const debt =
+    encodeVesuAssetAmount(
+      -intent.amount,
+    );
+
+  return [
+    {
+      contractAddress:
+        debtToken,
+
+      entrypoint:
+        "approve",
+
+      calldata: [
+        pool,
+        ...approval,
+      ],
+    },
+
+    {
+      contractAddress:
+        pool,
+
+      entrypoint:
+        "modify_position",
+
+      calldata: [
+        collateralToken,
+        debtToken,
+        account,
+        ...collateral,
+        ...debt,
+      ],
+    },
+  ];
+}
+
+/**
+ * Validates server-prepared partial Repay calls by rebuilding them locally.
+ *
+ * Only exact USDC approval + exact Vesu modify_position calldata survive.
+ */
+export function validateVesuRepayCalls({
+  calls,
+  market,
+  owner,
+  intent,
+}: {
+  calls: readonly Call[];
+  market: VesuBorrowMarket;
+  owner: string;
+  intent: RepayIntent;
+}): Call[] {
+  if (calls.length !== 2) {
+    throw new Error(
+      "CAREL requires exactly two Vesu Repay calls.",
+    );
+  }
+
+  const expected =
+    buildVesuRepayCalls({
+      market,
+      owner,
+      intent,
+    });
+
+  for (
+    let callIndex = 0;
+    callIndex <
+    expected.length;
+    callIndex += 1
+  ) {
+    const actualCall =
+      calls[callIndex];
+
+    const expectedCall =
+      expected[callIndex];
+
+    if (
+      !sameStarknetAddress(
+        actualCall.contractAddress,
+        expectedCall.contractAddress,
+      ) ||
+      actualCall.entrypoint !==
+        expectedCall.entrypoint
+    ) {
+      throw new Error(
+        "CAREL blocked a mismatched Vesu Repay call.",
+      );
+    }
+
+    const actualData =
+      vesuCallData(
+        actualCall,
+      );
+
+    const expectedData =
+      vesuCallData(
+        expectedCall,
+      );
+
+    if (
+      actualData.length !==
+      expectedData.length
+    ) {
+      throw new Error(
+        "CAREL blocked malformed Vesu Repay calldata.",
+      );
+    }
+
+    const addressIndexes =
+      callIndex === 0
+        ? new Set([0])
+        : new Set([
+            0,
+            1,
+            2,
+          ]);
+
+    for (
+      let index = 0;
+      index <
+      expectedData.length;
+      index += 1
+    ) {
+      const matches =
+        addressIndexes.has(
+          index,
+        )
+          ? sameStarknetAddress(
+              actualData[index],
+              expectedData[index],
+            )
+          : sameVesuWord(
+              actualData[index],
+              expectedData[index],
+            );
+
+      if (!matches) {
+        throw new Error(
+          "CAREL blocked altered Vesu Repay calldata.",
         );
       }
     }

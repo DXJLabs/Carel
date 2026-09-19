@@ -79,12 +79,15 @@ import {
 
 import type {
   BorrowIntent,
+  RepayIntent,
 } from "@/lib/carel/core/execution";
 
 import {
   validateVesuBorrowCalls,
+  validateVesuRepayCalls,
   type VesuBorrowExecutionPayload,
   type VesuBorrowMarket,
+  type VesuRepayExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
 
 import {
@@ -181,6 +184,10 @@ type CarelTestnetContextValue = {
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
   executeBorrow: (
     payload: VesuBorrowExecutionPayload,
+    label: string,
+  ) => Promise<string>;
+  executeRepay: (
+    payload: VesuRepayExecutionPayload,
     label: string,
   ) => Promise<string>;
 };
@@ -574,6 +581,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const swapSubmitting = useRef(false);
   const stakingSubmitting = useRef(false);
   const borrowSubmitting = useRef(false);
+  const repaySubmitting = useRef(false);
   const currentAccount = useRef(walletAccount);
   currentAccount.current = walletAccount;
 
@@ -2757,6 +2765,317 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Executes a server-prepared partial Vesu Repay after independently
+   * rebuilding and validating every wallet call.
+   */
+  const executeRepay = async (
+    payload: VesuRepayExecutionPayload,
+    label: string,
+  ): Promise<string> => {
+    if (
+      repaySubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account =
+      walletAccount;
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "CAREL Repay is currently enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+      network.chainId
+    ) {
+      throw new Error(
+        "Prepared Repay belongs to another Starknet network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Repay review expired. Refresh the position and review it again.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(pool.address) !==
+        felt(payload.poolAddress)
+    ) {
+      throw new Error(
+        "Prepared Repay references an unapproved Vesu pool.",
+      );
+    }
+
+    const owner =
+      felt(
+        account.address,
+      );
+
+    if (
+      felt(payload.owner) !==
+      owner
+    ) {
+      throw new Error(
+        "Prepared Repay belongs to another account.",
+      );
+    }
+
+    if (
+      payload.collateralAssetId !==
+        network.assets.strk.id ||
+      payload.debtAssetId !==
+        network.assets.usdc.id
+    ) {
+      throw new Error(
+        "Prepared Repay does not match CAREL's reviewed STRK/USDC position.",
+      );
+    }
+
+    let repayAmount:
+      bigint;
+
+    try {
+      repayAmount =
+        BigInt(
+          payload.repayAmount,
+        );
+    } catch {
+      throw new Error(
+        "Prepared Repay contains an invalid amount.",
+      );
+    }
+
+    if (repayAmount <= 0n) {
+      throw new Error(
+        "Prepared Repay amount must be greater than zero.",
+      );
+    }
+
+    const market:
+      VesuBorrowMarket = {
+        id:
+          `vesu:${pool.id}:STRK:USDC`,
+
+        chainId:
+          network.chainId,
+
+        poolAddress:
+          pool.address,
+
+        collateralAsset:
+          network.assets.strk,
+
+        debtAsset:
+          network.assets.usdc,
+      };
+
+    const intent:
+      RepayIntent = {
+        action:
+          "repay",
+
+        assetId:
+          network.assets.usdc.id,
+
+        amount:
+          repayAmount,
+
+        positionId:
+          market.id,
+
+        privacy:
+          "public",
+      };
+
+    const safeCalls =
+      validateVesuRepayCalls({
+        calls:
+          payload.calls,
+
+        market,
+
+        owner,
+
+        intent,
+      });
+
+    const knownUsdc =
+      findAssetBalance(
+        balances,
+        network.assets.usdc.id,
+        "public",
+      )?.amount;
+
+    if (
+      knownUsdc !== null &&
+      knownUsdc !== undefined &&
+      knownUsdc <
+        repayAmount
+    ) {
+      throw new Error(
+        "Insufficient public USDC balance for this Repay.",
+      );
+    }
+
+    /**
+     * Confirms the same Ready account and Mainnet chain immediately
+     * before signing the reconstructed Repay calls.
+     */
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    repaySubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Repay review expired before signing. Refresh and review again.",
+        );
+      }
+
+      const response =
+        await account.execute(
+          safeCalls,
+        );
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Repay transaction hash.",
+        );
+      }
+
+      setTx({
+        kind:
+          "pending",
+
+        label,
+
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind:
+            "confirmed",
+
+          label,
+
+          hash,
+        });
+      } catch {
+        setTx({
+          kind:
+            "submitted",
+
+          label,
+
+          hash,
+        });
+      }
+
+      try {
+        await refreshPublicBalance();
+      } catch {
+        // Portfolio remains independently refreshable.
+      }
+
+      return hash;
+    } finally {
+      repaySubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -2822,6 +3141,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeShieldStaking,
       executeBridge,
       executeBorrow,
+      executeRepay,
     }),
     [
       wallets,
