@@ -26,6 +26,8 @@ import {
   useCarelTestnet,
 } from "@/components/testnet/Strk20Testnet";
 import {
+  ENDUR_DEPOSIT_ANONYMIZER,
+  ENDUR_XSTRK_TOKEN,
   getCarelNetwork,
   STRK_TOKEN,
 } from "@/lib/carel/networks";
@@ -296,6 +298,14 @@ export function AvnuStaking({
     unstakeAmount,
     setUnstakeAmount,
   ] = useState("1");
+  const [
+    shieldFee,
+    setShieldFee,
+  ] = useState<bigint | null>(null);
+  const [
+    shieldLoading,
+    setShieldLoading,
+  ] = useState(false);
   const [pool, setPool] =
     useState<StakingPool | null>(null);
   const [position, setPosition] =
@@ -319,6 +329,114 @@ export function AvnuStaking({
       setAmount(match[1]);
     }
   }, [goal]);
+
+  async function refreshShieldConfig() {
+    if (
+      !network ||
+      network.id !== "mainnet"
+    ) {
+      setShieldFee(null);
+      return;
+    }
+
+    setShieldLoading(true);
+    setError("");
+
+    try {
+      const response =
+        await fetch(
+          "/api/staking",
+          {
+            cache: "no-store",
+          },
+        );
+
+      const raw: unknown =
+        await response.json();
+
+      const payload =
+        object(
+          raw,
+          "Shield Staking config",
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          typeof payload.error ===
+            "string"
+            ? payload.error
+            : "Could not load Shield Staking configuration.",
+        );
+      }
+
+      const shield =
+        object(
+          payload.shield,
+          "Shield Staking",
+        );
+
+      const inputToken =
+        text(
+          shield.inputToken,
+          "Shield input token",
+        );
+
+      const outputToken =
+        text(
+          shield.outputToken,
+          "Shield output token",
+        );
+
+      const anonymizer =
+        text(
+          shield.anonymizer,
+          "Endur anonymizer",
+        );
+
+      if (
+        !sameAddress(
+          inputToken,
+          STRK_TOKEN,
+        ) ||
+        !sameAddress(
+          outputToken,
+          ENDUR_XSTRK_TOKEN,
+        ) ||
+        !sameAddress(
+          anonymizer,
+          ENDUR_DEPOSIT_ANONYMIZER,
+        )
+      ) {
+        throw new Error(
+          "CAREL rejected mismatched Endur Shield Staking configuration.",
+        );
+      }
+
+      const fee =
+        bigintValue(
+          shield.feeAmount,
+          "Shield Staking fee",
+        );
+
+      if (fee <= 0n) {
+        throw new Error(
+          "Endur returned an invalid Shield Staking fee.",
+        );
+      }
+
+      setShieldFee(fee);
+    } catch (cause) {
+      setShieldFee(null);
+
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not load Shield Staking.",
+      );
+    } finally {
+      setShieldLoading(false);
+    }
+  }
 
   async function refresh() {
     if (
@@ -384,6 +502,78 @@ export function AvnuStaking({
     wallet.address,
     wallet.chainId,
   ]);
+
+  useEffect(() => {
+    if (mode === "shield") {
+      void refreshShieldConfig();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mode,
+    wallet.chainId,
+  ]);
+
+  async function executeShield() {
+    if (
+      shieldFee === null ||
+      executing ||
+      wallet.busy
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    try {
+      const parsed =
+        parseUnits18(amount);
+
+      if (
+        parsed <=
+        shieldFee
+      ) {
+        throw new Error(
+          `Amount must be greater than the current privacy fee (${formatUnits18(
+            shieldFee,
+            4,
+          )} STRK).`,
+        );
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error &&
+          cause.message
+          ? cause.message
+          : "Enter a valid STRK amount.",
+      );
+      return;
+    }
+
+    setExecuting(true);
+
+    try {
+      const hash =
+        await wallet
+          .executeShieldStaking(
+            amount,
+            shieldFee.toString(),
+            `Shield Stake ${amount} STRK`,
+          );
+
+      setSuccess(
+        `Shield Staking submitted: ${hash.slice(0, 10)}…${hash.slice(-6)}`,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Shield Staking failed.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
 
   async function execute() {
     if (
@@ -535,21 +725,157 @@ export function AvnuStaking({
   }
 
 
-  if (mode !== "normal") {
+  if (mode === "shield") {
+    if (
+      wallet.connected &&
+      network?.id !== "mainnet"
+    ) {
+      return (
+        <section className={styles.panel}>
+          <h3>Shield Staking</h3>
+
+          <p className={styles.notice}>
+            Shield Staking is currently enabled on
+            Starknet Mainnet. Switch Ready to
+            Mainnet to continue.
+          </p>
+        </section>
+      );
+    }
+
     return (
       <section className={styles.panel}>
-        <h3>Staking</h3>
+        <h3>Shield Staking</h3>
 
         <div className={styles.route}>
           <span>Public STRK</span>
           <ArrowRight size={16}/>
-          <span>Staking pool</span>
+          <span>Private xSTRK</span>
         </div>
 
         <p className={styles.helper}>
-          Private staking is not connected yet.
-          CAREL currently stakes public STRK through
-          the Mainnet staking route.
+          Endur liquid staking · STRK20 privacy ·
+          wallet approval required
+        </p>
+
+        <div className={styles.rule}>
+          <span>Provider</span>
+          <strong>Endur</strong>
+        </div>
+
+        <div className={styles.rule}>
+          <span>Output</span>
+          <strong>Shielded xSTRK</strong>
+        </div>
+
+        <div className={styles.rule}>
+          <span>Privacy fee</span>
+          <strong>
+            {shieldLoading
+              ? "Loading…"
+              : shieldFee !== null
+                ? `${formatUnits18(
+                    shieldFee,
+                    4,
+                  )} STRK`
+                : "Unavailable"}
+          </strong>
+        </div>
+
+        <p className={styles.privacyNote}>
+          CAREL shields the public STRK first,
+          privately funds Endur&apos;s deposit
+          anonymizer, then receives xSTRK as a
+          private STRK20 note.
+        </p>
+
+        <label
+          className={styles.fieldLabel}
+          htmlFor="carel-shield-stake-amount"
+        >
+          Public STRK to Shield &amp; Stake
+        </label>
+
+        <input
+          id="carel-shield-stake-amount"
+          className={styles.amountInput}
+          inputMode="decimal"
+          value={amount}
+          onChange={(event) => {
+            setAmount(
+              event.target.value.replace(
+                /[^0-9.]/g,
+                "",
+              ),
+            );
+            setSuccess("");
+          }}
+        />
+
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={
+            !wallet.connected ||
+            !wallet.strk20Capable ||
+            shieldFee === null ||
+            shieldLoading ||
+            executing ||
+            wallet.busy
+          }
+          onClick={() =>
+            void executeShield()
+          }
+        >
+          {executing
+            ? <LoaderCircle size={16}/>
+            : <ArrowRight size={16}/>}
+          {executing
+            ? "Waiting for Ready…"
+            : "Review & Shield Stake"}
+        </button>
+
+        {!wallet.strk20Capable &&
+          wallet.connected && (
+          <p className={styles.notice}>
+            Ready must expose STRK20 Wallet API
+            support for Shield Staking.
+          </p>
+        )}
+
+        {error && (
+          <p
+            className={styles.notice}
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
+
+        {success && (
+          <p className={styles.inlineStatus}>
+            {success}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  if (mode === "unshield") {
+    return (
+      <section className={styles.panel}>
+        <h3>Unshield Staking</h3>
+
+        <div className={styles.route}>
+          <span>Private xSTRK</span>
+          <ArrowRight size={16}/>
+          <span>Public STRK</span>
+        </div>
+
+        <p className={styles.helper}>
+          Unshield Staking is the next route.
+          Shield Staking is now handled separately
+          through Endur.
         </p>
 
         <button

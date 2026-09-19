@@ -7,7 +7,13 @@ import {
   unstakeToCalls,
 } from "@avnu/avnu-sdk";
 import { constants } from "starknet";
-import { STRK_TOKEN } from "@/lib/carel/networks";
+import {
+  CAREL_NETWORKS,
+  ENDUR_DEPOSIT_ANONYMIZER,
+  ENDUR_PRIVACY_POOL,
+  ENDUR_XSTRK_TOKEN,
+  STRK_TOKEN,
+} from "@/lib/carel/networks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -316,6 +322,70 @@ function readAmount(
   }
 
   return amount;
+}
+
+export async function GET() {
+  try {
+    const result =
+      await CAREL_NETWORKS.mainnet.provider.callContract({
+        contractAddress:
+          ENDUR_PRIVACY_POOL,
+        entrypoint:
+          "get_fee_amount",
+        calldata: [],
+      });
+
+    if (
+      !Array.isArray(result) ||
+      !result[0]
+    ) {
+      throw new StakingError(
+        "Endur returned no privacy fee.",
+        502,
+      );
+    }
+
+    const feeAmount =
+      BigInt(result[0]);
+
+    if (
+      feeAmount <= 0n ||
+      feeAmount >=
+        (1n << 128n)
+    ) {
+      throw new StakingError(
+        "Endur returned an invalid privacy fee.",
+        502,
+      );
+    }
+
+    return reply({
+      shield: {
+        provider: "Endur",
+        chainId:
+          constants.StarknetChainId.SN_MAIN,
+        inputToken:
+          canonicalFelt(
+            STRK_TOKEN,
+            "STRK token",
+          ),
+        outputToken:
+          canonicalFelt(
+            ENDUR_XSTRK_TOKEN,
+            "xSTRK token",
+          ),
+        anonymizer:
+          canonicalFelt(
+            ENDUR_DEPOSIT_ANONYMIZER,
+            "Endur anonymizer",
+          ),
+        feeAmount:
+          feeAmount.toString(),
+      },
+    });
+  } catch (error) {
+    return failure(error);
+  }
 }
 
 export async function POST(

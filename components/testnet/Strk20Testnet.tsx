@@ -58,6 +58,8 @@ import {
   sameFelt,
 } from "@/lib/strk20/units";
 import {
+  ENDUR_DEPOSIT_ANONYMIZER,
+  ENDUR_XSTRK_TOKEN,
   getCarelNetwork,
 } from "@/lib/carel/networks";
 
@@ -138,6 +140,11 @@ type CarelTestnetContextValue = {
     amount: string | null,
     poolAddress: string,
     tokenAddress: string,
+    label: string,
+  ) => Promise<string>;
+  executeShieldStaking: (
+    amount: string,
+    feeAmount: string,
     label: string,
   ) => Promise<string>;
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
@@ -2011,6 +2018,300 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       label,
     );
 
+  const executeShieldStaking = async (
+    amount: string,
+    feeAmount: string,
+    label: string,
+  ): Promise<string> => {
+    if (
+      stakingSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const {
+      account,
+      network,
+    } = assertPrivateReady();
+
+    if (
+      network.id !== "mainnet"
+    ) {
+      throw new Error(
+        "Shield Staking is currently enabled on Starknet Mainnet only.",
+      );
+    }
+
+    const totalAmount =
+      parseUnits18(amount);
+
+    let privacyFee: bigint;
+
+    try {
+      if (
+        !/^[1-9][0-9]*$/.test(
+          feeAmount,
+        )
+      ) {
+        throw new Error();
+      }
+
+      privacyFee =
+        BigInt(feeAmount);
+    } catch {
+      throw new Error(
+        "Invalid Endur privacy fee.",
+      );
+    }
+
+    if (
+      totalAmount <= 0n
+    ) {
+      throw new Error(
+        "Shield Stake amount must be greater than zero.",
+      );
+    }
+
+    if (
+      totalAmount <=
+      privacyFee
+    ) {
+      throw new Error(
+        `Shield Stake amount must be greater than the privacy fee (${formatUnits18(
+          privacyFee,
+          4,
+        )} STRK).`,
+      );
+    }
+
+    if (
+      publicStrk !== null &&
+      publicStrk < totalAmount
+    ) {
+      throw new Error(
+        "Insufficient public STRK balance for Shield Staking.",
+      );
+    }
+
+    const stakedAmount =
+      totalAmount -
+      privacyFee;
+
+    const inputToken =
+      felt(STRK_TOKEN);
+
+    const outputToken =
+      felt(
+        ENDUR_XSTRK_TOKEN,
+      );
+
+    const anonymizer =
+      felt(
+        ENDUR_DEPOSIT_ANONYMIZER,
+      );
+
+    const recipient =
+      felt(account.address);
+
+    const uint128Mask =
+      (1n << 128n) - 1n;
+
+    const amountLow =
+      stakedAmount &
+      uint128Mask;
+
+    const amountHigh =
+      stakedAmount >>
+      128n;
+
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            recipient
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    stakingSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      const actions:
+        WALLET_API.STRK20_ACTION[] =
+        [
+          // Public STRK -> privacy pool.
+          {
+            type: "deposit",
+            token:
+              inputToken,
+            amount:
+              num.toHex(
+                totalAmount,
+              ),
+          },
+
+          // Fund Endur anonymizer from
+          // the private STRK balance.
+          {
+            type: "withdraw",
+            token:
+              inputToken,
+            amount:
+              num.toHex(
+                stakedAmount,
+              ),
+            recipient:
+              anonymizer,
+          },
+
+          // xSTRK output returns as a
+          // new private/open note.
+          {
+            type: "transfer",
+            token:
+              outputToken,
+            amount: "OPEN",
+            recipient,
+          },
+
+          {
+            type: "invoke",
+            contract:
+              anonymizer,
+            calldata: [
+              inputToken,
+              outputToken,
+              num.toHex(
+                amountLow,
+              ),
+              num.toHex(
+                amountHigh,
+              ),
+              "${openNoteIds[0]}",
+            ],
+          },
+        ];
+
+      await assertSession();
+
+      let response;
+
+      try {
+        response =
+          await account
+            .strk20InvokeTransaction(
+              actions,
+            );
+      } catch (cause) {
+        throw new Error(
+          `Ready Shield Staking failed: ${
+            cause instanceof Error
+              ? cause.message
+              : "Private staking execution failed."
+          }`,
+        );
+      }
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Shield Staking transaction hash.",
+        );
+      }
+
+      setTx({
+        kind: "pending",
+        label,
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind: "confirmed",
+          label,
+          hash,
+        });
+
+        const block =
+          Number(
+            await network.provider
+              .getBlockNumber(),
+          );
+
+        setCurrentBlock(
+          block,
+        );
+
+        setMaturityTarget(
+          block + 10,
+        );
+      } catch {
+        setTx({
+          kind: "submitted",
+          label,
+          hash,
+        });
+      }
+
+      // The old private STRK observation is
+      // stale after this operation.
+      setPrivateStrk(null);
+      setPrivateRevealed(false);
+
+      return hash;
+    } finally {
+      stakingSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -2070,6 +2371,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       completeUnshieldSwap,
       executeStaking,
       executeStakingAction,
+      executeShieldStaking,
       executeBridge,
     }),
     [

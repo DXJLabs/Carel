@@ -9,11 +9,11 @@ import {
 
 const SEPOLIA_RPC =
   process.env.NEXT_PUBLIC_STARKNET_SEPOLIA_RPC ??
-  "https://starknet-sepolia.public.blastapi.io";
+  "https://starknet-sepolia-rpc.publicnode.com";
 
 const MAINNET_RPC =
   process.env.NEXT_PUBLIC_STARKNET_MAINNET_RPC ??
-  "https://starknet-mainnet.public.blastapi.io";
+  "https://starknet-rpc.publicnode.com";
 
 const sepoliaProvider = new RpcProvider({
   nodeUrl: SEPOLIA_RPC,
@@ -25,6 +25,15 @@ const mainnetProvider = new RpcProvider({
 
 export const STRK_TOKEN =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+
+export const ENDUR_XSTRK_TOKEN =
+  "0x028d709c875c0ceac3dce7065bec5328186dc89fe254527084d1689910954b0a";
+
+export const ENDUR_DEPOSIT_ANONYMIZER =
+  "0x030dee638065962eb3642ca54aa48e9e2cd98536bc90b64b99bb306c1db30698";
+
+export const ENDUR_PRIVACY_POOL =
+  "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
 
 export const CAREL_NETWORKS = {
   sepolia: {
