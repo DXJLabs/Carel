@@ -14,10 +14,16 @@ import type {
 } from "@/lib/carel/ecosystems/starknet/protocols/endur/staking";
 
 import {
+  completeEndurUnshieldStaking,
+  executeEndurShieldStake,
+  executeEndurUnshieldStart,
+  executePublicStakingRoute,
+  executeStakingPositionRoute,
   getEndurUnshieldQuote,
   loadEndurShieldConfig,
   loadStakingPool,
   loadStakingPosition,
+  type EndurUnshieldStage,
   type StakingPool,
   type StakingPosition,
 } from "@/lib/carel/ecosystems/starknet/protocols/endur/staking";
@@ -27,9 +33,7 @@ import {
 import {
   ENDUR_AVNU_FEE_RECIPIENT,
   ENDUR_DEPOSIT_ANONYMIZER,
-  ENDUR_XSTRK_TOKEN,
   getCarelNetwork,
-  STRK_TOKEN,
 } from "@/lib/carel/networks";
 import {
   formatUnits18,
@@ -100,12 +104,9 @@ export function AvnuStaking({
   const [
     unshieldStage,
     setUnshieldStage,
-  ] = useState<{
-    privateBuyBefore: bigint;
-    minExpected: bigint;
-    maturityTarget: number;
-    sellAmount: string;
-  } | null>(null);
+  ] = useState<EndurUnshieldStage | null>(
+    null,
+  );
   const [error, setError] =
     useState("");
   const [success, setSuccess] =
@@ -339,11 +340,17 @@ export function AvnuStaking({
     }
   }
 
+  /**
+   * Starts the reviewed private xSTRK → STRK leg through the Endur adapter.
+   */
   async function executeUnshieldStart() {
     if (
       !unshieldQuote ||
       executing ||
-      wallet.busy
+      wallet.busy ||
+      !network ||
+      network.id !== "mainnet" ||
+      !network.assets.xstrk
     ) {
       return;
     }
@@ -353,34 +360,26 @@ export function AvnuStaking({
     setSuccess("");
 
     try {
-      const minExpected =
-        unshieldQuote.buyAmount -
-        (
-          unshieldQuote.buyAmount *
-          50n
-        ) /
-          10_000n;
-
       const stage =
-        await wallet
-          .executeUnshieldSwapStart(
+        await executeEndurUnshieldStart({
+          quote:
             unshieldQuote,
-            ENDUR_XSTRK_TOKEN,
-            STRK_TOKEN,
-            `Unshield Staking · private ${amount} xSTRK → private STRK`,
-          );
-
-      setUnshieldStage({
-        privateBuyBefore:
-          stage.privateBuyBefore,
-        minExpected,
-        maturityTarget:
-          stage.maturityTarget,
-        sellAmount:
           amount,
-      });
+          fromAsset:
+            network.assets.xstrk,
+          toAsset:
+            network.assets.strk,
+          executor:
+            wallet,
+        });
 
-      setUnshieldQuote(null);
+      setUnshieldStage(
+        stage,
+      );
+
+      setUnshieldQuote(
+        null,
+      );
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -392,11 +391,17 @@ export function AvnuStaking({
     }
   }
 
+  /**
+   * Completes the matured Unshield route through the Endur adapter.
+   */
   async function completeUnshieldStaking() {
     if (
       !unshieldStage ||
       executing ||
-      wallet.busy
+      wallet.busy ||
+      !network ||
+      network.id !== "mainnet" ||
+      !network.assets.xstrk
     ) {
       return;
     }
@@ -407,27 +412,31 @@ export function AvnuStaking({
 
     try {
       const result =
-        await wallet
-          .completeUnshieldSwap(
-            STRK_TOKEN,
-            unshieldStage
-              .privateBuyBefore,
-            unshieldStage
-              .minExpected,
-            unshieldStage
-              .maturityTarget,
-            `Unshield Staking ${unshieldStage.sellAmount} xSTRK → public STRK`,
-          );
+        await completeEndurUnshieldStaking({
+          stage:
+            unshieldStage,
+          fromAsset:
+            network.assets.xstrk,
+          toAsset:
+            network.assets.strk,
+          executor:
+            wallet,
+        });
 
       setSuccess(
         `Unshield complete: ${formatUnits18(
           result.amount,
           6,
-        )} STRK moved to your public wallet.`,
+        )} ${network.assets.strk.symbol} moved to your public wallet.`,
       );
 
-      setUnshieldStage(null);
-      setUnshieldQuote(null);
+      setUnshieldStage(
+        null,
+      );
+
+      setUnshieldQuote(
+        null,
+      );
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -439,58 +448,44 @@ export function AvnuStaking({
     }
   }
 
+  /**
+   * Executes STRK → private xSTRK through the Endur execution adapter.
+   */
   async function executeShield() {
     if (
       shieldFee === null ||
       executing ||
-      wallet.busy
+      wallet.busy ||
+      !network ||
+      network.id !== "mainnet" ||
+      !network.assets.xstrk
     ) {
       return;
     }
 
     setError("");
     setSuccess("");
-
-    let stakeAmount: bigint;
-
-    try {
-      stakeAmount =
-        parseUnits18(amount);
-
-      if (stakeAmount <= 0n) {
-        throw new Error(
-          "Stake amount must be greater than zero.",
-        );
-      }
-    } catch (cause) {
-      setError(
-        cause instanceof Error &&
-          cause.message
-          ? cause.message
-          : "Enter a valid STRK amount.",
-      );
-      return;
-    }
-
-    const totalRequired =
-      stakeAmount + shieldFee;
-
     setExecuting(true);
 
     try {
-      const hash =
-        await wallet
-          .executeShieldStaking(
-            formatUnits18(
-              totalRequired,
-              18,
-            ),
-            shieldFee.toString(),
-            `Shield Stake ${amount} STRK`,
-          );
+      const result =
+        await executeEndurShieldStake({
+          amount,
+          feeAmount:
+            shieldFee,
+          stakeAsset:
+            network.assets.strk,
+          outputAsset:
+            network.assets.xstrk,
+          executor:
+            wallet,
+        });
 
       setSuccess(
-        `Shield Staking submitted: ${hash.slice(0, 10)}…${hash.slice(-6)}`,
+        `Shield Staking submitted: ${result.hash.slice(
+          0,
+          10,
+        )}…${result.hash.slice(-6)}`,
       );
     } catch (cause) {
       setError(
@@ -503,46 +498,40 @@ export function AvnuStaking({
     }
   }
 
+  /**
+   * Executes normal public staking through the registry-driven route.
+   */
   async function execute() {
     if (
       !pool ||
       executing ||
-      wallet.busy
+      wallet.busy ||
+      !network ||
+      network.id !== "mainnet"
     ) {
       return;
     }
 
     setError("");
     setSuccess("");
-
-    let parsed: bigint;
-
-    try {
-      parsed = parseUnits18(amount);
-
-      if (parsed <= 0n) {
-        throw new Error();
-      }
-    } catch {
-      setError(
-        "Enter a positive STRK amount with up to 18 decimals.",
-      );
-      return;
-    }
-
     setExecuting(true);
 
     try {
-      const hash =
-        await wallet.executeStaking(
+      const result =
+        await executePublicStakingRoute({
           amount,
-          pool.poolAddress,
-          pool.tokenAddress,
-          `Stake ${amount} STRK`,
-        );
+          pool,
+          stakeAsset:
+            network.assets.strk,
+          executor:
+            wallet,
+        });
 
       setSuccess(
-        `Staking transaction submitted: ${hash.slice(0, 10)}…${hash.slice(-6)}`,
+        `Staking transaction submitted: ${result.hash.slice(
+          0,
+          10,
+        )}…${result.hash.slice(-6)}`,
       );
 
       await refresh();
@@ -557,6 +546,9 @@ export function AvnuStaking({
     }
   }
 
+  /**
+   * Routes unstake and rewards actions through the staking adapter.
+   */
   async function runPositionAction(
     action:
       | "initiateUnstake"
@@ -566,78 +558,48 @@ export function AvnuStaking({
     if (
       !pool ||
       executing ||
-      wallet.busy
+      wallet.busy ||
+      !network ||
+      network.id !== "mainnet"
     ) {
       return;
     }
 
     setError("");
     setSuccess("");
-
-    let actionAmount:
-      string | null = null;
-
-    if (
-      action ===
-      "initiateUnstake"
-    ) {
-      try {
-        const parsed =
-          parseUnits18(
-            unstakeAmount,
-          );
-
-        if (
-          parsed <= 0n ||
-          !position ||
-          parsed >
-            position.amount
-        ) {
-          throw new Error();
-        }
-      } catch {
-        setError(
-          "Enter an unstake amount greater than zero and not above your current stake.",
-        );
-        return;
-      }
-
-      actionAmount =
-        unstakeAmount;
-    }
-
     setExecuting(true);
 
     try {
-      const label =
+      const result =
+        await executeStakingPositionRoute({
+          action,
+          amount:
+            action ===
+              "initiateUnstake"
+              ? unstakeAmount
+              : null,
+          pool,
+          position,
+          stakeAsset:
+            network.assets.strk,
+          executor:
+            wallet,
+        });
+
+      const status =
         action ===
           "initiateUnstake"
-          ? `Unstake ${unstakeAmount} STRK`
+          ? "Unstake initiated"
           : action ===
               "completeUnstake"
-            ? "Complete STRK unstake"
-            : "Claim staking rewards";
-
-      const hash =
-        await wallet
-          .executeStakingAction(
-            action,
-            actionAmount,
-            pool.poolAddress,
-            pool.tokenAddress,
-            label,
-          );
+            ? "Withdrawal submitted"
+            : "Rewards claim submitted";
 
       setSuccess(
-        `${
-          action ===
-          "initiateUnstake"
-            ? "Unstake initiated"
-            : action ===
-                "completeUnstake"
-              ? "Withdrawal submitted"
-              : "Rewards claim submitted"
-        }: ${hash.slice(0, 10)}…${hash.slice(-6)}`,
+        `${status}: ${result.hash.slice(
+          0,
+          10,
+        )}…${result.hash.slice(-6)}`,
       );
 
       await refresh();

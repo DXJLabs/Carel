@@ -8,6 +8,11 @@ import type {
 } from "@/lib/carel/core/assets";
 
 import {
+  formatUnits,
+  parseUnits,
+} from "@/lib/carel/core/amounts";
+
+import {
   assetAddress,
 } from "@/lib/carel/core/assets";
 
@@ -612,6 +617,434 @@ export async function getEndurUnshieldQuote({
   }
 
   return quote;
+}
+
+
+export type StakingAction =
+  | "stake"
+  | "initiateUnstake"
+  | "completeUnstake"
+  | "claimRewards";
+
+export type EndurUnshieldStage =
+  Readonly<{
+    privateBuyBefore: bigint;
+    minExpected: bigint;
+    maturityTarget: number;
+    sellAmount: string;
+  }>;
+
+export type StakingExecutionResult =
+  Readonly<{
+    hash: string;
+  }>;
+
+export type EndurUnshieldCompleteResult =
+  Readonly<{
+    hash: string;
+    amount: bigint;
+  }>;
+
+export type EndurStakingExecutor =
+  Readonly<{
+    executeStaking: (
+      amount: string,
+      poolAddress: string,
+      tokenAddress: string,
+      label: string,
+    ) => Promise<string>;
+
+    executeStakingAction: (
+      action: StakingAction,
+      amount: string | null,
+      poolAddress: string,
+      tokenAddress: string,
+      label: string,
+    ) => Promise<string>;
+
+    executeShieldStaking: (
+      amount: string,
+      feeAmount: string,
+      label: string,
+    ) => Promise<string>;
+
+    executeUnshieldSwapStart: (
+      quote: Quote,
+      expectedSellToken: string,
+      expectedBuyToken: string,
+      label: string,
+    ) => Promise<{
+      hash: string;
+      privateBuyBefore: bigint;
+      maturityTarget: number;
+    }>;
+
+    completeUnshieldSwap: (
+      token: string,
+      privateBuyBefore: bigint,
+      minExpected: bigint,
+      maturityTarget: number,
+      label: string,
+    ) => Promise<{
+      hash: string;
+      amount: bigint;
+    }>;
+  }>;
+
+const STAKING_UINT128_LIMIT =
+  1n << 128n;
+
+const UNSHIELD_SLIPPAGE_BPS =
+  50n;
+
+/**
+ * Parses and validates an amount before it reaches the legacy wallet
+ * staking executor. Provider-specific 128-bit staking limits live here
+ * instead of being duplicated in React components.
+ */
+export function parseStakingAmount(
+  amount: string,
+  asset: AssetRef,
+): bigint {
+  const parsed =
+    parseUnits(
+      amount,
+      asset.decimals,
+    );
+
+  if (parsed <= 0n) {
+    throw new Error(
+      `${asset.symbol} amount must be greater than zero.`,
+    );
+  }
+
+  if (
+    parsed >=
+    STAKING_UINT128_LIMIT
+  ) {
+    throw new Error(
+      `${asset.symbol} amount exceeds the supported staking range.`,
+    );
+  }
+
+  return parsed;
+}
+
+/**
+ * Executes a normal public staking route after verifying the pool token
+ * matches the registered CAREL asset.
+ */
+export async function executePublicStakingRoute({
+  amount,
+  pool,
+  stakeAsset,
+  executor,
+}: {
+  amount: string;
+  pool: StakingPool;
+  stakeAsset: AssetRef;
+  executor: EndurStakingExecutor;
+}): Promise<StakingExecutionResult> {
+  parseStakingAmount(
+    amount,
+    stakeAsset,
+  );
+
+  const expectedToken =
+    requireStakingAssetAddress(
+      stakeAsset,
+    );
+
+  if (
+    !sameStarknetAddress(
+      pool.tokenAddress,
+      expectedToken,
+    )
+  ) {
+    throw new Error(
+      "CAREL rejected a staking pool for a different asset.",
+    );
+  }
+
+  const hash =
+    await executor.executeStaking(
+      amount,
+      pool.poolAddress,
+      expectedToken,
+      `Stake ${amount} ${stakeAsset.symbol}`,
+    );
+
+  return {
+    hash,
+  };
+}
+
+/**
+ * Executes public staking position actions through one route API.
+ * Initiate-unstake additionally validates the requested amount against
+ * the currently reviewed position.
+ */
+export async function executeStakingPositionRoute({
+  action,
+  amount,
+  pool,
+  position,
+  stakeAsset,
+  executor,
+}: {
+  action:
+    | "initiateUnstake"
+    | "completeUnstake"
+    | "claimRewards";
+  amount: string | null;
+  pool: StakingPool;
+  position: StakingPosition | null;
+  stakeAsset: AssetRef;
+  executor: EndurStakingExecutor;
+}): Promise<StakingExecutionResult> {
+  const expectedToken =
+    requireStakingAssetAddress(
+      stakeAsset,
+    );
+
+  if (
+    !sameStarknetAddress(
+      pool.tokenAddress,
+      expectedToken,
+    )
+  ) {
+    throw new Error(
+      "CAREL rejected a staking position for a different asset.",
+    );
+  }
+
+  let actionAmount:
+    string | null = null;
+
+  if (
+    action ===
+    "initiateUnstake"
+  ) {
+    if (
+      amount === null ||
+      !position
+    ) {
+      throw new Error(
+        "A current staking position is required before unstaking.",
+      );
+    }
+
+    const parsed =
+      parseStakingAmount(
+        amount,
+        stakeAsset,
+      );
+
+    if (
+      parsed >
+      position.amount
+    ) {
+      throw new Error(
+        "Unstake amount cannot exceed the current staking position.",
+      );
+    }
+
+    actionAmount =
+      amount;
+  }
+
+  const label =
+    action ===
+      "initiateUnstake"
+      ? `Unstake ${actionAmount} ${stakeAsset.symbol}`
+      : action ===
+          "completeUnstake"
+        ? `Complete ${stakeAsset.symbol} unstake`
+        : `Claim ${stakeAsset.symbol} staking rewards`;
+
+  const hash =
+    await executor
+      .executeStakingAction(
+        action,
+        actionAmount,
+        pool.poolAddress,
+        expectedToken,
+        label,
+      );
+
+  return {
+    hash,
+  };
+}
+
+/**
+ * Executes Endur Shield Staking while keeping amount parsing, fee addition,
+ * and execution labels out of the UI component.
+ */
+export async function executeEndurShieldStake({
+  amount,
+  feeAmount,
+  stakeAsset,
+  outputAsset,
+  executor,
+}: {
+  amount: string;
+  feeAmount: bigint;
+  stakeAsset: AssetRef;
+  outputAsset: AssetRef;
+  executor: EndurStakingExecutor;
+}): Promise<StakingExecutionResult> {
+  const stakeAmount =
+    parseStakingAmount(
+      amount,
+      stakeAsset,
+    );
+
+  if (feeAmount <= 0n) {
+    throw new Error(
+      "Endur privacy fee must be greater than zero.",
+    );
+  }
+
+  requireStakingAssetAddress(
+    outputAsset,
+  );
+
+  const totalRequired =
+    stakeAmount +
+    feeAmount;
+
+  if (
+    totalRequired >=
+    STAKING_UINT128_LIMIT
+  ) {
+    throw new Error(
+      "Shield Staking total exceeds the supported staking range.",
+    );
+  }
+
+  const totalAmount =
+    formatUnits(
+      totalRequired,
+      stakeAsset.decimals,
+      stakeAsset.decimals,
+    );
+
+  const hash =
+    await executor
+      .executeShieldStaking(
+        totalAmount,
+        feeAmount.toString(),
+        `Shield Stake ${amount} ${stakeAsset.symbol} → private ${outputAsset.symbol}`,
+      );
+
+  return {
+    hash,
+  };
+}
+
+/**
+ * Executes the first private leg of Endur Unshield Staking and returns
+ * the maturity data needed for the second public-withdrawal step.
+ */
+export async function executeEndurUnshieldStart({
+  quote,
+  amount,
+  fromAsset,
+  toAsset,
+  executor,
+}: {
+  quote: Quote;
+  amount: string;
+  fromAsset: AssetRef;
+  toAsset: AssetRef;
+  executor: EndurStakingExecutor;
+}): Promise<EndurUnshieldStage> {
+  const sellToken =
+    requireStakingAssetAddress(
+      fromAsset,
+    );
+
+  const buyToken =
+    requireStakingAssetAddress(
+      toAsset,
+    );
+
+  if (
+    !sameStarknetAddress(
+      quote.sellTokenAddress,
+      sellToken,
+    ) ||
+    !sameStarknetAddress(
+      quote.buyTokenAddress,
+      buyToken,
+    )
+  ) {
+    throw new Error(
+      "Reviewed Unshield Staking quote no longer matches the asset pair.",
+    );
+  }
+
+  const minExpected =
+    quote.buyAmount -
+    (
+      quote.buyAmount *
+      UNSHIELD_SLIPPAGE_BPS
+    ) /
+      10_000n;
+
+  const stage =
+    await executor
+      .executeUnshieldSwapStart(
+        quote,
+        sellToken,
+        buyToken,
+        `Unshield Staking · private ${amount} ${fromAsset.symbol} → private ${toAsset.symbol}`,
+      );
+
+  return {
+    privateBuyBefore:
+      stage.privateBuyBefore,
+    minExpected,
+    maturityTarget:
+      stage.maturityTarget,
+    sellAmount:
+      amount,
+  };
+}
+
+/**
+ * Completes Endur Unshield Staking after maturity by withdrawing only
+ * the reviewed minimum output to the public wallet.
+ */
+export async function completeEndurUnshieldStaking({
+  stage,
+  fromAsset,
+  toAsset,
+  executor,
+}: {
+  stage: EndurUnshieldStage;
+  fromAsset: AssetRef;
+  toAsset: AssetRef;
+  executor: EndurStakingExecutor;
+}): Promise<EndurUnshieldCompleteResult> {
+  requireStakingAssetAddress(
+    fromAsset,
+  );
+
+  const buyToken =
+    requireStakingAssetAddress(
+      toAsset,
+    );
+
+  return executor
+    .completeUnshieldSwap(
+      buyToken,
+      stage.privateBuyBefore,
+      stage.minExpected,
+      stage.maturityTarget,
+      `Unshield Staking ${stage.sellAmount} ${fromAsset.symbol} → public ${toAsset.symbol}`,
+    );
 }
 
 export type {
