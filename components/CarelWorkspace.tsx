@@ -15,6 +15,16 @@ import { routeAgentGoal } from "@/lib/agent/router";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import { getCarelNetwork } from "@/lib/carel/networks";
+import {
+  buildPortfolioHoldings,
+  findPortfolioHolding,
+  formatPortfolioAmount,
+  portfolioHoldingDetail,
+  type PortfolioPosition,
+} from "@/lib/carel/portfolio/model";
+import {
+  loadStarknetPortfolioPositions,
+} from "@/lib/carel/portfolio/starknet";
 import { CarelOrbit } from "./CarelOrbit";
 import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
 import { AvnuSwap } from "./swap/AvnuSwap";
@@ -108,9 +118,47 @@ export function CarelApp() {
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [quickAction, setQuickAction] = useState<"shield" | "unshield" | null>(null);
   const [quickAmount, setQuickAmount] = useState("1");
+  const [
+    portfolioPositions,
+    setPortfolioPositions,
+  ] = useState<PortfolioPosition[]>([]);
+  const [
+    portfolioPositionsLoading,
+    setPortfolioPositionsLoading,
+  ] = useState(false);
+  const [
+    portfolioPositionWarning,
+    setPortfolioPositionWarning,
+  ] = useState<string | null>(null);
   const walletDetails = useRef<HTMLDetailsElement>(null);
   const sessionKey = `${wallet.chainId}:${wallet.address.toLowerCase()}`;
   const activeNetwork = getCarelNetwork(wallet.chainId);
+
+  const portfolioHoldings =
+    useMemo(
+      () =>
+        activeNetwork
+          ? buildPortfolioHoldings(
+              activeNetwork.assetList,
+              wallet.balances,
+              wallet.privateRevealed,
+            )
+          : [],
+      [
+        activeNetwork,
+        wallet.balances,
+        wallet.privateRevealed,
+      ],
+    );
+
+  const strkHolding =
+    activeNetwork
+      ? findPortfolioHolding(
+          portfolioHoldings,
+          activeNetwork.assets.strk.id,
+        )
+      : null;
+
   const publicReady =
     wallet.connected && activeNetwork !== null;
   const privacyReady =
@@ -119,11 +167,6 @@ export function CarelApp() {
   const privateBalance =
     wallet.privateRevealed
       ? wallet.privateStrk
-      : null;
-
-  const privateXstrk =
-    wallet.privateRevealed
-      ? wallet.privateXstrk
       : null;
 
   const total =
@@ -181,6 +224,100 @@ export function CarelApp() {
       return { owner: sessionKey, records: next };
     });
   }, [wallet.tx, sessionKey, wallet.connected]);
+
+  useEffect(() => {
+    let cancelled =
+      false;
+
+    async function loadPortfolioPositions() {
+      if (
+        tab !== "portfolio" ||
+        !wallet.connected ||
+        !wallet.address ||
+        !activeNetwork ||
+        activeNetwork.id !==
+          "mainnet"
+      ) {
+        setPortfolioPositions([]);
+        setPortfolioPositionWarning(null);
+        setPortfolioPositionsLoading(false);
+        return;
+      }
+
+      setPortfolioPositionsLoading(
+        true,
+      );
+
+      setPortfolioPositionWarning(
+        null,
+      );
+
+      try {
+        const result =
+          await loadStarknetPortfolioPositions({
+            owner:
+              wallet.address,
+            baseUrl:
+              activeNetwork.avnuBaseUrl,
+            stakeAsset:
+              activeNetwork.assets.strk,
+            liquidStakingAsset:
+              activeNetwork.assets.xstrk,
+            balances:
+              wallet.balances,
+            privateRevealed:
+              wallet.privateRevealed,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        setPortfolioPositions(
+          [...result.positions],
+        );
+
+        setPortfolioPositionWarning(
+          result.warnings[0] ??
+            null,
+        );
+      } catch (cause) {
+        if (cancelled) {
+          return;
+        }
+
+        setPortfolioPositions(
+          [],
+        );
+
+        setPortfolioPositionWarning(
+          cause instanceof Error
+            ? cause.message
+            : "Could not load portfolio positions.",
+        );
+      } finally {
+        if (!cancelled) {
+          setPortfolioPositionsLoading(
+            false,
+          );
+        }
+      }
+    }
+
+    void loadPortfolioPositions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    tab,
+    wallet.connected,
+    wallet.address,
+    wallet.balances,
+    wallet.privateRevealed,
+    activeNetwork,
+    sample,
+  ]);
 
   const chartPoints = useMemo(() => {
     if (observations.owner !== sessionKey || !wallet.connected) return [];
@@ -352,8 +489,8 @@ export function CarelApp() {
     !wallet.connected
       ? "Connect your wallet to see your capital."
       : total !== null
-        ? "Public + revealed private STRK · xSTRK is listed separately in Holdings."
-        : "Private assets are excluded until you reveal them.";
+        ? "Observed STRK balance · other registered assets are listed separately below."
+        : "Public STRK is shown first. Private assets remain excluded until you reveal them.";
 
   function renderHome() {
     return <div className={styles.homeGrid}>
@@ -489,78 +626,128 @@ export function CarelApp() {
       <section>
         <SectionHeading title="Holdings"/>
 
-        <div className={styles.holdingRow}>
-          <span className={styles.coin}>S</span>
-          <div className={styles.rowCopy}>
-            <strong>STRK</strong>
-            <small>
-              {total === null
-                ? "Visible public balance"
-                : "Public + private balance"}
-            </small>
-          </div>
-          <strong className={styles.holdingAmount}>
-            {amount(
-              visibleBalance,
-              hideAmounts,
-            )}
-            <small>STRK</small>
-          </strong>
-        </div>
+        {portfolioHoldings.length ? (
+          portfolioHoldings.map(
+            (holding) => (
+              <div
+                className={styles.holdingRow}
+                key={holding.asset.id}
+              >
+                <span className={styles.coin}>
+                  {holding.asset.symbol
+                    .slice(0, 1)}
+                </span>
 
-        {activeNetwork?.id === "mainnet" && (
-          <div className={styles.holdingRow}>
-            <span className={styles.coin}>x</span>
-            <div className={styles.rowCopy}>
-              <strong>Endur xSTRK</strong>
-              <small>
-                Shielded liquid staking token
-              </small>
-            </div>
-            <strong className={styles.holdingAmount}>
-              {amount(
-                privateXstrk,
-                hideAmounts ||
-                  !wallet.privateRevealed,
-              )}
-              <small>xSTRK</small>
-            </strong>
-          </div>
+                <div className={styles.rowCopy}>
+                  <strong>
+                    {holding.asset.name}
+                  </strong>
+
+                  <small>
+                    {portfolioHoldingDetail(
+                      holding,
+                      wallet.privateRevealed,
+                    )}
+                  </small>
+                </div>
+
+                <strong
+                  className={
+                    styles.holdingAmount
+                  }
+                >
+                  {formatPortfolioAmount(
+                    holding.observedAmount,
+                    holding.asset,
+                    hideAmounts,
+                  )}
+
+                  <small>
+                    {holding.asset.symbol}
+                  </small>
+                </strong>
+              </div>
+            ),
+          )
+        ) : (
+          <EmptyState title="No holdings loaded">
+            Connect a supported network to load
+            registered CAREL assets.
+          </EmptyState>
         )}
       </section>
 
       <GardenBalances hidden={hideAmounts}/>
 
       <section>
-        <SectionHeading title="Positions"/>
+        <SectionHeading title="Positions">
+          {portfolioPositionsLoading && (
+            <span className={styles.status}>
+              Loading
+            </span>
+          )}
+        </SectionHeading>
 
-        {activeNetwork?.id === "mainnet" &&
-        wallet.privateRevealed &&
-        privateXstrk !== null &&
-        privateXstrk > ZERO ? (
-          <div className={styles.holdingRow}>
-            <span className={styles.coin}>x</span>
+        {portfolioPositions.length ? (
+          portfolioPositions.map(
+            (position) => (
+              <div
+                className={styles.holdingRow}
+                key={position.id}
+              >
+                <span className={styles.coin}>
+                  {position.asset.symbol
+                    .slice(0, 1)}
+                </span>
 
-            <div className={styles.rowCopy}>
-              <strong>Endur Shield Staking</strong>
-              <small>
-                Private liquid staking position
-              </small>
-            </div>
+                <div className={styles.rowCopy}>
+                  <strong>
+                    {position.label}
+                  </strong>
 
-            <strong className={styles.holdingAmount}>
-              {amount(
-                privateXstrk,
-                hideAmounts,
-              )}
-              <small>xSTRK</small>
-            </strong>
-          </div>
+                  <small>
+                    {position.protocol}
+                    {" · "}
+                    {position.detail}
+                  </small>
+                </div>
+
+                <strong
+                  className={
+                    styles.holdingAmount
+                  }
+                >
+                  {formatPortfolioAmount(
+                    position.amount,
+                    position.asset,
+                    hideAmounts,
+                  )}
+
+                  <small>
+                    {position.asset.symbol}
+                  </small>
+                </strong>
+              </div>
+            ),
+          )
+        ) : portfolioPositionsLoading ? (
+          <p className={styles.helper}>
+            Loading protocol positions…
+          </p>
         ) : (
           <EmptyState title="No visible positions">
-            Reveal private balances to load your
-            shielded Endur xSTRK position.
+            Public staking and revealed private
+            liquid-staking positions will appear
+            here.
           </EmptyState>
+        )}
+
+        {portfolioPositionWarning && (
+          <p className={styles.helper}>
+            Public staking position unavailable:
+            {" "}
+            {portfolioPositionWarning}
+          </p>
         )}
       </section>
     </div>;
