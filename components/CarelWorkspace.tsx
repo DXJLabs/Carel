@@ -14,6 +14,9 @@ import { buildLivePlan } from "@/lib/agent/livePlanner";
 import { routeAgentGoal } from "@/lib/agent/router";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
+import {
+  gardenBridgeIntentFromRequest,
+} from "@/lib/garden/protocol";
 import { getCarelNetwork } from "@/lib/carel/networks";
 import {
   buildPortfolioHoldings,
@@ -377,13 +380,27 @@ export function CarelApp() {
     setPlanned(false);
     setGoalError(null);
 
-    setBridgeIntent(
+    if (
       routed.tool === "Bridge" &&
-        routed.status === "ready" &&
-        routed.bridgeIntent
-        ? routed.bridgeIntent
-        : null,
-    );
+      routed.status === "ready" &&
+      routed.bridgeRequest
+    ) {
+      try {
+        setBridgeIntent(
+          gardenBridgeIntentFromRequest(
+            routed.bridgeRequest,
+          ),
+        );
+      } catch {
+        setBridgeIntent(
+          null,
+        );
+      }
+    } else {
+      setBridgeIntent(
+        null,
+      );
+    }
   }
   function chooseBalanceGoal(
     nextMode: "shield" | "unshield" =
@@ -428,15 +445,46 @@ export function CarelApp() {
     const routed = routeAgentGoal(goalText);
 
     if (routed.tool === "Bridge") {
-      if (routed.status !== "ready" || !routed.bridgeIntent) {
+      if (
+        routed.status !==
+          "ready" ||
+        !routed.bridgeRequest
+      ) {
         setSelectedTool(null);
         setBridgeIntent(null);
-        setGoalError(routed.message || "Choose a supported Bitcoin bridge route.");
+        setGoalError(
+          routed.message ||
+            "Enter an explicit Bridge goal.",
+        );
         return;
       }
 
-      setBridgeIntent(routed.bridgeIntent);
-      setSelectedTool("Bridge");
+      try {
+        setBridgeIntent(
+          gardenBridgeIntentFromRequest(
+            routed.bridgeRequest,
+          ),
+        );
+
+        setSelectedTool(
+          "Bridge",
+        );
+      } catch (error) {
+        setSelectedTool(
+          "Bridge",
+        );
+
+        setBridgeIntent(
+          null,
+        );
+
+        setGoalError(
+          error instanceof Error
+            ? error.message
+            : "No current bridge adapter supports that route.",
+        );
+      }
+
       return;
     }
 

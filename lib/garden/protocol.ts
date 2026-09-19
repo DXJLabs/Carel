@@ -39,14 +39,119 @@ export function formatBitcoinAmount(value: string): string {
   const n = units(value, true);
   return `${n / 100_000_000n}.${(n % 100_000_000n).toString().padStart(8, "0")}`;
 }
-export function parseBridgeGoal(goal: string): BridgeIntent {
-  const match = goal.trim().match(/^bridge\s+([0-9]+(?:\.[0-9]+)?)\s+(BTC|WBTC|strkBTC)\s+to\s+(Starknet Sepolia|Bitcoin Testnet4)\.?$/i);
-  if (!match) throw new BridgeError("Use “Bridge 0.0005 BTC to Starknet Sepolia” or choose Bridge to fill in the route.");
-  parseBitcoinAmount(match[1]);
-  const incoming = match[3].toLowerCase() === "starknet sepolia";
-  const symbol = match[2].toLowerCase() === "btc" ? "BTC" : match[2].toLowerCase() === "strkbtc" ? "strkBTC" : "WBTC";
-  if ((incoming && symbol !== "BTC") || (!incoming && symbol === "BTC")) throw new BridgeError("Choose BTC → Starknet Sepolia, or a listed Starknet Bitcoin token → Bitcoin Testnet4.");
-  return { direction: incoming ? "to-starknet" : "to-bitcoin", amount: match[1], symbol };
+export function gardenBridgeIntentFromRequest(
+  request: Readonly<{
+    amountText: string;
+    symbol: string;
+    destination: string;
+  }>,
+): BridgeIntent {
+  parseBitcoinAmount(
+    request.amountText,
+  );
+
+  const destination =
+    request.destination
+      .trim()
+      .replace(/\.$/, "")
+      .toLowerCase();
+
+  if (
+    destination !==
+      "starknet sepolia" &&
+    destination !==
+      "bitcoin testnet4"
+  ) {
+    throw new BridgeError(
+      "Garden currently supports Bitcoin Testnet4 ↔ Starknet Sepolia in CAREL.",
+      400,
+      "NO_ROUTE",
+    );
+  }
+
+  const normalizedSymbol =
+    request.symbol
+      .toLowerCase();
+
+  const symbol:
+    BridgeIntent["symbol"] =
+      normalizedSymbol ===
+        "btc"
+        ? "BTC"
+        : normalizedSymbol ===
+            "strkbtc"
+          ? "strkBTC"
+          : normalizedSymbol ===
+              "wbtc"
+            ? "WBTC"
+            : (() => {
+                throw new BridgeError(
+                  "Garden does not support that bridge asset in CAREL.",
+                  400,
+                  "NO_ROUTE",
+                );
+              })();
+
+  const incoming =
+    destination ===
+    "starknet sepolia";
+
+  if (
+    (
+      incoming &&
+      symbol !== "BTC"
+    ) ||
+    (
+      !incoming &&
+      symbol === "BTC"
+    )
+  ) {
+    throw new BridgeError(
+      "Choose BTC → Starknet Sepolia, or a listed Starknet Bitcoin token → Bitcoin Testnet4.",
+      400,
+      "NO_ROUTE",
+    );
+  }
+
+  return {
+    direction:
+      incoming
+        ? "to-starknet"
+        : "to-bitcoin",
+
+    amount:
+      request.amountText,
+
+    symbol,
+  };
+}
+
+export function parseBridgeGoal(
+  goal: string,
+): BridgeIntent {
+  const match =
+    goal
+      .trim()
+      .match(
+        /^bridge\s+([0-9]+(?:\.[0-9]+)?)\s+([a-z0-9]+)\s+to\s+(.+?)\.?$/i,
+      );
+
+  if (!match) {
+    throw new BridgeError(
+      "Use “Bridge 0.0005 BTC to Starknet Sepolia” or choose Bridge to fill in the route.",
+    );
+  }
+
+  return gardenBridgeIntentFromRequest({
+    amountText:
+      match[1],
+
+    symbol:
+      match[2],
+
+    destination:
+      match[3],
+  });
 }
 export function felt(value: unknown): string {
   const input = text(value, 80);

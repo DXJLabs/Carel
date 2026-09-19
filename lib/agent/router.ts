@@ -1,85 +1,152 @@
-import { parseBridgeGoal } from "@/lib/garden/protocol";
-import type { BridgeIntent } from "@/lib/garden/types";
+import {
+  parseBridgeGoal,
+  type ParsedBridgeRequest,
+} from "@/lib/agent/bridge";
+
 import {
   parseBorrowGoal,
   type ParsedBorrowRequest,
 } from "@/lib/agent/borrow";
 
-export type AgentTool = "Bridge" | "Swap" | "Staking" | "Borrow" | "Balance";
-export type AgentRouteStatus = "ready" | "unsupported" | "invalid";
+export type AgentTool =
+  | "Bridge"
+  | "Swap"
+  | "Staking"
+  | "Borrow"
+  | "Balance";
 
-export type AgentRoute = {
-  tool: AgentTool;
-  status: AgentRouteStatus;
-  provider: string | null;
-  bridgeIntent?: BridgeIntent;
-  borrowRequest?: ParsedBorrowRequest;
-  message?: string;
-};
+export type AgentRouteStatus =
+  | "ready"
+  | "unsupported"
+  | "invalid";
 
-export function routeAgentGoal(goal: string): AgentRoute {
-  const text = goal.trim();
+export type AgentRoute =
+  Readonly<{
+    tool: AgentTool;
+    status: AgentRouteStatus;
+
+    bridgeRequest?:
+      ParsedBridgeRequest;
+
+    borrowRequest?:
+      ParsedBorrowRequest;
+
+    message?: string;
+  }>;
+
+/**
+ * Understands the requested CAREL action without selecting a provider.
+ *
+ * Protocol/provider selection belongs to the execution/adapters layer so
+ * future ecosystems can satisfy the same Agent intent.
+ */
+export function routeAgentGoal(
+  goal: string,
+): AgentRoute {
+  const text =
+    goal.trim();
 
   if (!text) {
     return {
-      tool: "Balance",
-      status: "invalid",
-      provider: null,
-      message: "Describe what you want CAREL to do.",
+      tool:
+        "Balance",
+
+      status:
+        "invalid",
+
+      message:
+        "Describe what you want CAREL to do.",
     };
   }
 
-  if (/\bbridge\b/i.test(text)) {
+  if (
+    /\bbridge\b/i.test(
+      text,
+    )
+  ) {
     try {
       return {
-        tool: "Bridge",
-        status: "ready",
-        provider: "Garden",
-        bridgeIntent: parseBridgeGoal(text),
+        tool:
+          "Bridge",
+
+        status:
+          "ready",
+
+        bridgeRequest:
+          parseBridgeGoal(
+            text,
+          ),
       };
     } catch (error) {
       return {
-        tool: "Bridge",
-        status: "invalid",
-        provider: "Garden",
+        tool:
+          "Bridge",
+
+        status:
+          "invalid",
+
         message:
           error instanceof Error
             ? error.message
-            : "Choose a supported Bitcoin bridge route.",
+            : "Enter an explicit Bridge goal.",
       };
     }
   }
 
-  if (/\b(swap|exchange)\b/i.test(text)) {
+  if (
+    /\b(swap|exchange)\b/i.test(
+      text,
+    )
+  ) {
     return {
-      tool: "Swap",
-      status: "ready",
-      provider: "AVNU",
+      tool:
+        "Swap",
+
+      status:
+        "ready",
     };
   }
 
-  if (/\b(earn|earning|stake|staking|yield|lend|lending)\b/i.test(text)) {
+  if (
+    /\b(earn|earning|stake|staking|yield|lend|lending)\b/i.test(
+      text,
+    )
+  ) {
     return {
-      tool: "Staking",
-      status: "ready",
-      provider: "AVNU",
+      tool:
+        "Staking",
+
+      status:
+        "ready",
     };
   }
 
-  if (/\b(borrow|borrowing|loan)\b/i.test(text)) {
+  if (
+    /\b(borrow|borrowing|loan)\b/i.test(
+      text,
+    )
+  ) {
     try {
       return {
-        tool: "Borrow",
-        status: "ready",
-        provider: "Vesu",
+        tool:
+          "Borrow",
+
+        status:
+          "ready",
+
         borrowRequest:
-          parseBorrowGoal(text),
+          parseBorrowGoal(
+            text,
+          ),
       };
     } catch (error) {
       return {
-        tool: "Borrow",
-        status: "invalid",
-        provider: null,
+        tool:
+          "Borrow",
+
+        status:
+          "invalid",
+
         message:
           error instanceof Error
             ? error.message
@@ -89,8 +156,10 @@ export function routeAgentGoal(goal: string): AgentRoute {
   }
 
   return {
-    tool: "Balance",
-    status: "ready",
-    provider: "STRK20",
+    tool:
+      "Balance",
+
+    status:
+      "ready",
   };
 }
