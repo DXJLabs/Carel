@@ -72,9 +72,12 @@ function txName(label: string) {
           ? "Close Position"
           : value.includes("repay")
             ? "Repay"
-            : value.includes("collateral")
-              ? "Add Collateral"
-              : value.includes("stake")
+            : value.includes("withdraw") &&
+                value.includes("collateral")
+              ? "Withdraw Collateral"
+              : value.includes("collateral")
+                ? "Add Collateral"
+                : value.includes("stake")
             ? "Staking"
             : "Agent execution";
 }

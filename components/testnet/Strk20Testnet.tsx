@@ -99,7 +99,9 @@ import {
 
 import {
   validateVesuAddCollateralCalls,
+  validateVesuWithdrawCollateralCalls,
   type VesuAddCollateralExecutionPayload,
+  type VesuWithdrawCollateralExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/collateral";
 
 type StakingAction =
@@ -204,6 +206,10 @@ type CarelTestnetContextValue = {
   ) => Promise<string>;
   executeAddVesuCollateral: (
     payload: VesuAddCollateralExecutionPayload,
+    label: string,
+  ) => Promise<string>;
+  executeWithdrawVesuCollateral: (
+    payload: VesuWithdrawCollateralExecutionPayload,
     label: string,
   ) => Promise<string>;
 };
@@ -600,6 +606,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const repaySubmitting = useRef(false);
   const closeVesuSubmitting = useRef(false);
   const addVesuCollateralSubmitting = useRef(false);
+  const withdrawVesuCollateralSubmitting = useRef(false);
   const currentAccount = useRef(walletAccount);
   currentAccount.current = walletAccount;
 
@@ -3404,6 +3411,297 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Executes a reviewed Vesu collateral withdrawal only after rebuilding
+   * the exact modify_position call locally.
+   */
+  const executeWithdrawVesuCollateral = async (
+    payload: VesuWithdrawCollateralExecutionPayload,
+    label: string,
+  ): Promise<string> => {
+    if (
+      withdrawVesuCollateralSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account =
+      walletAccount;
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "Vesu Withdraw Collateral is enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+      network.chainId
+    ) {
+      throw new Error(
+        "Prepared Withdraw Collateral belongs to another network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Withdraw Collateral review expired. Review the position again.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(pool.address) !==
+        felt(payload.poolAddress)
+    ) {
+      throw new Error(
+        "Prepared withdrawal references an unapproved Vesu pool.",
+      );
+    }
+
+    const owner =
+      felt(
+        account.address,
+      );
+
+    if (
+      felt(payload.owner) !==
+      owner
+    ) {
+      throw new Error(
+        "Prepared withdrawal belongs to another account.",
+      );
+    }
+
+    if (
+      payload.collateralAssetId !==
+        network.assets.strk.id ||
+      payload.debtAssetId !==
+        network.assets.usdc.id
+    ) {
+      throw new Error(
+        "Prepared withdrawal does not match CAREL's STRK/USDC position.",
+      );
+    }
+
+    let collateralAmount:
+      bigint;
+
+    try {
+      collateralAmount =
+        BigInt(
+          payload.collateralAmount,
+        );
+    } catch {
+      throw new Error(
+        "Prepared withdrawal contains an invalid amount.",
+      );
+    }
+
+    if (
+      collateralAmount <= 0n
+    ) {
+      throw new Error(
+        "Withdrawal amount must be greater than zero.",
+      );
+    }
+
+    const market:
+      VesuBorrowMarket = {
+        id:
+          `vesu:${pool.id}:STRK:USDC`,
+
+        chainId:
+          network.chainId,
+
+        poolAddress:
+          pool.address,
+
+        collateralAsset:
+          network.assets.strk,
+
+        debtAsset:
+          network.assets.usdc,
+      };
+
+    const intent:
+      CollateralIntent = {
+        action:
+          "withdraw-collateral",
+
+        collateralAssetId:
+          network.assets.strk.id,
+
+        amount:
+          collateralAmount,
+
+        positionId:
+          market.id,
+
+        privacy:
+          "public",
+      };
+
+    const safeCalls =
+      validateVesuWithdrawCollateralCalls({
+        calls:
+          payload.calls,
+
+        market,
+
+        owner,
+
+        intent,
+      });
+
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    withdrawVesuCollateralSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Withdraw Collateral review expired before signing.",
+        );
+      }
+
+      const response =
+        await account.execute(
+          safeCalls,
+        );
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Withdraw Collateral transaction hash.",
+        );
+      }
+
+      setTx({
+        kind:
+          "pending",
+
+        label,
+
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind:
+            "confirmed",
+
+          label,
+
+          hash,
+        });
+      } catch {
+        setTx({
+          kind:
+            "submitted",
+
+          label,
+
+          hash,
+        });
+      }
+
+      try {
+        await refreshPublicBalance();
+      } catch {
+        // Portfolio remains independently refreshable.
+      }
+
+      return hash;
+    } finally {
+      withdrawVesuCollateralSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
+  /**
    * Executes a server-prepared full Vesu position close after rebuilding
    * all Native-denomination calldata locally.
    */
@@ -3797,6 +4095,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeRepay,
       executeCloseVesuPosition,
       executeAddVesuCollateral,
+      executeWithdrawVesuCollateral,
     }),
     [
       wallets,

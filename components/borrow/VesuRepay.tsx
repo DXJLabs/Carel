@@ -34,6 +34,7 @@ import type {
 
 import { VesuAddCollateral } from "./VesuAddCollateral";
 import { VesuClosePosition } from "./VesuClosePosition";
+import { VesuWithdrawCollateral } from "./VesuWithdrawCollateral";
 
 import styles from "../CarelWorkspace.module.css";
 
@@ -354,6 +355,23 @@ export function VesuRepay({
       </div>
 
       <VesuAddCollateral
+        poolId={poolId}
+        poolName={poolName}
+        collateralAsset={
+          collateralAsset
+        }
+        collateralAmount={
+          collateralAmount
+        }
+        hidden={
+          hidden
+        }
+        onComplete={
+          onComplete
+        }
+      />
+
+      <VesuWithdrawCollateral
         poolId={poolId}
         poolName={poolName}
         collateralAsset={

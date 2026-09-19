@@ -279,3 +279,234 @@ export function validateVesuAddCollateralCalls({
 
   return expected;
 }
+
+export type VesuWithdrawCollateralExecutionPayload =
+  Readonly<{
+    chainId: string;
+    poolId: string;
+    poolAddress: string;
+
+    owner: string;
+
+    collateralAssetId: string;
+    debtAssetId: string;
+
+    collateralAmount: string;
+
+    preparedAt: number;
+    expiresAt: number;
+
+    calls: readonly Call[];
+  }>;
+
+/**
+ * Builds one Vesu modify_position call that removes collateral while
+ * leaving debt unchanged.
+ */
+export function buildVesuWithdrawCollateralCalls({
+  market,
+  owner,
+  intent,
+}: {
+  market: VesuBorrowMarket;
+  owner: string;
+  intent: CollateralIntent;
+}): Call[] {
+  validateVesuBorrowMarket(
+    market,
+  );
+
+  if (
+    intent.action !==
+      "withdraw-collateral"
+  ) {
+    throw new Error(
+      "Expected a Withdraw Collateral intent.",
+    );
+  }
+
+  if (
+    intent.privacy !==
+      undefined &&
+    intent.privacy !==
+      "public"
+  ) {
+    throw new Error(
+      "Direct private Vesu collateral management is not enabled.",
+    );
+  }
+
+  if (
+    intent.collateralAssetId !==
+    market.collateralAsset.id
+  ) {
+    throw new Error(
+      "Collateral intent does not match the reviewed Vesu market.",
+    );
+  }
+
+  if (
+    intent.positionId &&
+    intent.positionId !==
+      market.id
+  ) {
+    throw new Error(
+      "Collateral intent does not match the reviewed Vesu position.",
+    );
+  }
+
+  if (intent.amount <= 0n) {
+    throw new Error(
+      "Withdrawal amount must be greater than zero.",
+    );
+  }
+
+  const pool =
+    normalizeStarknetAddress(
+      market.poolAddress,
+    );
+
+  const account =
+    normalizeStarknetAddress(
+      owner,
+    );
+
+  const collateralToken =
+    requireVesuAssetAddress(
+      market.collateralAsset,
+    );
+
+  const debtToken =
+    requireVesuAssetAddress(
+      market.debtAsset,
+    );
+
+  const collateral =
+    encodeVesuAssetAmount(
+      -intent.amount,
+    );
+
+  const debt =
+    encodeVesuAssetAmount(
+      0n,
+    );
+
+  return [
+    {
+      contractAddress:
+        pool,
+
+      entrypoint:
+        "modify_position",
+
+      calldata: [
+        collateralToken,
+        debtToken,
+        account,
+        ...collateral,
+        ...debt,
+      ],
+    },
+  ];
+}
+
+/**
+ * Rebuilds the reviewed withdrawal locally before wallet execution.
+ */
+export function validateVesuWithdrawCollateralCalls({
+  calls,
+  market,
+  owner,
+  intent,
+}: {
+  calls: readonly Call[];
+  market: VesuBorrowMarket;
+  owner: string;
+  intent: CollateralIntent;
+}): Call[] {
+  if (calls.length !== 1) {
+    throw new Error(
+      "CAREL requires exactly one Vesu Withdraw Collateral call.",
+    );
+  }
+
+  const expected =
+    buildVesuWithdrawCollateralCalls({
+      market,
+      owner,
+      intent,
+    });
+
+  const actualCall =
+    calls[0];
+
+  const expectedCall =
+    expected[0];
+
+  if (
+    !sameStarknetAddress(
+      actualCall.contractAddress,
+      expectedCall.contractAddress,
+    ) ||
+    actualCall.entrypoint !==
+      expectedCall.entrypoint
+  ) {
+    throw new Error(
+      "CAREL blocked a mismatched Vesu Withdraw Collateral call.",
+    );
+  }
+
+  const actualData =
+    vesuCallData(
+      actualCall,
+    );
+
+  const expectedData =
+    vesuCallData(
+      expectedCall,
+    );
+
+  if (
+    actualData.length !==
+    expectedData.length
+  ) {
+    throw new Error(
+      "CAREL blocked malformed Withdraw Collateral calldata.",
+    );
+  }
+
+  const addressIndexes =
+    new Set([
+      0,
+      1,
+      2,
+    ]);
+
+  for (
+    let index = 0;
+    index <
+    expectedData.length;
+    index += 1
+  ) {
+    const matches =
+      addressIndexes.has(
+        index,
+      )
+        ? sameStarknetAddress(
+            actualData[index],
+            expectedData[index],
+          )
+        : sameVesuWord(
+            actualData[index],
+            expectedData[index],
+          );
+
+    if (!matches) {
+      throw new Error(
+        "CAREL blocked altered Withdraw Collateral calldata.",
+      );
+    }
+  }
+
+  return expected;
+}
