@@ -8,7 +8,7 @@ import {
 import {
   Check,
   LoaderCircle,
-  X,
+  Plus,
 } from "lucide-react";
 
 import {
@@ -29,15 +29,12 @@ import type {
 } from "@/lib/carel/core/assets";
 
 import type {
-  VesuRepayExecutionPayload,
-} from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
-
-import { VesuAddCollateral } from "./VesuAddCollateral";
-import { VesuClosePosition } from "./VesuClosePosition";
+  VesuAddCollateralExecutionPayload,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/collateral";
 
 import styles from "../CarelWorkspace.module.css";
 
-type RepayPrepareResponse =
+type PrepareResponse =
   Readonly<{
     provider: string;
 
@@ -48,25 +45,10 @@ type RepayPrepareResponse =
         address: string;
       }>;
 
-    position:
-      Readonly<{
-        currentDebtAmount:
-          string;
-
-        repayAmount:
-          string;
-
-        remainingDebtAmount:
-          string;
-      }>;
-
     execution:
-      VesuRepayExecutionPayload;
+      VesuAddCollateralExecutionPayload;
   }>;
 
-/**
- * Parses an API JSON object without trusting arbitrary response data.
- */
 function responseObject(
   value: unknown,
 ): Record<string, unknown> {
@@ -76,7 +58,7 @@ function responseObject(
     Array.isArray(value)
   ) {
     throw new Error(
-      "CAREL Repay API returned an invalid response.",
+      "CAREL Add Collateral API returned an invalid response.",
     );
   }
 
@@ -87,30 +69,21 @@ function responseObject(
 }
 
 /**
- * Portfolio-scoped partial Repay form.
- *
- * Full debt repayment is intentionally excluded because Vesu requires
- * Native denomination for an exact block-aware Close Position flow.
+ * Adds public collateral to an existing Vesu Borrow position.
  */
-export function VesuRepay({
+export function VesuAddCollateral({
   poolId,
   poolName,
   collateralAsset,
   collateralAmount,
-  debtAsset,
-  debtAmount,
   hidden,
-  onClose,
   onComplete,
 }: {
   poolId: string;
   poolName: string;
   collateralAsset: AssetRef;
   collateralAmount: bigint;
-  debtAsset: AssetRef;
-  debtAmount: bigint;
   hidden: boolean;
-  onClose: () => void;
   onComplete: () => void;
 }) {
   const wallet =
@@ -136,92 +109,53 @@ export function VesuRepay({
     setSuccess,
   ] = useState("");
 
-  const publicDebtBalance =
+  const publicBalance =
     useMemo(
       () =>
         findAssetBalance(
           wallet.balances,
-          debtAsset.id,
+          collateralAsset.id,
           "public",
         )?.amount ??
         null,
       [
         wallet.balances,
-        debtAsset.id,
+        collateralAsset.id,
       ],
     );
 
-  const formattedDebt =
-    hidden
-      ? "••••••"
-      : formatUnits(
-          debtAmount,
-          debtAsset.decimals,
-          6,
-        );
+  let parsed:
+    bigint | null = null;
 
-  const formattedBalance =
-    hidden
-      ? "••••••"
-      : publicDebtBalance ===
-          null
-        ? "—"
-        : formatUnits(
-            publicDebtBalance,
-            debtAsset.decimals,
-            6,
-          );
+  try {
+    const value =
+      parseUnits(
+        amount,
+        collateralAsset.decimals,
+      );
 
-  /**
-   * Performs local input checks before CAREL asks the server for a
-   * freshly validated Repay transaction.
-   */
-  function parsedAmount():
-    bigint | null {
-    try {
-      const parsed =
-        parseUnits(
-          amount,
-          debtAsset.decimals,
-        );
-
-      if (
-        parsed <= 0n ||
-        parsed >=
-          debtAmount
-      ) {
-        return null;
-      }
-
-      return parsed;
-    } catch {
-      return null;
+    if (value > 0n) {
+      parsed = value;
     }
+  } catch {
+    parsed = null;
   }
 
-  const parsed =
-    parsedAmount();
-
-  const enoughBalance =
+  const enough =
     parsed !== null &&
     (
-      publicDebtBalance ===
-        null ||
-      publicDebtBalance >=
+      publicBalance === null ||
+      publicBalance >=
         parsed
     );
 
-  /**
-   * Requests a fresh partial-Repay payload and hands only that payload to
-   * the wallet-side strict Vesu validator.
-   */
-  async function repay() {
+  async function submit() {
     if (
       executing ||
       wallet.busy ||
       !wallet.address ||
       parsed === null ||
-      !enoughBalance
+      !enough
     ) {
       return;
     }
@@ -233,9 +167,10 @@ export function VesuRepay({
     try {
       const response =
         await fetch(
-          "/api/vesu/repay/prepare",
+          "/api/vesu/collateral/add",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -249,7 +184,7 @@ export function VesuRepay({
                 owner:
                   wallet.address,
 
-                repayAmount:
+                collateralAmount:
                   amount,
               }),
           },
@@ -268,13 +203,13 @@ export function VesuRepay({
           typeof payload.error ===
             "string"
             ? payload.error
-            : "Could not prepare Vesu Repay.",
+            : "Could not prepare Add Collateral.",
         );
       }
 
       const prepared =
         payload as unknown as
-          RepayPrepareResponse;
+          PrepareResponse;
 
       if (
         prepared.provider !==
@@ -284,19 +219,20 @@ export function VesuRepay({
         !prepared.execution
       ) {
         throw new Error(
-          "CAREL received a mismatched Vesu Repay preparation.",
+          "CAREL received a mismatched Add Collateral preparation.",
         );
       }
 
       const hash =
-        await wallet.executeRepay(
-          prepared.execution,
+        await wallet
+          .executeAddVesuCollateral(
+            prepared.execution,
 
-          `Repay ${amount} ${debtAsset.symbol} · Vesu ${poolName}`,
-        );
+            `Add ${amount} ${collateralAsset.symbol} collateral · Vesu ${poolName}`,
+          );
 
       setSuccess(
-        `Repay submitted: ${hash.slice(
+        `Collateral submitted: ${hash.slice(
           0,
           10,
         )}…${hash.slice(-6)}`,
@@ -309,7 +245,7 @@ export function VesuRepay({
       setError(
         cause instanceof Error
           ? cause.message
-          : "Vesu Repay failed.",
+          : "Add Collateral failed.",
       );
     } finally {
       setExecuting(false);
@@ -319,64 +255,18 @@ export function VesuRepay({
   return (
     <div
       className={
-        styles.repayPanel
+        styles.addCollateralPanel
       }
     >
-      <div
-        className={
-          styles.repayHeader
-        }
-      >
-        <div>
-          <strong>
-            Manage Position
-          </strong>
-
-          <small>
-            Vesu · {poolName}
-          </small>
-        </div>
-
-        <button
-          type="button"
-          className={
-            styles.iconButton
-          }
-          aria-label="Close position manager"
-          disabled={
-            executing ||
-            wallet.busy
-          }
-          onClick={onClose}
-        >
-          <X size={16}/>
-        </button>
-      </div>
-
-      <VesuAddCollateral
-        poolId={poolId}
-        poolName={poolName}
-        collateralAsset={
-          collateralAsset
-        }
-        collateralAmount={
-          collateralAmount
-        }
-        hidden={
-          hidden
-        }
-        onComplete={
-          onComplete
-        }
-      />
-
       <div
         className={
           styles.positionSectionTitle
         }
       >
+        <Plus size={15}/>
+
         <strong>
-          Partial Repay
+          Add Collateral
         </strong>
       </div>
 
@@ -386,12 +276,19 @@ export function VesuRepay({
         }
       >
         <span>
-          Current debt
+          Current collateral
         </span>
 
         <strong>
-          {formattedDebt}{" "}
-          {debtAsset.symbol}
+          {hidden
+            ? "••••••"
+            : formatUnits(
+                collateralAmount,
+                collateralAsset
+                  .decimals,
+                6,
+              )}{" "}
+          {collateralAsset.symbol}
         </strong>
       </div>
 
@@ -405,8 +302,18 @@ export function VesuRepay({
         </span>
 
         <strong>
-          {formattedBalance}{" "}
-          {debtAsset.symbol}
+          {hidden
+            ? "••••••"
+            : publicBalance ===
+                null
+              ? "—"
+              : formatUnits(
+                  publicBalance,
+                  collateralAsset
+                    .decimals,
+                  6,
+                )}{" "}
+          {collateralAsset.symbol}
         </strong>
       </div>
 
@@ -414,10 +321,10 @@ export function VesuRepay({
         className={
           styles.fieldLabel
         }
-        htmlFor={`repay-${poolId}`}
+        htmlFor={`add-collateral-${poolId}`}
       >
-        Repay amount in{" "}
-        {debtAsset.symbol}
+        Amount in{" "}
+        {collateralAsset.symbol}
       </label>
 
       <div
@@ -426,14 +333,14 @@ export function VesuRepay({
         }
       >
         <input
-          id={`repay-${poolId}`}
+          id={`add-collateral-${poolId}`}
           inputMode="decimal"
+          placeholder="0.00"
           value={amount}
           disabled={
             executing ||
             wallet.busy
           }
-          placeholder="0.00"
           onChange={(
             event,
           ) => {
@@ -447,27 +354,12 @@ export function VesuRepay({
         />
 
         <strong>
-          {debtAsset.symbol}
+          {collateralAsset.symbol}
         </strong>
       </div>
 
-      {amount &&
-        parsed === null && (
-          <p
-            className={
-              styles.helper
-            }
-          >
-            Partial Repay must be
-            greater than zero and
-            below the current debt.
-            Full repayment uses
-            Close Position.
-          </p>
-        )}
-
       {parsed !== null &&
-        !enoughBalance && (
+        !enough && (
           <div
             className={
               styles.notice
@@ -476,10 +368,9 @@ export function VesuRepay({
           >
             <p>
               Public{" "}
-              {debtAsset.symbol}{" "}
-              balance is below the
-              requested Repay
-              amount.
+              {collateralAsset.symbol}{" "}
+              balance is below this
+              collateral amount.
             </p>
           </div>
         )}
@@ -489,27 +380,25 @@ export function VesuRepay({
           styles.privacyNote
         }
       >
-        CAREL refreshes the
-        on-chain position before
-        signing and blocks a partial
-        Repay that would leave debt
-        below Vesu&apos;s minimum
-        position floor.
+        Adding collateral increases
+        the public Vesu position
+        collateral. CAREL uses an
+        exact token approval.
       </p>
 
       <button
         type="button"
         className={
-          styles.primary
+          styles.secondary
         }
         disabled={
           executing ||
           wallet.busy ||
           parsed === null ||
-          !enoughBalance
+          !enough
         }
         onClick={() =>
-          void repay()
+          void submit()
         }
       >
         {executing ? (
@@ -524,25 +413,8 @@ export function VesuRepay({
 
         {executing
           ? "Waiting for wallet…"
-          : "Review & Repay"}
+          : "Review & Add Collateral"}
       </button>
-
-      <VesuClosePosition
-        poolId={poolId}
-        poolName={poolName}
-        collateralAsset={
-          collateralAsset
-        }
-        debtAsset={
-          debtAsset
-        }
-        hidden={
-          hidden
-        }
-        onComplete={
-          onComplete
-        }
-      />
 
       {error && (
         <div
@@ -552,12 +424,10 @@ export function VesuRepay({
           role="alert"
         >
           <strong>
-            Repay unavailable
+            Add Collateral unavailable
           </strong>
 
-          <p>
-            {error}
-          </p>
+          <p>{error}</p>
         </div>
       )}
 
@@ -567,9 +437,7 @@ export function VesuRepay({
             styles.inlineStatus
           }
         >
-          <Check
-            size={16}
-          />
+          <Check size={16}/>
           {success}
         </p>
       )}

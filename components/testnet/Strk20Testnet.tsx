@@ -79,6 +79,7 @@ import {
 
 import type {
   BorrowIntent,
+  CollateralIntent,
   RepayIntent,
 } from "@/lib/carel/core/execution";
 
@@ -95,6 +96,11 @@ import {
 import {
   getVesuPool,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
+
+import {
+  validateVesuAddCollateralCalls,
+  type VesuAddCollateralExecutionPayload,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/collateral";
 
 type StakingAction =
   | "stake"
@@ -194,6 +200,10 @@ type CarelTestnetContextValue = {
   ) => Promise<string>;
   executeCloseVesuPosition: (
     payload: VesuCloseExecutionPayload,
+    label: string,
+  ) => Promise<string>;
+  executeAddVesuCollateral: (
+    payload: VesuAddCollateralExecutionPayload,
     label: string,
   ) => Promise<string>;
 };
@@ -589,6 +599,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const borrowSubmitting = useRef(false);
   const repaySubmitting = useRef(false);
   const closeVesuSubmitting = useRef(false);
+  const addVesuCollateralSubmitting = useRef(false);
   const currentAccount = useRef(walletAccount);
   currentAccount.current = walletAccount;
 
@@ -3084,6 +3095,315 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Executes a server-prepared Vesu collateral top-up after rebuilding
+   * the exact STRK approval and position update locally.
+   */
+  const executeAddVesuCollateral = async (
+    payload: VesuAddCollateralExecutionPayload,
+    label: string,
+  ): Promise<string> => {
+    if (
+      addVesuCollateralSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account =
+      walletAccount;
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "Vesu Add Collateral is enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+      network.chainId
+    ) {
+      throw new Error(
+        "Prepared Add Collateral belongs to another network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Add Collateral review expired. Review the position again.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(pool.address) !==
+        felt(payload.poolAddress)
+    ) {
+      throw new Error(
+        "Prepared Add Collateral references an unapproved Vesu pool.",
+      );
+    }
+
+    const owner =
+      felt(
+        account.address,
+      );
+
+    if (
+      felt(payload.owner) !==
+      owner
+    ) {
+      throw new Error(
+        "Prepared Add Collateral belongs to another account.",
+      );
+    }
+
+    if (
+      payload.collateralAssetId !==
+        network.assets.strk.id ||
+      payload.debtAssetId !==
+        network.assets.usdc.id
+    ) {
+      throw new Error(
+        "Prepared Add Collateral does not match CAREL's STRK/USDC position.",
+      );
+    }
+
+    let collateralAmount:
+      bigint;
+
+    try {
+      collateralAmount =
+        BigInt(
+          payload.collateralAmount,
+        );
+    } catch {
+      throw new Error(
+        "Prepared Add Collateral contains an invalid amount.",
+      );
+    }
+
+    if (
+      collateralAmount <= 0n
+    ) {
+      throw new Error(
+        "Collateral amount must be greater than zero.",
+      );
+    }
+
+    const market:
+      VesuBorrowMarket = {
+        id:
+          `vesu:${pool.id}:STRK:USDC`,
+
+        chainId:
+          network.chainId,
+
+        poolAddress:
+          pool.address,
+
+        collateralAsset:
+          network.assets.strk,
+
+        debtAsset:
+          network.assets.usdc,
+      };
+
+    const intent:
+      CollateralIntent = {
+        action:
+          "add-collateral",
+
+        collateralAssetId:
+          network.assets.strk.id,
+
+        amount:
+          collateralAmount,
+
+        positionId:
+          market.id,
+
+        privacy:
+          "public",
+      };
+
+    const safeCalls =
+      validateVesuAddCollateralCalls({
+        calls:
+          payload.calls,
+
+        market,
+
+        owner,
+
+        intent,
+      });
+
+    const knownStrk =
+      findAssetBalance(
+        balances,
+        network.assets.strk.id,
+        "public",
+      )?.amount;
+
+    if (
+      knownStrk !== null &&
+      knownStrk !== undefined &&
+      knownStrk <
+        collateralAmount
+    ) {
+      throw new Error(
+        "Insufficient public STRK balance for this collateral top-up.",
+      );
+    }
+
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    addVesuCollateralSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Add Collateral review expired before signing.",
+        );
+      }
+
+      const response =
+        await account.execute(
+          safeCalls,
+        );
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Add Collateral transaction hash.",
+        );
+      }
+
+      setTx({
+        kind:
+          "pending",
+
+        label,
+
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind:
+            "confirmed",
+
+          label,
+
+          hash,
+        });
+      } catch {
+        setTx({
+          kind:
+            "submitted",
+
+          label,
+
+          hash,
+        });
+      }
+
+      try {
+        await refreshPublicBalance();
+      } catch {
+        // Portfolio remains independently refreshable.
+      }
+
+      return hash;
+    } finally {
+      addVesuCollateralSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
+  /**
    * Executes a server-prepared full Vesu position close after rebuilding
    * all Native-denomination calldata locally.
    */
@@ -3476,6 +3796,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeBorrow,
       executeRepay,
       executeCloseVesuPosition,
+      executeAddVesuCollateral,
     }),
     [
       wallets,

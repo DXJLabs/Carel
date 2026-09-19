@@ -9,6 +9,8 @@ export type CarelAction =
   | "unstake"
   | "borrow"
   | "repay"
+  | "add-collateral"
+  | "withdraw-collateral"
   | "shield"
   | "unshield";
 
@@ -72,6 +74,17 @@ export type RepayIntent =
     privacy?: ExecutionPrivacy;
   }>;
 
+export type CollateralIntent =
+  Readonly<{
+    action:
+      | "add-collateral"
+      | "withdraw-collateral";
+    collateralAssetId: string;
+    amount: bigint;
+    positionId?: string;
+    privacy?: ExecutionPrivacy;
+  }>;
+
 export type PrivacyIntent =
   Readonly<{
     action:
@@ -88,6 +101,7 @@ export type ExecutionIntent =
   | UnstakeIntent
   | BorrowIntent
   | RepayIntent
+  | CollateralIntent
   | PrivacyIntent;
 
 export type ExecutionContext =

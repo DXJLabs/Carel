@@ -72,7 +72,9 @@ function txName(label: string) {
           ? "Close Position"
           : value.includes("repay")
             ? "Repay"
-            : value.includes("stake")
+            : value.includes("collateral")
+              ? "Add Collateral"
+              : value.includes("stake")
             ? "Staking"
             : "Agent execution";
 }
@@ -845,8 +847,8 @@ export function CarelApp() {
                         >
                           {selectedRepayPositionId ===
                           position.id
-                            ? "Close"
-                            : "Repay"}
+                            ? "Hide"
+                            : "Manage"}
                         </button>
                       )}
                   </div>
@@ -871,6 +873,10 @@ export function CarelApp() {
                       collateralAsset={
                         position.borrow
                           .collateralAsset
+                      }
+                      collateralAmount={
+                        position.borrow
+                          .collateralAmount
                       }
                       debtAsset={
                         position.asset

@@ -469,7 +469,7 @@ export type VesuBorrowExecutionPayload =
 /**
  * Normalizes one Starknet call's calldata and rejects missing calldata.
  */
-function vesuCallData(
+export function vesuCallData(
   call: Call,
 ): string[] {
   if (
@@ -491,7 +491,7 @@ function vesuCallData(
 /**
  * Compares numeric Starknet calldata words without depending on hex padding.
  */
-function sameVesuWord(
+export function sameVesuWord(
   actual: string,
   expected: string,
 ): boolean {

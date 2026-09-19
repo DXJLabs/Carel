@@ -254,6 +254,40 @@
 }
 
 
+
+.positionSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 8px;
+  padding-top: 17px;
+  border-top: 1px solid #3c2a23;
+}
+
+.positionSectionTitle strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.positionSectionTitle svg {
+  color: var(--accent);
+}
+
+.addCollateralPanel {
+  padding-bottom: 2px;
+}
+
+.addCollateralPanel > .positionSectionTitle {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.addCollateralPanel > .secondary {
+  width: 100%;
+  margin-top: 4px;
+}
+
 .closePositionPanel {
   margin-top: 18px;
   padding-top: 18px;
