@@ -2,6 +2,12 @@ import type { BridgeCall, BridgeDirection, BridgeIntent, BridgeOrder, GardenAsse
 
 export const BITCOIN_ASSET = "bitcoin_testnet:btc";
 export const STARKNET_CHAIN = "starknet_sepolia";
+
+// Garden /assets currently identifies Starknet Sepolia with
+// the Starknet chain ID encoded as a decimal value.
+const GARDEN_STARKNET_SEPOLIA_CHAIN =
+  "starknet:393402133025997798000961";
+
 const MAX_SATS = 21_000_000n * 100_000_000n;
 const FELT_LIMIT = (1n << 251n) + 17n * (1n << 192n) + 1n;
 
@@ -93,6 +99,31 @@ function optionalLimit(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
   return units(value, true).toString();
 }
+
+function matchesGardenChain(
+  assetId: unknown,
+  chain: unknown,
+): boolean {
+  if (assetId === BITCOIN_ASSET) {
+    return (
+      chain === "bitcoin" ||
+      chain === "bitcoin_testnet"
+    );
+  }
+
+  if (
+    typeof assetId === "string" &&
+    /^starknet_sepolia:(wbtc|strkbtc)$/i.test(assetId)
+  ) {
+    return (
+      chain === GARDEN_STARKNET_SEPOLIA_CHAIN ||
+      chain === "starknet" ||
+      chain === STARKNET_CHAIN
+    );
+  }
+
+  return false;
+}
 export function parseCatalog(value: unknown): GardenCatalog {
   if (!Array.isArray(value)) throw new BridgeError("Garden asset catalogue is unavailable.", 502);
   const supported: GardenAsset[] = [];
@@ -100,8 +131,20 @@ export function parseCatalog(value: unknown): GardenCatalog {
     const row = object(item);
     const id = typeof row.id === "string" ? row.id : "";
     if (id !== BITCOIN_ASSET && !/^starknet_sepolia:(wbtc|strkbtc)$/i.test(id)) continue;
-    const chain = id === BITCOIN_ASSET ? "bitcoin_testnet" : STARKNET_CHAIN;
-    if (row.chain !== chain || row.decimals !== 8) throw new BridgeError("Garden asset network or precision changed. Route disabled.", 502);
+    const chain =
+      id === BITCOIN_ASSET
+        ? "bitcoin_testnet"
+        : STARKNET_CHAIN;
+
+    if (
+      !matchesGardenChain(id, row.chain) ||
+      row.decimals !== 8
+    ) {
+      throw new BridgeError(
+        "Garden asset network or precision changed. Route disabled.",
+        502,
+      );
+    }
     let tokenAddress: string | null = null, htlcAddress: string | null = null;
     if (chain === STARKNET_CHAIN) {
       const token = object(row.token), htlc = object(row.htlc);
@@ -157,7 +200,17 @@ export function parseOrder(value: unknown, catalog: GardenCatalog, expectedId: s
   if (orderId(row.order_id) !== orderId(expectedId)) throw new BridgeError("Garden order ID mismatch.", 502);
   const toStarknet = source.asset === BITCOIN_ASSET;
   const route = routeAssets(catalog, toStarknet ? "to-starknet" : "to-bitcoin", toStarknet ? destination.asset : source.asset);
-  if (source.asset !== route.source.id || destination.asset !== route.destination.id || source.chain !== route.source.chain || destination.chain !== route.destination.chain) throw new BridgeError("Garden order is not on the requested testnets.", 502);
+  if (
+    source.asset !== route.source.id ||
+    destination.asset !== route.destination.id ||
+    !matchesGardenChain(source.asset, source.chain) ||
+    !matchesGardenChain(destination.asset, destination.chain)
+  ) {
+    throw new BridgeError(
+      "Garden order is not on the requested testnets.",
+      502,
+    );
+  }
   if (felt(toStarknet ? destination.redeemer : source.initiator) !== felt(owner)) throw new BridgeError("This order belongs to a different Starknet account.", 403);
   const createdAt = text(row.created_at, 64);
   if (!Number.isFinite(Date.parse(createdAt))) throw new BridgeError("Invalid Garden order timestamp.", 502);
