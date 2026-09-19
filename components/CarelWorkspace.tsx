@@ -18,12 +18,13 @@ import { getCarelNetwork } from "@/lib/carel/networks";
 import { CarelOrbit } from "./CarelOrbit";
 import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
 import { AvnuSwap } from "./swap/AvnuSwap";
+import { AvnuStaking } from "./staking/AvnuStaking";
 import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
 type Mode = "normal" | "shield" | "unshield";
-type Tool = "Swap" | "Bridge" | "Earn" | "Borrow";
+type Tool = "Swap" | "Bridge" | "Staking" | "Borrow";
 type Period = "1D" | "7D" | "30D";
 type Execution = { hash: string; label: string; status: "pending" | "submitted" | "confirmed"; ts: number };
 type Observation = { ts: number; total: number };
@@ -38,7 +39,7 @@ const TABS = [
 const TOOLS = [
   { name: "Swap", Icon: ArrowLeftRight, prompt: "Swap 1 STRK for USDC." },
   { name: "Bridge", Icon: Network, prompt: "Bridge 0.0005 BTC to Starknet Sepolia." },
-  { name: "Earn", Icon: TrendingUp, prompt: "Find an earning route for 1 STRK." },
+  { name: "Staking", Icon: TrendingUp, prompt: "Stake 1 STRK." },
   { name: "Borrow", Icon: Landmark, prompt: "Explore borrowing against my STRK." },
 ] as const;
 
@@ -263,6 +264,12 @@ export function CarelApp() {
       return;
     }
 
+    if (routed.tool === "Staking") {
+      setSelectedTool("Staking");
+      setBridgeIntent(null);
+      return;
+    }
+
     if (routed.tool !== "Balance") {
       setSelectedTool(routed.tool);
       setGoalError(
@@ -407,6 +414,12 @@ export function CarelApp() {
         />
       ) : selectedTool === "Swap" ? (
         <AvnuSwap mode={mode} goal={goalText}/>
+      ) : selectedTool === "Staking" ? (
+        <AvnuStaking
+          mode={mode}
+          goal={goalText}
+          onPublicMode={useNormalMode}
+        />
       ) : (
         <>
           <div className={styles.rule}>
@@ -456,7 +469,7 @@ export function CarelApp() {
       </section>
       <section><SectionHeading title="Holdings"/><div className={styles.holdingRow}><span className={styles.coin}>S</span><div className={styles.rowCopy}><strong>STRK</strong><small>{total === null ? "Visible public balance" : "Public + private balance"}</small></div><strong className={styles.holdingAmount}>{amount(visibleBalance, hideAmounts)}<small>STRK</small></strong></div></section>
       <GardenBalances hidden={hideAmounts}/>
-      <section><SectionHeading title="Positions"/><EmptyState title="No connected positions">Supported lending, earning, and borrowing positions will appear here when available.</EmptyState></section>
+      <section><SectionHeading title="Positions"/><EmptyState title="No connected positions">Supported staking, lending, and borrowing positions will appear here when available.</EmptyState></section>
     </div>;
   }
   function renderActivity() {
@@ -471,7 +484,7 @@ export function CarelApp() {
       <details className={styles.settingsGroup} ref={walletDetails}><summary><span><WalletCards size={18}/>Wallet & network</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Account</span><strong>{wallet.address ? shortAddress(wallet.address) : "Not connected"}</strong></div><div className={styles.rule}><span>Network</span><strong>{activeNetwork?.label ?? (wallet.connected ? "Unsupported Starknet network" : "Not connected")}</strong></div><div className={styles.rule}><span>STRK20</span><strong>{wallet.strk20Capable ? "Available" : "Unavailable"}</strong></div>{wallet.connected ? <button className={styles.secondary} disabled={busy} onClick={() => wallet.disconnect()}><LogOut size={15}/>Disconnect wallet</button> : connectButton}</div></details>
       <details className={styles.settingsGroup}><summary><span><EyeOff size={18}/>Privacy</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Hide portfolio amounts<input type="checkbox" checked={hideAmounts} onChange={event => setHideAmounts(event.target.checked)}/></label><p className={styles.helper}>Private balances are read only when you choose Reveal. Hiding amounts changes their display.</p><p className={styles.helper}>Shield deposits are public. Unshield makes the amount and destination public again.</p></div></details>
       <details className={styles.settingsGroup}><summary><span><Bot size={18}/>Agent permissions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Execution approval</span><strong>Always required</strong></div><div className={styles.rule}><span>Background execution</span><strong>Off</strong></div><p className={styles.helper}>Review the plan, then approve the transaction in your wallet.</p></div></details>
-      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Normal / Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Normal Swap uses AVNU public routing. Shield means public → private. Unshield means private → public. Garden Bridge currently uses the Normal public route. Earn and Borrow are not live yet.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
+      <details className={styles.settingsGroup}><summary><span><SlidersHorizontal size={18}/>Risk & transactions</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><div className={styles.rule}><span>Fees</span><strong>Review in wallet</strong></div><div className={styles.rule}><span>Routes</span><strong>Normal / Shield / Unshield / Garden Bridge</strong></div><p className={styles.helper}>Normal Swap uses AVNU public routing. Shield means public → private. Unshield means private → public. Garden Bridge currently uses the Normal public route. Staking is live on Mainnet. Borrow is not live yet.</p><button className={styles.textButton} onClick={() => navigate("agent")}>Open Agent<ArrowRight size={15}/></button></div></details>
       <details className={styles.settingsGroup}><summary><span><Moon size={18}/>Appearance</span><ChevronDown size={16}/></summary><div className={styles.settingsBody}><label className={styles.switchRow}>Reduce animation<input type="checkbox" checked={reduceMotion} onChange={event => setReduceMotion(event.target.checked)}/></label><p className={styles.helper}>Your device’s reduced motion preference is always respected.</p></div></details>
     </div>;
   }

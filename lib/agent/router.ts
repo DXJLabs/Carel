@@ -1,7 +1,7 @@
 import { parseBridgeGoal } from "@/lib/garden/protocol";
 import type { BridgeIntent } from "@/lib/garden/types";
 
-export type AgentTool = "Bridge" | "Swap" | "Earn" | "Borrow" | "Balance";
+export type AgentTool = "Bridge" | "Swap" | "Staking" | "Borrow" | "Balance";
 export type AgentRouteStatus = "ready" | "unsupported" | "invalid";
 
 export type AgentRoute = {
@@ -55,10 +55,9 @@ export function routeAgentGoal(goal: string): AgentRoute {
 
   if (/\b(earn|earning|stake|staking|yield|lend|lending)\b/i.test(text)) {
     return {
-      tool: "Earn",
-      status: "unsupported",
-      provider: null,
-      message: "Earn routing is recognized, but an earning protocol is not connected yet.",
+      tool: "Staking",
+      status: "ready",
+      provider: "AVNU",
     };
   }
 
