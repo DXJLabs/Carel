@@ -8,18 +8,19 @@ import type {
 
 import {
   normalizeStarknetAddress,
-  sameStarknetAddress,
 } from "@/lib/carel/ecosystems/starknet/addresses";
 
 import {
   encodeVesuAssetAmount,
   requireVesuAssetAddress,
-  sameVesuWord,
   toUint256Calldata,
   validateVesuBorrowMarket,
-  vesuCallData,
   type VesuBorrowMarket,
 } from "./borrow";
+
+import {
+  validateVesuCallSequence,
+} from "./validation";
 
 export type VesuAddCollateralExecutionPayload =
   Readonly<{
@@ -171,7 +172,7 @@ export function buildVesuAddCollateralCalls({
 }
 
 /**
- * Reconstructs Add Collateral locally and rejects any altered server call.
+ * Reconstructs Add Collateral locally and rejects altered calls.
  */
 export function validateVesuAddCollateralCalls({
   calls,
@@ -184,12 +185,6 @@ export function validateVesuAddCollateralCalls({
   owner: string;
   intent: CollateralIntent;
 }): Call[] {
-  if (calls.length !== 2) {
-    throw new Error(
-      "CAREL requires exactly two Vesu Add Collateral calls.",
-    );
-  }
-
   const expected =
     buildVesuAddCollateralCalls({
       market,
@@ -197,87 +192,20 @@ export function validateVesuAddCollateralCalls({
       intent,
     });
 
-  for (
-    let callIndex = 0;
-    callIndex <
-    expected.length;
-    callIndex += 1
-  ) {
-    const actualCall =
-      calls[callIndex];
-
-    const expectedCall =
-      expected[callIndex];
-
-    if (
-      !sameStarknetAddress(
-        actualCall.contractAddress,
-        expectedCall.contractAddress,
-      ) ||
-      actualCall.entrypoint !==
-        expectedCall.entrypoint
-    ) {
-      throw new Error(
-        "CAREL blocked a mismatched Vesu Add Collateral call.",
-      );
-    }
-
-    const actualData =
-      vesuCallData(
-        actualCall,
-      );
-
-    const expectedData =
-      vesuCallData(
-        expectedCall,
-      );
-
-    if (
-      actualData.length !==
-      expectedData.length
-    ) {
-      throw new Error(
-        "CAREL blocked malformed Vesu Add Collateral calldata.",
-      );
-    }
-
-    const addressIndexes =
-      callIndex === 0
-        ? new Set([0])
-        : new Set([
-            0,
-            1,
-            2,
-          ]);
-
-    for (
-      let index = 0;
-      index <
-      expectedData.length;
-      index += 1
-    ) {
-      const matches =
-        addressIndexes.has(
-          index,
-        )
-          ? sameStarknetAddress(
-              actualData[index],
-              expectedData[index],
-            )
-          : sameVesuWord(
-              actualData[index],
-              expectedData[index],
-            );
-
-      if (!matches) {
-        throw new Error(
-          "CAREL blocked altered Vesu Add Collateral calldata.",
-        );
-      }
-    }
-  }
-
-  return expected;
+  return validateVesuCallSequence({
+    calls,
+    expected,
+    label: "Add Collateral",
+    specs: [
+      {
+        addressIndexes: [0],
+      },
+      {
+        addressIndexes:
+          [0, 1, 2],
+      },
+    ],
+  });
 }
 
 export type VesuWithdrawCollateralExecutionPayload =
@@ -411,7 +339,7 @@ export function buildVesuWithdrawCollateralCalls({
 }
 
 /**
- * Rebuilds the reviewed withdrawal locally before wallet execution.
+ * Rebuilds Withdraw Collateral locally and rejects altered calls.
  */
 export function validateVesuWithdrawCollateralCalls({
   calls,
@@ -424,12 +352,6 @@ export function validateVesuWithdrawCollateralCalls({
   owner: string;
   intent: CollateralIntent;
 }): Call[] {
-  if (calls.length !== 1) {
-    throw new Error(
-      "CAREL requires exactly one Vesu Withdraw Collateral call.",
-    );
-  }
-
   const expected =
     buildVesuWithdrawCollateralCalls({
       market,
@@ -437,76 +359,15 @@ export function validateVesuWithdrawCollateralCalls({
       intent,
     });
 
-  const actualCall =
-    calls[0];
-
-  const expectedCall =
-    expected[0];
-
-  if (
-    !sameStarknetAddress(
-      actualCall.contractAddress,
-      expectedCall.contractAddress,
-    ) ||
-    actualCall.entrypoint !==
-      expectedCall.entrypoint
-  ) {
-    throw new Error(
-      "CAREL blocked a mismatched Vesu Withdraw Collateral call.",
-    );
-  }
-
-  const actualData =
-    vesuCallData(
-      actualCall,
-    );
-
-  const expectedData =
-    vesuCallData(
-      expectedCall,
-    );
-
-  if (
-    actualData.length !==
-    expectedData.length
-  ) {
-    throw new Error(
-      "CAREL blocked malformed Withdraw Collateral calldata.",
-    );
-  }
-
-  const addressIndexes =
-    new Set([
-      0,
-      1,
-      2,
-    ]);
-
-  for (
-    let index = 0;
-    index <
-    expectedData.length;
-    index += 1
-  ) {
-    const matches =
-      addressIndexes.has(
-        index,
-      )
-        ? sameStarknetAddress(
-            actualData[index],
-            expectedData[index],
-          )
-        : sameVesuWord(
-            actualData[index],
-            expectedData[index],
-          );
-
-    if (!matches) {
-      throw new Error(
-        "CAREL blocked altered Withdraw Collateral calldata.",
-      );
-    }
-  }
-
-  return expected;
+  return validateVesuCallSequence({
+    calls,
+    expected,
+    label: "Withdraw Collateral",
+    specs: [
+      {
+        addressIndexes:
+          [0, 1, 2],
+      },
+    ],
+  });
 }
