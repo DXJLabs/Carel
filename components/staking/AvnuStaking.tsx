@@ -9,23 +9,18 @@ import {
   LoaderCircle,
   RefreshCw,
 } from "lucide-react";
-import {
-  getQuotes,
-  type Quote,
-} from "@avnu/avnu-sdk";
-type StakingPool = {
-  poolAddress: string;
-  tokenAddress: string;
-  stakedAmount: bigint;
-  apr: number;
-};
+import type {
+  Quote,
+} from "@/lib/carel/ecosystems/starknet/protocols/endur/staking";
 
-type StakingPosition = {
-  amount: bigint;
-  unclaimedRewards: bigint;
-  unpoolAmount: bigint;
-  unpoolTime: number | null;
-};
+import {
+  getEndurUnshieldQuote,
+  loadEndurShieldConfig,
+  loadStakingPool,
+  loadStakingPosition,
+  type StakingPool,
+  type StakingPosition,
+} from "@/lib/carel/ecosystems/starknet/protocols/endur/staking";
 import {
   useCarelTestnet,
 } from "@/components/testnet/Strk20Testnet";
@@ -47,17 +42,6 @@ type StakingMode =
   | "shield"
   | "unshield";
 
-function sameAddress(
-  a: string,
-  b: string,
-) {
-  try {
-    return BigInt(a) === BigInt(b);
-  } catch {
-    return false;
-  }
-}
-
 function shortAddress(address: string) {
   return `${address.slice(0, 8)}…${address.slice(-6)}`;
 }
@@ -68,220 +52,6 @@ function formatApr(value: number) {
   }
 
   return `${value.toFixed(2)}%`;
-}
-
-function object(
-  value: unknown,
-  label: string,
-): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
-    throw new Error(`AVNU returned invalid ${label} data.`);
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function text(
-  value: unknown,
-  label: string,
-): string {
-  if (typeof value !== "string" || !value.length) {
-    throw new Error(`AVNU returned an invalid ${label}.`);
-  }
-
-  return value;
-}
-
-function bigintValue(
-  value: unknown,
-  label: string,
-): bigint {
-  if (
-    typeof value !== "string" &&
-    typeof value !== "number"
-  ) {
-    throw new Error(`AVNU returned an invalid ${label}.`);
-  }
-
-  const raw = String(value);
-
-  if (!/^(?:0x[0-9a-f]+|\d+)$/i.test(raw)) {
-    throw new Error(`AVNU returned malformed ${label}.`);
-  }
-
-  return BigInt(raw);
-}
-
-function numberValue(
-  value: unknown,
-  label: string,
-): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value)
-  ) {
-    throw new Error(`AVNU returned an invalid ${label}.`);
-  }
-
-  return value;
-}
-
-function timestampValue(
-  value: unknown,
-): number | null {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return null;
-  }
-
-  try {
-    const seconds =
-      bigintValue(
-        value,
-        "unstake time",
-      );
-
-    return Number(seconds) * 1000;
-  } catch {
-    return null;
-  }
-}
-
-
-async function loadStrkPool(
-  baseUrl: string,
-): Promise<StakingPool> {
-  const response = await fetch(
-    `${baseUrl}/staking/v3`,
-    {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `AVNU staking API returned ${response.status}.`,
-    );
-  }
-
-  const raw = object(
-    await response.json(),
-    "staking",
-  );
-
-  if (!Array.isArray(raw.delegationPools)) {
-    throw new Error("AVNU returned no staking pools.");
-  }
-
-  for (const candidate of raw.delegationPools) {
-    const row = object(candidate, "staking pool");
-
-    const poolAddress = text(
-      row.poolAddress,
-      "pool address",
-    );
-
-    const tokenAddress = text(
-      row.tokenAddress,
-      "staking token",
-    );
-
-    if (!sameAddress(tokenAddress, STRK_TOKEN)) {
-      continue;
-    }
-
-    return {
-      poolAddress,
-      tokenAddress,
-      stakedAmount: bigintValue(
-        row.stakedAmount,
-        "pool stake",
-      ),
-      apr: numberValue(
-        row.apr,
-        "staking APR",
-      ),
-    };
-  }
-
-  throw new Error(
-    "AVNU did not return a STRK staking pool.",
-  );
-}
-
-async function loadPosition(
-  baseUrl: string,
-  pool: StakingPool,
-  owner: string,
-): Promise<StakingPosition | null> {
-  const response = await fetch(
-    `${baseUrl}/staking/v3/pools/${encodeURIComponent(
-      pool.poolAddress,
-    )}/members/${encodeURIComponent(owner)}`,
-    {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    },
-  );
-
-  if (response.status === 404) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      `AVNU staking position returned ${response.status}.`,
-    );
-  }
-
-  const row = object(
-    await response.json(),
-    "staking position",
-  );
-
-  if (
-    !sameAddress(
-      text(row.poolAddress, "position pool"),
-      pool.poolAddress,
-    ) ||
-    !sameAddress(
-      text(row.userAddress, "position owner"),
-      owner,
-    ) ||
-    !sameAddress(
-      text(row.tokenAddress, "position token"),
-      STRK_TOKEN,
-    )
-  ) {
-    throw new Error(
-      "AVNU returned staking data for a different account, pool, or token.",
-    );
-  }
-
-  return {
-    amount: bigintValue(
-      row.amount,
-      "staked amount",
-    ),
-    unclaimedRewards: bigintValue(
-      row.unclaimedRewards,
-      "staking rewards",
-    ),
-    unpoolAmount: bigintValue(
-      row.unpoolAmount ?? "0",
-      "pending unstake amount",
-    ),
-    unpoolTime: timestampValue(
-      row.unpoolTime,
-    ),
-  };
 }
 
 export function AvnuStaking({
@@ -352,10 +122,15 @@ export function AvnuStaking({
     }
   }, [goal]);
 
+  /**
+   * Loads the server-verified Endur privacy configuration through
+   * the staking adapter instead of parsing protocol data in the UI.
+   */
   async function refreshShieldConfig() {
     if (
       !network ||
-      network.id !== "mainnet"
+      network.id !== "mainnet" ||
+      !network.assets.xstrk
     ) {
       setShieldFee(null);
       return;
@@ -365,88 +140,19 @@ export function AvnuStaking({
     setError("");
 
     try {
-      const response =
-        await fetch(
-          "/api/staking",
-          {
-            cache: "no-store",
-          },
-        );
+      const config =
+        await loadEndurShieldConfig({
+          inputAsset:
+            network.assets.strk,
+          outputAsset:
+            network.assets.xstrk,
+          expectedAnonymizer:
+            ENDUR_DEPOSIT_ANONYMIZER,
+        });
 
-      const raw: unknown =
-        await response.json();
-
-      const payload =
-        object(
-          raw,
-          "Shield Staking config",
-        );
-
-      if (!response.ok) {
-        throw new Error(
-          typeof payload.error ===
-            "string"
-            ? payload.error
-            : "Could not load Shield Staking configuration.",
-        );
-      }
-
-      const shield =
-        object(
-          payload.shield,
-          "Shield Staking",
-        );
-
-      const inputToken =
-        text(
-          shield.inputToken,
-          "Shield input token",
-        );
-
-      const outputToken =
-        text(
-          shield.outputToken,
-          "Shield output token",
-        );
-
-      const anonymizer =
-        text(
-          shield.anonymizer,
-          "Endur anonymizer",
-        );
-
-      if (
-        !sameAddress(
-          inputToken,
-          STRK_TOKEN,
-        ) ||
-        !sameAddress(
-          outputToken,
-          ENDUR_XSTRK_TOKEN,
-        ) ||
-        !sameAddress(
-          anonymizer,
-          ENDUR_DEPOSIT_ANONYMIZER,
-        )
-      ) {
-        throw new Error(
-          "CAREL rejected mismatched Endur Shield Staking configuration.",
-        );
-      }
-
-      const fee =
-        bigintValue(
-          shield.feeAmount,
-          "Shield Staking fee",
-        );
-
-      if (fee <= 0n) {
-        throw new Error(
-          "Endur returned an invalid Shield Staking fee.",
-        );
-      }
-
-      setShieldFee(fee);
+      setShieldFee(
+        config.feeAmount,
+      );
     } catch (cause) {
       setShieldFee(null);
 
@@ -460,6 +166,10 @@ export function AvnuStaking({
     }
   }
 
+  /**
+   * Refreshes the public staking pool and connected account position
+   * using registered CAREL assets.
+   */
   async function refresh() {
     if (
       !network ||
@@ -474,12 +184,15 @@ export function AvnuStaking({
     setError("");
 
     try {
-      const strkPool =
-        await loadStrkPool(
+      const nextPool =
+        await loadStakingPool(
           network.avnuBaseUrl,
+          network.assets.strk,
         );
 
-      setPool(strkPool);
+      setPool(
+        nextPool,
+      );
 
       if (!wallet.address) {
         setPosition(null);
@@ -487,14 +200,17 @@ export function AvnuStaking({
       }
 
       try {
-        const next =
-          await loadPosition(
+        const nextPosition =
+          await loadStakingPosition(
             network.avnuBaseUrl,
-            strkPool,
+            nextPool,
             wallet.address,
+            network.assets.strk,
           );
 
-        setPosition(next);
+        setPosition(
+          nextPosition,
+        );
       } catch (cause) {
         console.warn(
           "[CAREL] staking position unavailable",
@@ -506,6 +222,7 @@ export function AvnuStaking({
     } catch (cause) {
       setPool(null);
       setPosition(null);
+
       setError(
         cause instanceof Error
           ? cause.message
@@ -546,6 +263,9 @@ export function AvnuStaking({
     wallet.chainId,
   ]);
 
+  /**
+   * Requests the reviewed xSTRK → STRK route through the Endur adapter.
+   */
   async function loadUnshieldQuote() {
     if (
       unshieldQuoteLoading ||
@@ -564,7 +284,8 @@ export function AvnuStaking({
         !wallet.connected ||
         !wallet.address ||
         !network ||
-        network.id !== "mainnet"
+        network.id !== "mainnet" ||
+        !network.assets.xstrk
       ) {
         throw new Error(
           "Connect Ready on Starknet Mainnet first.",
@@ -581,92 +302,26 @@ export function AvnuStaking({
       }
 
       const sellAmount =
-        parseUnits18(amount);
-
-      if (sellAmount <= 0n) {
-        throw new Error(
-          "Enter a positive xSTRK amount.",
-        );
-      }
-
-      const quotes =
-        await getQuotes(
-          {
-            sellTokenAddress:
-              ENDUR_XSTRK_TOKEN,
-            buyTokenAddress:
-              STRK_TOKEN,
-            sellAmount,
-            takerAddress:
-              wallet.address,
-            size: 1,
-            integratorFees: 3n,
-            integratorFeeRecipient:
-              ENDUR_AVNU_FEE_RECIPIENT,
-            integratorName:
-              "Endur",
-          },
-          {
-            baseUrl:
-              network.avnuBaseUrl,
-          },
+        parseUnits18(
+          amount,
         );
 
       const quote =
-        quotes[0];
-
-      if (!quote) {
-        throw new Error(
-          "No live AVNU xSTRK → STRK route is available for this amount. Try a larger amount.",
-        );
-      }
-
-      if (
-        quote.chainId !==
-        network.chainId
-      ) {
-        throw new Error(
-          "AVNU returned an Unshield route for the wrong network.",
-        );
-      }
-
-      if (
-        !sameAddress(
-          quote.sellTokenAddress,
-          ENDUR_XSTRK_TOKEN,
-        ) ||
-        !sameAddress(
-          quote.buyTokenAddress,
-          STRK_TOKEN,
-        )
-      ) {
-        throw new Error(
-          "AVNU returned a different token pair.",
-        );
-      }
-
-      if (
-        quote.sellAmount !==
-          sellAmount ||
-        quote.buyAmount <= 0n
-      ) {
-        throw new Error(
-          "AVNU returned an unexpected Unshield amount.",
-        );
-      }
-
-      if (
-        !Number.isFinite(
-          quote.priceImpact,
-        ) ||
-        Math.abs(
-          quote.priceImpact,
-        ) > 500
-      ) {
-        throw new Error(
-          "CAREL blocked this route because its price impact exceeds 5%.",
-        );
-      }
+        await getEndurUnshieldQuote({
+          baseUrl:
+            network.avnuBaseUrl,
+          chainId:
+            network.chainId,
+          owner:
+            wallet.address,
+          fromAsset:
+            network.assets.xstrk,
+          toAsset:
+            network.assets.strk,
+          sellAmount,
+          feeRecipient:
+            ENDUR_AVNU_FEE_RECIPIENT,
+        });
 
       setUnshieldQuote(
         quote,
