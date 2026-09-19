@@ -84,9 +84,11 @@ import type {
 
 import {
   validateVesuBorrowCalls,
+  validateVesuClosePositionCalls,
   validateVesuRepayCalls,
   type VesuBorrowExecutionPayload,
   type VesuBorrowMarket,
+  type VesuCloseExecutionPayload,
   type VesuRepayExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
 
@@ -188,6 +190,10 @@ type CarelTestnetContextValue = {
   ) => Promise<string>;
   executeRepay: (
     payload: VesuRepayExecutionPayload,
+    label: string,
+  ) => Promise<string>;
+  executeCloseVesuPosition: (
+    payload: VesuCloseExecutionPayload,
     label: string,
   ) => Promise<string>;
 };
@@ -582,6 +588,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const stakingSubmitting = useRef(false);
   const borrowSubmitting = useRef(false);
   const repaySubmitting = useRef(false);
+  const closeVesuSubmitting = useRef(false);
   const currentAccount = useRef(walletAccount);
   currentAccount.current = walletAccount;
 
@@ -3076,6 +3083,332 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Executes a server-prepared full Vesu position close after rebuilding
+   * all Native-denomination calldata locally.
+   */
+  const executeCloseVesuPosition = async (
+    payload: VesuCloseExecutionPayload,
+    label: string,
+  ): Promise<string> => {
+    if (
+      closeVesuSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account =
+      walletAccount;
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "Vesu Close Position is enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+      network.chainId
+    ) {
+      throw new Error(
+        "Prepared Close Position belongs to another Starknet network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Close Position review expired. Refresh the position and review it again.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(pool.address) !==
+        felt(payload.poolAddress)
+    ) {
+      throw new Error(
+        "Prepared Close Position references an unapproved Vesu pool.",
+      );
+    }
+
+    const owner =
+      felt(
+        account.address,
+      );
+
+    if (
+      felt(payload.owner) !==
+      owner
+    ) {
+      throw new Error(
+        "Prepared Close Position belongs to another account.",
+      );
+    }
+
+    if (
+      payload.collateralAssetId !==
+        network.assets.strk.id ||
+      payload.debtAssetId !==
+        network.assets.usdc.id
+    ) {
+      throw new Error(
+        "Prepared Close Position does not match CAREL's reviewed STRK/USDC market.",
+      );
+    }
+
+    let collateralShares:
+      bigint;
+
+    let nominalDebt:
+      bigint;
+
+    let debtSnapshot:
+      bigint;
+
+    let approvalCap:
+      bigint;
+
+    try {
+      collateralShares =
+        BigInt(
+          payload.collateralShares,
+        );
+
+      nominalDebt =
+        BigInt(
+          payload.nominalDebt,
+        );
+
+      debtSnapshot =
+        BigInt(
+          payload.debtSnapshot,
+        );
+
+      approvalCap =
+        BigInt(
+          payload.approvalCap,
+        );
+    } catch {
+      throw new Error(
+        "Prepared Close Position contains invalid native position values.",
+      );
+    }
+
+    if (
+      collateralShares <= 0n ||
+      nominalDebt <= 0n ||
+      debtSnapshot <= 0n ||
+      approvalCap <
+        debtSnapshot
+    ) {
+      throw new Error(
+        "Prepared Close Position contains invalid debt or collateral values.",
+      );
+    }
+
+    const market:
+      VesuBorrowMarket = {
+        id:
+          `vesu:${pool.id}:STRK:USDC`,
+
+        chainId:
+          network.chainId,
+
+        poolAddress:
+          pool.address,
+
+        collateralAsset:
+          network.assets.strk,
+
+        debtAsset:
+          network.assets.usdc,
+      };
+
+    const safeCalls =
+      validateVesuClosePositionCalls({
+        calls:
+          payload.calls,
+
+        market,
+
+        owner,
+
+        collateralShares,
+
+        nominalDebt,
+
+        approvalCap,
+      });
+
+    const knownUsdc =
+      findAssetBalance(
+        balances,
+        network.assets.usdc.id,
+        "public",
+      )?.amount;
+
+    if (
+      knownUsdc !== null &&
+      knownUsdc !== undefined &&
+      knownUsdc <
+        debtSnapshot
+    ) {
+      throw new Error(
+        "Public USDC balance is below the current Vesu debt snapshot.",
+      );
+    }
+
+    /**
+     * Confirms account and Mainnet immediately before the atomic close.
+     */
+    const assertSession =
+      async () => {
+        const selected =
+          account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6.requestChainId(
+              selected,
+            ),
+
+            account.requestAccounts(
+              true,
+            ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(walletChain) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(accounts[0]) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    closeVesuSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Close Position review expired before signing.",
+        );
+      }
+
+      const response =
+        await account.execute(
+          safeCalls,
+        );
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Close Position transaction hash.",
+        );
+      }
+
+      setTx({
+        kind:
+          "pending",
+
+        label,
+
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind:
+            "confirmed",
+
+          label,
+
+          hash,
+        });
+      } catch {
+        setTx({
+          kind:
+            "submitted",
+
+          label,
+
+          hash,
+        });
+      }
+
+      try {
+        await refreshPublicBalance();
+      } catch {
+        // Portfolio can still be refreshed manually.
+      }
+
+      return hash;
+    } finally {
+      closeVesuSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -3142,6 +3475,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeBridge,
       executeBorrow,
       executeRepay,
+      executeCloseVesuPosition,
     }),
     [
       wallets,

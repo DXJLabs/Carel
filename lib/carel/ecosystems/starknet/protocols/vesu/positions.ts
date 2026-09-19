@@ -35,6 +35,12 @@ export type VesuBorrowPositionSnapshot =
     debtAsset:
       AssetRef;
 
+    collateralShares:
+      bigint;
+
+    nominalDebt:
+      bigint;
+
     collateralAmount:
       bigint;
 
@@ -185,6 +191,18 @@ export async function readVesuBorrowPosition({
     );
   }
 
+  const collateralShares =
+    readUint256(
+      positionRaw,
+      0,
+    );
+
+  const nominalDebt =
+    readUint256(
+      positionRaw,
+      2,
+    );
+
   const collateralAmount =
     readUint256(
       positionRaw,
@@ -277,6 +295,9 @@ export async function readVesuBorrowPosition({
 
     collateralAsset,
     debtAsset,
+
+    collateralShares,
+    nominalDebt,
 
     collateralAmount,
     debtAmount,

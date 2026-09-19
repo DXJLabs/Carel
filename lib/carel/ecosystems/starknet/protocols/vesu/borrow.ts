@@ -161,6 +161,49 @@ export function encodePositiveVesuAssetAmount(
   );
 }
 
+
+
+/**
+ * Serializes Vesu AmountDenomination::Native with Alexandria i257.
+ *
+ * Native denomination lets Vesu resolve block-current collateral and debt
+ * from collateral shares and nominal debt, which is required for exact close.
+ */
+export function encodeVesuNativeAmount(
+  value: bigint,
+): readonly [
+  string,
+  string,
+  string,
+  string,
+] {
+  const negative =
+    value < 0n;
+
+  const absolute =
+    negative
+      ? -value
+      : value;
+
+  const [
+    low,
+    high,
+  ] =
+    toUint256Calldata(
+      absolute,
+    );
+
+  return [
+    "0",
+    low,
+    high,
+    negative &&
+    absolute !== 0n
+      ? "1"
+      : "0",
+  ];
+}
+
 /**
  * Validates that a market belongs to one Starknet chain and references
  * two distinct registered assets.
@@ -823,6 +866,271 @@ export function validateVesuRepayCalls({
       if (!matches) {
         throw new Error(
           "CAREL blocked altered Vesu Repay calldata.",
+        );
+      }
+    }
+  }
+
+  return expected;
+}
+
+
+export type VesuCloseExecutionPayload =
+  Readonly<{
+    chainId: string;
+    poolId: string;
+    poolAddress: string;
+
+    owner: string;
+
+    collateralAssetId: string;
+    debtAssetId: string;
+
+    collateralShares: string;
+    nominalDebt: string;
+
+    debtSnapshot: string;
+    approvalCap: string;
+
+    preparedAt: number;
+    expiresAt: number;
+
+    calls: readonly Call[];
+  }>;
+
+/**
+ * Builds the atomic Vesu Close Position multicall:
+ *
+ * 1. approve a bounded USDC allowance,
+ * 2. repay all nominal debt and withdraw all collateral shares using Native
+ *    denomination,
+ * 3. reset the pool allowance to zero.
+ *
+ * The approval cap is not the amount necessarily spent. Vesu settles only
+ * the block-current debt computed from nominal debt.
+ */
+export function buildVesuClosePositionCalls({
+  market,
+  owner,
+  collateralShares,
+  nominalDebt,
+  approvalCap,
+}: {
+  market: VesuBorrowMarket;
+  owner: string;
+  collateralShares: bigint;
+  nominalDebt: bigint;
+  approvalCap: bigint;
+}): Call[] {
+  validateVesuBorrowMarket(
+    market,
+  );
+
+  if (
+    collateralShares <= 0n ||
+    nominalDebt <= 0n ||
+    approvalCap <= 0n
+  ) {
+    throw new Error(
+      "Vesu Close Position requires positive collateral shares, nominal debt, and approval cap.",
+    );
+  }
+
+  const pool =
+    normalizeStarknetAddress(
+      market.poolAddress,
+    );
+
+  const account =
+    normalizeStarknetAddress(
+      owner,
+    );
+
+  const collateralToken =
+    requireVesuAssetAddress(
+      market.collateralAsset,
+    );
+
+  const debtToken =
+    requireVesuAssetAddress(
+      market.debtAsset,
+    );
+
+  const approveCap =
+    toUint256Calldata(
+      approvalCap,
+    );
+
+  const approveZero =
+    toUint256Calldata(
+      0n,
+    );
+
+  const collateral =
+    encodeVesuNativeAmount(
+      -collateralShares,
+    );
+
+  const debt =
+    encodeVesuNativeAmount(
+      -nominalDebt,
+    );
+
+  return [
+    {
+      contractAddress:
+        debtToken,
+
+      entrypoint:
+        "approve",
+
+      calldata: [
+        pool,
+        ...approveCap,
+      ],
+    },
+
+    {
+      contractAddress:
+        pool,
+
+      entrypoint:
+        "modify_position",
+
+      calldata: [
+        collateralToken,
+        debtToken,
+        account,
+        ...collateral,
+        ...debt,
+      ],
+    },
+
+    {
+      contractAddress:
+        debtToken,
+
+      entrypoint:
+        "approve",
+
+      calldata: [
+        pool,
+        ...approveZero,
+      ],
+    },
+  ];
+}
+
+/**
+ * Rebuilds and verifies the complete Close Position multicall locally.
+ *
+ * Raw server calls are never executed directly.
+ */
+export function validateVesuClosePositionCalls({
+  calls,
+  market,
+  owner,
+  collateralShares,
+  nominalDebt,
+  approvalCap,
+}: {
+  calls: readonly Call[];
+  market: VesuBorrowMarket;
+  owner: string;
+  collateralShares: bigint;
+  nominalDebt: bigint;
+  approvalCap: bigint;
+}): Call[] {
+  if (calls.length !== 3) {
+    throw new Error(
+      "CAREL requires exactly three Vesu Close Position calls.",
+    );
+  }
+
+  const expected =
+    buildVesuClosePositionCalls({
+      market,
+      owner,
+      collateralShares,
+      nominalDebt,
+      approvalCap,
+    });
+
+  for (
+    let callIndex = 0;
+    callIndex <
+    expected.length;
+    callIndex += 1
+  ) {
+    const actualCall =
+      calls[callIndex];
+
+    const expectedCall =
+      expected[callIndex];
+
+    if (
+      !sameStarknetAddress(
+        actualCall.contractAddress,
+        expectedCall.contractAddress,
+      ) ||
+      actualCall.entrypoint !==
+        expectedCall.entrypoint
+    ) {
+      throw new Error(
+        "CAREL blocked a mismatched Vesu Close Position call.",
+      );
+    }
+
+    const actualData =
+      vesuCallData(
+        actualCall,
+      );
+
+    const expectedData =
+      vesuCallData(
+        expectedCall,
+      );
+
+    if (
+      actualData.length !==
+      expectedData.length
+    ) {
+      throw new Error(
+        "CAREL blocked malformed Vesu Close Position calldata.",
+      );
+    }
+
+    const addressIndexes =
+      callIndex === 1
+        ? new Set([
+            0,
+            1,
+            2,
+          ])
+        : new Set([0]);
+
+    for (
+      let index = 0;
+      index <
+      expectedData.length;
+      index += 1
+    ) {
+      const matches =
+        addressIndexes.has(
+          index,
+        )
+          ? sameStarknetAddress(
+              actualData[index],
+              expectedData[index],
+            )
+          : sameVesuWord(
+              actualData[index],
+              expectedData[index],
+            );
+
+      if (!matches) {
+        throw new Error(
+          "CAREL blocked altered Vesu Close Position calldata.",
         );
       }
     }
