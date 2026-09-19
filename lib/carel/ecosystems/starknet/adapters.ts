@@ -3,29 +3,57 @@ import type {
 } from "@/lib/carel/core/execution";
 
 import {
+  createAvnuSwapExecutionAdapter,
+  type AvnuSwapExecutor,
+} from "./protocols/avnu/adapter";
+
+import {
   createVesuBorrowExecutionAdapter,
   type VesuBorrowExecutor,
 } from "./protocols/vesu/adapter";
 
 export type StarknetExecutionDependencies =
   Readonly<{
-    vesuBorrow:
+    avnuSwap?:
+      AvnuSwapExecutor;
+
+    vesuBorrow?:
       VesuBorrowExecutor;
   }>;
 
 /**
- * Creates the Starknet execution adapters currently connected to CAREL.
+ * Creates the Starknet protocol adapters whose runtime dependencies are
+ * currently available.
  *
- * Future AVNU, Endur, STRK20, and other Starknet protocol adapters register
- * here without changing Agent intent parsing.
+ * Optional dependencies let CAREL expose only capabilities that have a real
+ * executor connected instead of registering placeholder providers.
  */
 export function createStarknetExecutionAdapters(
   dependencies:
     StarknetExecutionDependencies,
 ): ExecutionAdapter[] {
-  return [
-    createVesuBorrowExecutionAdapter(
-      dependencies.vesuBorrow,
-    ),
-  ];
+  const adapters:
+    ExecutionAdapter[] = [];
+
+  if (
+    dependencies.avnuSwap
+  ) {
+    adapters.push(
+      createAvnuSwapExecutionAdapter(
+        dependencies.avnuSwap,
+      ),
+    );
+  }
+
+  if (
+    dependencies.vesuBorrow
+  ) {
+    adapters.push(
+      createVesuBorrowExecutionAdapter(
+        dependencies.vesuBorrow,
+      ),
+    );
+  }
+
+  return adapters;
 }
