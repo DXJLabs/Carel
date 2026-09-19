@@ -1,5 +1,9 @@
 import { parseBridgeGoal } from "@/lib/garden/protocol";
 import type { BridgeIntent } from "@/lib/garden/types";
+import {
+  parseBorrowGoal,
+  type ParsedBorrowRequest,
+} from "@/lib/agent/borrow";
 
 export type AgentTool = "Bridge" | "Swap" | "Staking" | "Borrow" | "Balance";
 export type AgentRouteStatus = "ready" | "unsupported" | "invalid";
@@ -9,6 +13,7 @@ export type AgentRoute = {
   status: AgentRouteStatus;
   provider: string | null;
   bridgeIntent?: BridgeIntent;
+  borrowRequest?: ParsedBorrowRequest;
   message?: string;
 };
 
@@ -62,12 +67,27 @@ export function routeAgentGoal(goal: string): AgentRoute {
   }
 
   if (/\b(borrow|borrowing|loan)\b/i.test(text)) {
-    return {
-      tool: "Borrow",
-      status: "unsupported",
-      provider: null,
-      message: "Borrow routing is recognized, but a lending protocol is not connected yet.",
-    };
+    try {
+      return {
+        tool: "Borrow",
+        status: "unsupported",
+        provider: null,
+        borrowRequest:
+          parseBorrowGoal(text),
+        message:
+          "Borrow intent is valid. CAREL still needs a verified lending market before execution.",
+      };
+    } catch (error) {
+      return {
+        tool: "Borrow",
+        status: "invalid",
+        provider: null,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Enter an explicit Borrow goal.",
+      };
+    }
   }
 
   return {

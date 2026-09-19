@@ -59,6 +59,7 @@ export type BorrowIntent =
     collateralAssetId: string;
     borrowAssetId: string;
     collateralAmount: bigint;
+    borrowAmount: bigint;
     privacy?: ExecutionPrivacy;
   }>;
 
