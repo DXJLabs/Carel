@@ -214,6 +214,15 @@ export async function loadStarknetPortfolioPositions({
             : "Public lending position · collateral check failed",
 
         borrow: {
+          poolId:
+            position.pool.id,
+
+          poolName:
+            position.pool.name,
+
+          poolAddress:
+            position.pool.address,
+
           collateralAsset:
             position.collateralAsset,
 

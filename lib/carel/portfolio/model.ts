@@ -35,6 +35,15 @@ export type PortfolioVisibility =
 
 export type PortfolioBorrowMetrics =
   Readonly<{
+    poolId:
+      string;
+
+    poolName:
+      string;
+
+    poolAddress:
+      string;
+
     collateralAsset:
       AssetRef;
 

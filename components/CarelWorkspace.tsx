@@ -30,6 +30,7 @@ import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
 import { AvnuSwap } from "./swap/AvnuSwap";
 import { AvnuStaking } from "./staking/AvnuStaking";
 import { VesuBorrow } from "./borrow/VesuBorrow";
+import { VesuRepay } from "./borrow/VesuRepay";
 import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
@@ -66,7 +67,9 @@ function txName(label: string) {
         ? "Swap"
         : value.includes("borrow")
           ? "Borrow"
-          : value.includes("stake")
+          : value.includes("repay")
+            ? "Repay"
+            : value.includes("stake")
             ? "Staking"
             : "Agent execution";
 }
@@ -123,6 +126,10 @@ export function CarelApp() {
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [quickAction, setQuickAction] = useState<"shield" | "unshield" | null>(null);
   const [quickAmount, setQuickAmount] = useState("1");
+  const [
+    selectedRepayPositionId,
+    setSelectedRepayPositionId,
+  ] = useState<string | null>(null);
   const [
     portfolioPositions,
     setPortfolioPositions,
@@ -733,74 +740,157 @@ export function CarelApp() {
           portfolioPositions.map(
             (position) => (
               <div
-                className={styles.holdingRow}
+                className={styles.positionGroup}
                 key={position.id}
               >
-                <span className={styles.coin}>
-                  {position.asset.symbol
-                    .slice(0, 1)}
-                </span>
+                <div
+                  className={styles.holdingRow}
+                >
+                  <span className={styles.coin}>
+                    {position.asset.symbol
+                      .slice(0, 1)}
+                  </span>
 
-                <div className={styles.rowCopy}>
-                  <strong>
-                    {position.label}
-                  </strong>
+                  <div className={styles.rowCopy}>
+                    <strong>
+                      {position.label}
+                    </strong>
 
-                  <small>
-                    {position.protocol}
-                    {" · "}
-                    {position.detail}
-                  </small>
-
-                  {position.borrow && (
                     <small>
-                      Collateral{" "}
-                      {formatPortfolioAmount(
-                        position.borrow
-                          .collateralAmount,
-                        position.borrow
-                          .collateralAsset,
-                        hideAmounts,
-                      )}{" "}
-                      {
-                        position.borrow
-                          .collateralAsset
-                          .symbol
-                      }
+                      {position.protocol}
                       {" · "}
-                      LTV{" "}
-                      {(
-                        position.borrow
-                          .currentLtvBps /
-                        100
-                      ).toFixed(2)}
-                      %
-                      {" / max "}
-                      {(
-                        position.borrow
-                          .maxLtvBps /
-                        100
-                      ).toFixed(2)}
-                      %
+                      {position.detail}
                     </small>
-                  )}
+
+                    {position.borrow && (
+                      <small>
+                        Collateral{" "}
+                        {formatPortfolioAmount(
+                          position.borrow
+                            .collateralAmount,
+                          position.borrow
+                            .collateralAsset,
+                          hideAmounts,
+                        )}{" "}
+                        {
+                          position.borrow
+                            .collateralAsset
+                            .symbol
+                        }
+                        {" · "}
+                        LTV{" "}
+                        {(
+                          position.borrow
+                            .currentLtvBps /
+                          100
+                        ).toFixed(2)}
+                        %
+                        {" / max "}
+                        {(
+                          position.borrow
+                            .maxLtvBps /
+                          100
+                        ).toFixed(2)}
+                        %
+                      </small>
+                    )}
+                  </div>
+
+                  <div
+                    className={
+                      styles.positionEnd
+                    }
+                  >
+                    <strong
+                      className={
+                        styles.holdingAmount
+                      }
+                    >
+                      {formatPortfolioAmount(
+                        position.amount,
+                        position.asset,
+                        hideAmounts,
+                      )}
+
+                      <small>
+                        {position.asset.symbol}
+                      </small>
+                    </strong>
+
+                    {position.kind ===
+                      "borrow" &&
+                      position.protocol ===
+                        "Vesu" &&
+                      position.borrow && (
+                        <button
+                          type="button"
+                          className={
+                            styles.positionAction
+                          }
+                          disabled={
+                            wallet.busy
+                          }
+                          onClick={() =>
+                            setSelectedRepayPositionId(
+                              (current) =>
+                                current ===
+                                position.id
+                                  ? null
+                                  : position.id,
+                            )
+                          }
+                        >
+                          {selectedRepayPositionId ===
+                          position.id
+                            ? "Close"
+                            : "Repay"}
+                        </button>
+                      )}
+                  </div>
                 </div>
 
-                <strong
-                  className={
-                    styles.holdingAmount
-                  }
-                >
-                  {formatPortfolioAmount(
-                    position.amount,
-                    position.asset,
-                    hideAmounts,
-                  )}
+                {selectedRepayPositionId ===
+                  position.id &&
+                  position.kind ===
+                    "borrow" &&
+                  position.protocol ===
+                    "Vesu" &&
+                  position.borrow && (
+                    <VesuRepay
+                      poolId={
+                        position.borrow
+                          .poolId
+                      }
+                      poolName={
+                        position.borrow
+                          .poolName
+                      }
+                      debtAsset={
+                        position.asset
+                      }
+                      debtAmount={
+                        position.amount
+                      }
+                      hidden={
+                        hideAmounts
+                      }
+                      onClose={() =>
+                        setSelectedRepayPositionId(
+                          null,
+                        )
+                      }
+                      onComplete={() => {
+                        setSelectedRepayPositionId(
+                          null,
+                        );
 
-                  <small>
-                    {position.asset.symbol}
-                  </small>
-                </strong>
+                        setSample(
+                          (value) =>
+                            value + 1,
+                        );
+                      }}
+                    />
+                  )}
               </div>
             ),
           )

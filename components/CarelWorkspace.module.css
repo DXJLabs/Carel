@@ -154,6 +154,105 @@
 .holdingAmount { text-align: right; font-size: 15px; font-weight: 500; max-width: 45%; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .holdingAmount small { display: block; font-size: 10px; color: var(--muted); }
 
+
+.positionGroup {
+  border-bottom: 1px solid var(--border);
+}
+
+.positionGroup > .holdingRow {
+  border-bottom: 0;
+}
+
+.positionEnd {
+  min-width: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.positionEnd .holdingAmount {
+  max-width: none;
+}
+
+.positionAction {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid #5d382b;
+  border-radius: 7px;
+  background: #211611;
+  color: var(--text);
+  font-size: 10px !important;
+}
+
+.repayPanel {
+  margin: 0 0 16px 47px;
+  padding: 16px;
+  border: 1px solid #4c3026;
+  border-radius: 11px;
+  background: #171311;
+}
+
+.repayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 9px;
+}
+
+.repayHeader strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.repayHeader small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.repayPanel .fieldLabel {
+  margin-top: 16px;
+}
+
+.repayInput {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 49px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #181818;
+  padding: 0 12px;
+}
+
+.repayInput:focus-within {
+  border-color: #70412f;
+}
+
+.repayInput input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.repayInput strong {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.repayPanel > .primary {
+  width: 100%;
+}
+
 .borrowPanel {
   padding: 18px;
   border: 1px solid var(--border);
@@ -308,6 +407,14 @@
   .textButton:hover, .nav button:hover { color: var(--text) !important; }
 }
 @media (max-width: 420px) {
+  .repayPanel {
+    margin-left: 0;
+  }
+
+  .positionEnd {
+    min-width: 68px;
+  }
+
   .borrowPair {
     grid-template-columns: 1fr;
     gap: 7px;
