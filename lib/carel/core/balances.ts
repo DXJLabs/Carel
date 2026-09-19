@@ -141,3 +141,73 @@ export function summarizeAssetBalance(
       ),
   };
 }
+
+
+/**
+ * Merges fresh balance observations into an existing balance collection.
+ * Asset id + visibility form the identity, so public/private values never
+ * overwrite each other accidentally.
+ */
+export function mergeBalances(
+  current: readonly AssetBalance[],
+  updates: readonly AssetBalance[],
+): AssetBalance[] {
+  const next =
+    new Map<string, AssetBalance>();
+
+  for (const balance of current) {
+    next.set(
+      balanceKey(
+        balance.assetId,
+        balance.visibility,
+      ),
+      balance,
+    );
+  }
+
+  for (const balance of updates) {
+    next.set(
+      balanceKey(
+        balance.assetId,
+        balance.visibility,
+      ),
+      balance,
+    );
+  }
+
+  return [...next.values()];
+}
+
+/**
+ * Removes cached balances of one visibility class.
+ * CAREL uses this after a private transaction because disclosed values
+ * become stale and must not be treated as current portfolio state.
+ */
+export function clearBalancesByVisibility(
+  balances: readonly AssetBalance[],
+  visibility: BalanceVisibility,
+): AssetBalance[] {
+  return balances.filter(
+    (balance) =>
+      balance.visibility !==
+      visibility,
+  );
+}
+
+/**
+ * Reads a balance directly from an array without forcing callers
+ * to construct a BalanceBook first.
+ */
+export function findAssetBalance(
+  balances: readonly AssetBalance[],
+  assetId: string,
+  visibility: BalanceVisibility,
+): AssetBalance | null {
+  return (
+    balances.find(
+      (balance) =>
+        balance.assetId === assetId &&
+        balance.visibility === visibility,
+    ) ?? null
+  );
+}

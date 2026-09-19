@@ -63,6 +63,20 @@ import {
   getCarelNetwork,
 } from "@/lib/carel/networks";
 
+import {
+  clearBalancesByVisibility,
+  findAssetBalance,
+  mergeBalances,
+  type AssetBalance,
+} from "@/lib/carel/core/balances";
+
+import {
+  privateBalanceTokenAddresses,
+  readStarknetPublicBalances,
+  readStrk20PrivateBalances,
+  readStrk20TokenAmount,
+} from "@/lib/carel/ecosystems/starknet/balances";
+
 type StakingAction =
   | "stake"
   | "initiateUnstake"
@@ -86,6 +100,7 @@ type CarelTestnetContextValue = {
   publicStrk: bigint | null;
   privateStrk: bigint | null;
   privateXstrk: bigint | null;
+  balances: readonly AssetBalance[];
   privateRevealed: boolean;
   busy: boolean;
   error: string | null;
@@ -95,6 +110,7 @@ type CarelTestnetContextValue = {
   connect: (walletName?: string) => Promise<void>;
   disconnect: () => void;
   refreshPublicBalance: () => Promise<void>;
+  refreshAssetBalances: () => Promise<void>;
   revealPrivateBalance: () => Promise<void>;
   shield: (amount: string) => Promise<void>;
   unshield: (amount: string) => Promise<void>;
@@ -193,56 +209,6 @@ function supportsStrk20(specs: string[]) {
 function shortAddress(address: string) {
   if (!address) return "";
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
-async function readPublicStrk(
-  address: string,
-  provider: RpcProvider = sepoliaProvider,
-): Promise<bigint> {
-  const result = await provider.callContract({
-    contractAddress: STRK_TOKEN,
-    entrypoint: "balance_of",
-    calldata: [address],
-  });
-
-  const low = BigInt(result[0] ?? "0");
-  const high = BigInt(result[1] ?? "0");
-
-  return low + (high << 128n);
-}
-
-function readPrivateTokenFromResponse(
-  raw: unknown,
-  expectedToken: string,
-): bigint {
-  const payload =
-    raw && typeof raw === "object" && "value" in raw
-      ? (raw as { value: unknown }).value
-      : raw;
-
-  if (!Array.isArray(payload)) return 0n;
-
-  for (const entry of payload) {
-    if (!entry || typeof entry !== "object") continue;
-
-    const row = entry as Record<string, unknown>;
-    const token = row.token ?? row.token_address ?? row[0];
-    const amount = row.amount ?? row.balance ?? row[1];
-
-    if (sameFelt(token, expectedToken)) {
-      try {
-        return BigInt(String(amount ?? "0"));
-      } catch {
-        return 0n;
-      }
-    }
-  }
-
-  return 0n;
-}
-
-function readPrivateStrkFromResponse(raw: unknown): bigint {
-  return readPrivateTokenFromResponse(raw, STRK_TOKEN);
 }
 
 async function waitForSubmittedTransaction(
@@ -579,6 +545,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const [publicStrk, setPublicStrk] = useState<bigint | null>(null);
   const [privateStrk, setPrivateStrk] = useState<bigint | null>(null);
   const [privateXstrk, setPrivateXstrk] = useState<bigint | null>(null);
+  const [balances, setBalances] = useState<AssetBalance[]>([]);
   const [privateRevealed, setPrivateRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -667,33 +634,74 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     };
   }, [maturityTarget, chainId]);
 
+  /**
+   * Refreshes every registered public asset on the connected Starknet chain.
+   * Legacy publicStrk is updated from the same generic snapshot.
+   */
+  const refreshAssetBalances = async () => {
+    if (!address) {
+      return;
+    }
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (!network) {
+      throw new Error(
+        "CAREL supports Starknet Sepolia and Starknet Mainnet.",
+      );
+    }
+
+    const observed =
+      await readStarknetPublicBalances(
+        address,
+        network.provider,
+        network.assetList,
+      );
+
+    setBalances(
+      (current) =>
+        mergeBalances(
+          current,
+          observed,
+        ),
+    );
+
+    const strk =
+      findAssetBalance(
+        observed,
+        network.assets.strk.id,
+        "public",
+      );
+
+    setPublicStrk(
+      strk?.amount ?? null,
+    );
+  };
+
+  /**
+   * Compatibility action used by the existing UI.
+   * It now refreshes the complete public asset snapshot, not STRK alone.
+   */
   const refreshPublicBalance = async () => {
-    if (!address) return;
+    if (!address) {
+      return;
+    }
 
     setError(null);
 
     try {
-      const network = getCarelNetwork(chainId);
-
-      if (!network) {
-        throw new Error(
-          "CAREL supports Starknet Sepolia and Starknet Mainnet.",
-        );
-      }
-
-      const balance = await readPublicStrk(
-        address,
-        network.provider,
-      );
-
-      setPublicStrk(balance);
+      await refreshAssetBalances();
       setError(null);
     } catch (cause) {
       setPublicStrk(null);
+
       setError(
         cause instanceof Error
           ? cause.message
-          : "Could not read public STRK balance.",
+          : "Could not read public asset balances.",
       );
     }
   };
@@ -795,17 +803,31 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setPrivateStrk(null);
       setPrivateXstrk(null);
       setPrivateRevealed(false);
+      setBalances([]);
       setTx({ kind: "idle" });
 
       try {
-        setPublicStrk(
-          await readPublicStrk(
+        const observed =
+          await readStarknetPublicBalances(
             nextAddress,
             network.provider,
-          ),
+            network.assetList,
+          );
+
+        setBalances(
+          observed,
+        );
+
+        setPublicStrk(
+          findAssetBalance(
+            observed,
+            network.assets.strk.id,
+            "public",
+          )?.amount ?? null,
         );
       } catch {
         setPublicStrk(null);
+        setBalances([]);
       }
     } catch (cause) {
       console.error("[CAREL] wallet connect failed", cause);
@@ -829,6 +851,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setPrivateStrk(null);
     setPrivateXstrk(null);
     setPrivateRevealed(false);
+    setBalances([]);
     setTx({ kind: "idle" });
     setMaturityTarget(null);
     setCurrentBlock(null);
@@ -860,6 +883,10 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     };
   };
 
+  /**
+   * Requests one explicit STRK20 disclosure for all registered private assets.
+   * STRK, USDC, and mainnet xSTRK therefore share one balance infrastructure.
+   */
   const revealPrivateBalance = async () => {
     setBusy(true);
     setError(null);
@@ -868,39 +895,61 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       const {
         account,
         network,
-      } = assertPrivateReady();
-
-      const tokens =
-        network.id === "mainnet"
-          ? [
-              STRK_TOKEN,
-              ENDUR_XSTRK_TOKEN,
-            ]
-          : [
-              STRK_TOKEN,
-            ];
+      } =
+        assertPrivateReady();
 
       const result =
         await account.strk20Balances(
-          tokens,
+          privateBalanceTokenAddresses(
+            network.assetList,
+          ),
         );
 
-      setPrivateStrk(
-        readPrivateStrkFromResponse(
+      const observed =
+        readStrk20PrivateBalances(
           result,
-        ),
+          network.assetList,
+        );
+
+      setBalances(
+        (current) =>
+          mergeBalances(
+            clearBalancesByVisibility(
+              current,
+              "private",
+            ),
+            observed,
+          ),
       );
 
+      setPrivateStrk(
+        findAssetBalance(
+          observed,
+          network.assets.strk.id,
+          "private",
+        )?.amount ?? 0n,
+      );
+
+      const xstrk =
+        network.assetList.find(
+          (asset) =>
+            asset.symbol ===
+            "xSTRK",
+        );
+
       setPrivateXstrk(
-        network.id === "mainnet"
-          ? readPrivateTokenFromResponse(
-              result,
-              ENDUR_XSTRK_TOKEN,
-            )
+        xstrk
+          ? findAssetBalance(
+              observed,
+              xstrk.id,
+              "private",
+            )?.amount ?? 0n
           : null,
       );
 
-      setPrivateRevealed(true);
+      setPrivateRevealed(
+        true,
+      );
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -1018,7 +1067,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         try {
           const { account } = assertPrivateReady();
           const result = await account.strk20Balances([STRK_TOKEN]);
-          setPrivateStrk(readPrivateStrkFromResponse(result));
+          setPrivateStrk(readStrk20TokenAmount(result, STRK_TOKEN));
         } catch {
           // Keep the previous disclosed balance if refresh is rejected/unavailable.
         }
@@ -1487,7 +1536,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         await account.strk20Balances([buyToken]);
 
       const privateBuyBefore =
-        readPrivateTokenFromResponse(
+        readStrk20TokenAmount(
           beforeResult,
           buyToken,
         );
@@ -1598,6 +1647,13 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setPrivateStrk(null);
       setPrivateXstrk(null);
       setPrivateRevealed(false);
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
 
       return {
         hash,
@@ -1674,7 +1730,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         ]);
 
       const privateBuyAfter =
-        readPrivateTokenFromResponse(
+        readStrk20TokenAmount(
           balanceResult,
           normalizedToken,
         );
@@ -1748,6 +1804,13 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setPrivateStrk(null);
       setPrivateXstrk(null);
       setPrivateRevealed(false);
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
 
       return {
         hash,
@@ -2352,6 +2415,13 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setPrivateStrk(null);
       setPrivateXstrk(null);
       setPrivateRevealed(false);
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
 
       return hash;
     } finally {
@@ -2404,6 +2474,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       publicStrk,
       privateStrk,
       privateXstrk,
+      balances,
       privateRevealed,
       busy,
       error,
@@ -2413,6 +2484,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       connect,
       disconnect,
       refreshPublicBalance,
+      refreshAssetBalances,
       revealPrivateBalance,
       shield,
       unshield,
@@ -2437,6 +2509,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       publicStrk,
       privateStrk,
       privateXstrk,
+      balances,
       privateRevealed,
       busy,
       error,

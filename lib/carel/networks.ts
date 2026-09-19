@@ -16,6 +16,7 @@ import {
 import {
   ENDUR_XSTRK_ADDRESS,
   STARKNET_MAINNET_STRK,
+  STARKNET_MAINNET_XSTRK,
   STARKNET_MAINNET_USDC,
   STARKNET_MAINNET_USDC_ADDRESS,
   STARKNET_SEPOLIA_STRK,
@@ -87,7 +88,12 @@ export const CAREL_NETWORKS = {
         STARKNET_SEPOLIA_STRK,
       usdc:
         STARKNET_SEPOLIA_USDC,
+      xstrk: null,
     },
+    assetList: [
+      STARKNET_SEPOLIA_STRK,
+      STARKNET_SEPOLIA_USDC,
+    ],
     gardenEnabled: true,
     privacyEnabled: true,
   },
@@ -115,7 +121,14 @@ export const CAREL_NETWORKS = {
         STARKNET_MAINNET_STRK,
       usdc:
         STARKNET_MAINNET_USDC,
+      xstrk:
+        STARKNET_MAINNET_XSTRK,
     },
+    assetList: [
+      STARKNET_MAINNET_STRK,
+      STARKNET_MAINNET_USDC,
+      STARKNET_MAINNET_XSTRK,
+    ],
     gardenEnabled: false,
     privacyEnabled: true,
   },
