@@ -1,125 +1,322 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowRight, LoaderCircle } from "lucide-react";
 import {
-  getQuotes,
-  type Quote,
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  ArrowRight,
+  LoaderCircle,
+} from "lucide-react";
+
+import type {
+  Quote,
 } from "@avnu/avnu-sdk";
-import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
+
+import {
+  useCarelTestnet,
+} from "@/components/testnet/Strk20Testnet";
+
+import {
+  formatUnits,
+  parseUnits,
+} from "@/lib/carel/core/amounts";
+
 import {
   getCarelNetwork,
-  STRK_TOKEN,
 } from "@/lib/carel/networks";
+
+import {
+  completeUnshieldSwapRoute,
+  executeSwapRoute,
+  getAvnuSwapQuote,
+  type AvnuPendingUnshield,
+  type AvnuSwapMode,
+} from "@/lib/carel/ecosystems/starknet/protocols/avnu/swap";
+
 import styles from "../CarelWorkspace.module.css";
 
-type SwapMode = "normal" | "shield" | "unshield";
-
-const STRK_DECIMALS = 18;
-const USDC_DECIMALS = 6;
-
-// AVNU priceImpact is expressed in basis-point style:
-// 500 => 5.00%.
-const MAX_PRICE_IMPACT_BPS = 500;
-
-function sameAddress(a: string, b: string) {
-  try {
-    return BigInt(a) === BigInt(b);
-  } catch {
-    return false;
-  }
-}
-
-function parseAmount(value: string, decimals: number): bigint {
-  const clean = value.trim();
-
-  if (!/^\d+(?:\.\d+)?$/.test(clean)) {
-    throw new Error("Enter a valid amount.");
-  }
-
-  const [whole, fraction = ""] = clean.split(".");
-
-  if (fraction.length > decimals) {
-    throw new Error(`Use at most ${decimals} decimal places.`);
-  }
-
-  const padded = fraction.padEnd(decimals, "0");
-
-  return (
-    BigInt(whole || "0") * 10n ** BigInt(decimals) +
-    BigInt(padded || "0")
-  );
-}
-
-function formatAmount(
-  value: bigint,
-  decimals: number,
-  maxFraction = 6,
-): string {
-  const base = 10n ** BigInt(decimals);
-  const whole = value / base;
-  const fraction = (value % base)
-    .toString()
-    .padStart(decimals, "0")
-    .slice(0, maxFraction)
-    .replace(/0+$/, "");
-
-  return fraction ? `${whole}.${fraction}` : whole.toString();
-}
+type PendingUiStage =
+  AvnuPendingUnshield &
+  Readonly<{
+    sellAmount: string;
+    fromSymbol: string;
+    toSymbol: string;
+    toDecimals: number;
+  }>;
 
 export function AvnuSwap({
   mode,
   goal,
 }: {
-  mode: SwapMode;
+  mode: AvnuSwapMode;
   goal: string;
 }) {
-  const wallet = useCarelTestnet();
+  const wallet =
+    useCarelTestnet();
 
-  const [amount, setAmount] = useState("1");
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [executing, setExecuting] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [unshieldStage, setUnshieldStage] = useState<{
-    hash: string;
-    privateBuyBefore: bigint;
-    minExpected: bigint;
-    maturityTarget: number;
-    sellAmount: string;
-  } | null>(null);
-
-  const network = getCarelNetwork(wallet.chainId);
-  const ready =
-    wallet.connected &&
-    network !== null;
-
-  useEffect(() => {
-    const match = goal.match(
-      /\bswap\s+(\d+(?:\.\d+)?)\s+STRK\b/i,
+  const network =
+    getCarelNetwork(
+      wallet.chainId,
     );
 
-    if (match?.[1]) {
-      setAmount(match[1]);
+  const swapAssets =
+    network
+      ? [
+          network.assets.strk,
+          network.assets.usdc,
+        ]
+      : [];
+
+  const [
+    sellSymbol,
+    setSellSymbol,
+  ] = useState("STRK");
+
+  const [
+    buySymbol,
+    setBuySymbol,
+  ] = useState("USDC");
+
+  const [
+    amount,
+    setAmount,
+  ] = useState("1");
+
+  const [
+    quote,
+    setQuote,
+  ] = useState<Quote | null>(
+    null,
+  );
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    executing,
+    setExecuting,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    success,
+    setSuccess,
+  ] = useState("");
+
+  const [
+    unshieldStage,
+    setUnshieldStage,
+  ] =
+    useState<PendingUiStage | null>(
+      null,
+    );
+
+  const sellAsset =
+    swapAssets.find(
+      (asset) =>
+        asset.symbol ===
+        sellSymbol,
+    ) ??
+    swapAssets[0] ??
+    null;
+
+  const buyAsset =
+    swapAssets.find(
+      (asset) =>
+        asset.symbol ===
+        buySymbol,
+    ) ??
+    swapAssets.find(
+      (asset) =>
+        asset.id !==
+        sellAsset?.id,
+    ) ??
+    null;
+
+  const ready =
+    wallet.connected &&
+    network !== null &&
+    sellAsset !== null &&
+    buyAsset !== null &&
+    sellAsset.id !==
+      buyAsset.id;
+
+  /**
+   * Clears a reviewed quote whenever the user changes route inputs.
+   */
+  function resetQuote() {
+    setQuote(null);
+    setError("");
+    setSuccess("");
+  }
+
+  /**
+   * Changes the sell asset and automatically keeps the pair distinct.
+   */
+  function selectSellAsset(
+    symbol: string,
+  ) {
+    setSellSymbol(symbol);
+
+    if (
+      symbol === buySymbol
+    ) {
+      const alternate =
+        swapAssets.find(
+          (asset) =>
+            asset.symbol !==
+            symbol,
+        );
+
+      if (alternate) {
+        setBuySymbol(
+          alternate.symbol,
+        );
+      }
     }
-  }, [goal]);
+
+    resetQuote();
+  }
+
+  /**
+   * Changes the receive asset and automatically keeps the pair distinct.
+   */
+  function selectBuyAsset(
+    symbol: string,
+  ) {
+    setBuySymbol(symbol);
+
+    if (
+      symbol === sellSymbol
+    ) {
+      const alternate =
+        swapAssets.find(
+          (asset) =>
+            asset.symbol !==
+            symbol,
+        );
+
+      if (alternate) {
+        setSellSymbol(
+          alternate.symbol,
+        );
+      }
+    }
+
+    resetQuote();
+  }
+
+  useEffect(() => {
+    if (!network) {
+      return;
+    }
+
+    const match =
+      goal.match(
+        /\bswap\s+(\d+(?:\.\d+)?)\s+([a-z0-9]+)(?:\s+(?:for|to)\s+([a-z0-9]+))?/i,
+      );
+
+    if (!match) {
+      return;
+    }
+
+    if (match[1]) {
+      setAmount(
+        match[1],
+      );
+    }
+
+    const from =
+      network.assets.strk
+        .symbol
+        .toLowerCase() ===
+      match[2]?.toLowerCase()
+        ? network.assets.strk
+        : network.assets.usdc
+            .symbol
+            .toLowerCase() ===
+          match[2]?.toLowerCase()
+          ? network.assets.usdc
+          : null;
+
+    const to =
+      network.assets.strk
+        .symbol
+        .toLowerCase() ===
+      match[3]?.toLowerCase()
+        ? network.assets.strk
+        : network.assets.usdc
+            .symbol
+            .toLowerCase() ===
+          match[3]?.toLowerCase()
+          ? network.assets.usdc
+          : null;
+
+    if (from) {
+      setSellSymbol(
+        from.symbol,
+      );
+    }
+
+    if (
+      to &&
+      to.id !== from?.id
+    ) {
+      setBuySymbol(
+        to.symbol,
+      );
+    }
+
+    setQuote(null);
+    setError("");
+    setSuccess("");
+  }, [
+    goal,
+    network?.id,
+  ]);
 
   useEffect(() => {
     setQuote(null);
     setError("");
     setSuccess("");
-  }, [mode, wallet.address]);
+    setUnshieldStage(null);
+  }, [
+    mode,
+    wallet.address,
+    network?.id,
+  ]);
 
+  /**
+   * Requests a verified quote through the AVNU Starknet adapter.
+   */
   async function loadQuote() {
-    if (loading || executing) return;
+    if (
+      loading ||
+      executing
+    ) {
+      return;
+    }
 
     setLoading(true);
     setError("");
     setQuote(null);
 
     try {
-      if (!ready || !wallet.address || !network) {
+      if (
+        !ready ||
+        !wallet.address ||
+        !network ||
+        !sellAsset ||
+        !buyAsset
+      ) {
         throw new Error(
           "Connect Ready on Starknet Sepolia or Mainnet first.",
         );
@@ -127,77 +324,36 @@ export function AvnuSwap({
 
       if (
         mode !== "normal" &&
-        (!wallet.strk20Capable || !network.privacyEnabled)
+        (
+          !wallet.strk20Capable ||
+          !network.privacyEnabled
+        )
       ) {
         throw new Error(
           "STRK20 privacy is not available for this wallet or network.",
         );
       }
 
-      const sellAmount = parseAmount(
-        amount,
-        STRK_DECIMALS,
-      );
+      const sellAmount =
+        parseUnits(
+          amount,
+          sellAsset.decimals,
+        );
 
-      if (sellAmount <= 0n) {
-        throw new Error("Swap amount must be greater than zero.");
-      }
-
-      const quotes = await getQuotes(
-        {
-          sellTokenAddress: STRK_TOKEN,
-          buyTokenAddress: network.usdcToken,
+      const next =
+        await getAvnuSwapQuote({
+          network,
+          fromAsset:
+            sellAsset,
+          toAsset:
+            buyAsset,
           sellAmount,
-          ...(mode === "normal"
-            ? { takerAddress: wallet.address }
-            : {}),
-          size: 1,
-        },
-        {
-          baseUrl: network.avnuBaseUrl,
-        },
-      );
-
-      const next = quotes[0];
-
-      if (!next) {
-        throw new Error(
-          `No AVNU STRK → USDC route is available on ${network.label} right now.`,
-        );
-      }
-
-      if (next.chainId !== network.chainId) {
-        throw new Error(
-          "AVNU returned a quote for the wrong network.",
-        );
-      }
-
-      if (
-        !sameAddress(next.sellTokenAddress, STRK_TOKEN) ||
-        !sameAddress(next.buyTokenAddress, network.usdcToken)
-      ) {
-        throw new Error(
-          "AVNU returned a quote for a different token pair.",
-        );
-      }
-
-      if (
-        next.sellAmount !== sellAmount ||
-        next.buyAmount <= 0n
-      ) {
-        throw new Error(
-          "AVNU returned a quote with an unexpected amount.",
-        );
-      }
-
-      if (
-        !Number.isFinite(next.priceImpact) ||
-        Math.abs(next.priceImpact) > MAX_PRICE_IMPACT_BPS
-      ) {
-        throw new Error(
-          "CAREL blocked this route because its price impact exceeds 5%.",
-        );
-      }
+          takerAddress:
+            wallet.address,
+          privateRoute:
+            mode !==
+            "normal",
+        });
 
       setQuote(next);
     } catch (cause) {
@@ -211,13 +367,17 @@ export function AvnuSwap({
     }
   }
 
+  /**
+   * Executes the currently reviewed route without embedding protocol
+   * orchestration inside the React component.
+   */
   async function execute() {
-    if (!quote || executing) return;
-
-    if (!network) {
-      setError(
-        "Connect Ready on Starknet Sepolia or Mainnet first.",
-      );
+    if (
+      !quote ||
+      executing ||
+      !sellAsset ||
+      !buyAsset
+    ) {
       return;
     }
 
@@ -225,38 +385,35 @@ export function AvnuSwap({
     setError("");
 
     try {
-      if (mode === "shield") {
-        await wallet.executeShieldSwap(
+      const result =
+        await executeSwapRoute({
+          mode,
           quote,
-          STRK_TOKEN,
-          network.usdcToken,
-          `Shield Swap ${amount} STRK → private USDC`,
-        );
-      } else if (mode === "unshield") {
-        const minExpected =
-          quote.buyAmount -
-          (quote.buyAmount * 50n) / 10_000n;
-
-        const stage =
-          await wallet.executeUnshieldSwapStart(
-            quote,
-            STRK_TOKEN,
-            network.usdcToken,
-            `Unshield Swap · private STRK → private USDC`,
-          );
-
-        setUnshieldStage({
-          ...stage,
-          minExpected,
-          sellAmount: amount,
+          fromAsset:
+            sellAsset,
+          toAsset:
+            buyAsset,
+          amountLabel:
+            amount,
+          executor:
+            wallet,
         });
-      } else {
-        await wallet.executeSwap(
-          quote,
-          STRK_TOKEN,
-          network.usdcToken,
-          `Swap ${amount} STRK → USDC`,
-        );
+
+      if (
+        result.kind ===
+        "unshield-pending"
+      ) {
+        setUnshieldStage({
+          ...result.stage,
+          sellAmount:
+            amount,
+          fromSymbol:
+            sellAsset.symbol,
+          toSymbol:
+            buyAsset.symbol,
+          toDecimals:
+            buyAsset.decimals,
+        });
       }
 
       setQuote(null);
@@ -271,10 +428,13 @@ export function AvnuSwap({
     }
   }
 
+  /**
+   * Completes the second Unshield step after the private output matures.
+   */
   async function completeUnshield() {
     if (
       !unshieldStage ||
-      !network ||
+      !buyAsset ||
       executing
     ) {
       return;
@@ -286,22 +446,34 @@ export function AvnuSwap({
 
     try {
       const result =
-        await wallet.completeUnshieldSwap(
-          network.usdcToken,
-          unshieldStage.privateBuyBefore,
-          unshieldStage.minExpected,
-          unshieldStage.maturityTarget,
-          `Unshield Swap ${unshieldStage.sellAmount} STRK → public USDC`,
-        );
+        await completeUnshieldSwapRoute({
+          executor:
+            wallet,
+          toAsset:
+            buyAsset,
+          stage:
+            unshieldStage,
+          amountLabel:
+            unshieldStage
+              .sellAmount,
+          fromSymbol:
+            unshieldStage
+              .fromSymbol,
+        });
 
       setSuccess(
-        `Unshield complete: ${formatAmount(
+        `Unshield complete: ${formatUnits(
           result.amount,
-          USDC_DECIMALS,
-        )} USDC moved to your public wallet.`,
+          unshieldStage
+            .toDecimals,
+          6,
+        )} ${unshieldStage.toSymbol} moved to your public wallet.`,
       );
 
-      setUnshieldStage(null);
+      setUnshieldStage(
+        null,
+      );
+
       setQuote(null);
     } catch (cause) {
       setError(
@@ -319,60 +491,150 @@ export function AvnuSwap({
     unshieldStage
   ) {
     const matured =
-      wallet.currentBlock !== null &&
+      wallet.currentBlock !==
+        null &&
       wallet.currentBlock >=
-        unshieldStage.maturityTarget;
+        unshieldStage
+          .maturityTarget;
 
     return (
-      <section className={styles.panel}>
-        <h3>Unshield Swap</h3>
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <h3>
+          Unshield Swap
+        </h3>
 
-        <div className={styles.route}>
-          <span>Private STRK</span>
-          <ArrowRight size={16}/>
-          <span>Public USDC</span>
+        <div
+          className={
+            styles.route
+          }
+        >
+          <span>
+            Private{" "}
+            {
+              unshieldStage
+                .fromSymbol
+            }
+          </span>
+
+          <ArrowRight
+            size={16}
+          />
+
+          <span>
+            Public{" "}
+            {
+              unshieldStage
+                .toSymbol
+            }
+          </span>
         </div>
 
-        <div className={styles.rule}>
+        <div
+          className={
+            styles.rule
+          }
+        >
           <span>Step</span>
-          <strong>2 of 2</strong>
-        </div>
-
-        <div className={styles.rule}>
-          <span>Private swap</span>
-          <strong>Confirmed</strong>
-        </div>
-
-        <div className={styles.rule}>
-          <span>USDC maturity block</span>
           <strong>
-            {unshieldStage.maturityTarget.toLocaleString()}
+            2 of 2
           </strong>
         </div>
 
-        <div className={styles.rule}>
-          <span>Current block</span>
+        <div
+          className={
+            styles.rule
+          }
+        >
+          <span>
+            Private swap
+          </span>
+
           <strong>
-            {wallet.currentBlock?.toLocaleString() ?? "Checking…"}
+            Confirmed
           </strong>
         </div>
 
-        <p className={styles.helper}>
-          AVNU has swapped the private STRK into private USDC.
-          STRK20 requires the new note to mature before it can
-          be withdrawn to your public wallet. CAREL withdraws
-          only the reviewed minimum; positive slippage stays private.
+        <div
+          className={
+            styles.rule
+          }
+        >
+          <span>
+            {
+              unshieldStage
+                .toSymbol
+            }{" "}
+            maturity block
+          </span>
+
+          <strong>
+            {unshieldStage
+              .maturityTarget
+              .toLocaleString()}
+          </strong>
+        </div>
+
+        <div
+          className={
+            styles.rule
+          }
+        >
+          <span>
+            Current block
+          </span>
+
+          <strong>
+            {wallet
+              .currentBlock
+              ?.toLocaleString() ??
+              "Checking…"}
+          </strong>
+        </div>
+
+        <p
+          className={
+            styles.helper
+          }
+        >
+          AVNU has completed
+          the private swap.
+          STRK20 requires the
+          new private output to
+          mature before CAREL can
+          withdraw the reviewed
+          amount publicly.
         </p>
 
         <button
           type="button"
-          className={styles.primary}
-          disabled={!matured || executing || wallet.busy}
-          onClick={() => void completeUnshield()}
+          className={
+            styles.primary
+          }
+          disabled={
+            !matured ||
+            executing ||
+            wallet.busy
+          }
+          onClick={() =>
+            void completeUnshield()
+          }
         >
           {executing
-            ? <LoaderCircle size={16}/>
-            : <ArrowRight size={16}/>}
+            ? (
+              <LoaderCircle
+                size={16}
+              />
+            )
+            : (
+              <ArrowRight
+                size={16}
+              />
+            )}
+
           {executing
             ? "Waiting for Ready…"
             : matured
@@ -381,7 +643,12 @@ export function AvnuSwap({
         </button>
 
         {error && (
-          <p className={styles.notice} role="alert">
+          <p
+            className={
+              styles.notice
+            }
+            role="alert"
+          >
             {error}
           </p>
         )}
@@ -390,30 +657,54 @@ export function AvnuSwap({
   }
 
   return (
-    <section className={styles.panel}>
+    <section
+      className={
+        styles.panel
+      }
+    >
       <h3>
         {mode === "normal"
-          ? "Swap STRK → USDC"
+          ? "Swap"
           : mode === "shield"
             ? "Shield Swap"
             : "Unshield Swap"}
       </h3>
 
-      <div className={styles.route}>
+      <div
+        className={
+          styles.route
+        }
+      >
         <span>
-          {mode === "unshield"
-            ? "Private STRK"
-            : "Public STRK"}
+          {mode ===
+          "unshield"
+            ? "Private "
+            : "Public "}
+          {sellAsset
+            ?.symbol ??
+            "Asset"}
         </span>
-        <ArrowRight size={16}/>
+
+        <ArrowRight
+          size={16}
+        />
+
         <span>
-          {mode === "shield"
-            ? "Private USDC"
-            : "Public USDC"}
+          {mode ===
+          "shield"
+            ? "Private "
+            : "Public "}
+          {buyAsset
+            ?.symbol ??
+            "Asset"}
         </span>
       </div>
 
-      <p className={styles.helper}>
+      <p
+        className={
+          styles.helper
+        }
+      >
         {mode === "normal"
           ? `Public → public · AVNU · ${network?.label ?? "Starknet"}`
           : mode === "shield"
@@ -422,7 +713,97 @@ export function AvnuSwap({
       </p>
 
       <label
-        className={styles.fieldLabel}
+        className={
+          styles.fieldLabel
+        }
+        htmlFor="carel-swap-sell"
+      >
+        Sell asset
+      </label>
+
+      <select
+        id="carel-swap-sell"
+        className={
+          styles.amountInput
+        }
+        value={
+          sellAsset?.symbol ??
+          sellSymbol
+        }
+        disabled={
+          loading ||
+          executing
+        }
+        onChange={(event) =>
+          selectSellAsset(
+            event.target.value,
+          )
+        }
+      >
+        {swapAssets.map(
+          (asset) => (
+            <option
+              key={
+                asset.id
+              }
+              value={
+                asset.symbol
+              }
+            >
+              {asset.symbol}
+            </option>
+          ),
+        )}
+      </select>
+
+      <label
+        className={
+          styles.fieldLabel
+        }
+        htmlFor="carel-swap-buy"
+      >
+        Receive asset
+      </label>
+
+      <select
+        id="carel-swap-buy"
+        className={
+          styles.amountInput
+        }
+        value={
+          buyAsset?.symbol ??
+          buySymbol
+        }
+        disabled={
+          loading ||
+          executing
+        }
+        onChange={(event) =>
+          selectBuyAsset(
+            event.target.value,
+          )
+        }
+      >
+        {swapAssets.map(
+          (asset) => (
+            <option
+              key={
+                asset.id
+              }
+              value={
+                asset.symbol
+              }
+            >
+              {asset.symbol}
+            </option>
+          ),
+        )}
+      </select>
+
+      <label
+        className={
+          styles.fieldLabel
+        }
         htmlFor="carel-swap-amount"
       >
         You pay
@@ -430,39 +811,52 @@ export function AvnuSwap({
 
       <input
         id="carel-swap-amount"
-        className={styles.amountInput}
+        className={
+          styles.amountInput
+        }
         inputMode="decimal"
         value={amount}
-        disabled={loading || executing}
-        onChange={(event) => {
-          setAmount(event.target.value);
-          setQuote(null);
-          setError("");
+        disabled={
+          loading ||
+          executing
+        }
+        onChange={(
+          event,
+        ) => {
+          setAmount(
+            event.target.value,
+          );
+          resetQuote();
         }}
       />
-
-      <div className={styles.rule}>
-        <span>Sell token</span>
-        <strong>STRK</strong>
-      </div>
-
-      <div className={styles.rule}>
-        <span>Receive token</span>
-        <strong>USDC</strong>
-      </div>
 
       {!quote && (
         <button
           type="button"
-          className={styles.primary}
-          disabled={!ready || loading || executing}
-          onClick={() => void loadQuote()}
+          className={
+            styles.primary
+          }
+          disabled={
+            !ready ||
+            loading ||
+            executing
+          }
+          onClick={() =>
+            void loadQuote()
+          }
         >
-          {loading ? (
-            <LoaderCircle size={16} />
-          ) : (
-            <ArrowRight size={16} />
-          )}
+          {loading
+            ? (
+              <LoaderCircle
+                size={16}
+              />
+            )
+            : (
+              <ArrowRight
+                size={16}
+              />
+            )}
+
           {loading
             ? "Getting AVNU quote…"
             : mode === "normal"
@@ -471,76 +865,151 @@ export function AvnuSwap({
         </button>
       )}
 
-      {quote && (
+      {quote &&
+        sellAsset &&
+        buyAsset && (
         <>
-          <div className={styles.rule}>
-            <span>You pay</span>
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              You pay
+            </span>
+
             <strong>
-              {formatAmount(
+              {formatUnits(
                 quote.sellAmount,
-                STRK_DECIMALS,
+                sellAsset.decimals,
+                6,
               )}{" "}
-              STRK
+              {
+                sellAsset
+                  .symbol
+              }
             </strong>
           </div>
 
-          <div className={styles.rule}>
-            <span>You receive</span>
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              You receive
+            </span>
+
             <strong>
-              {formatAmount(
+              {formatUnits(
                 quote.buyAmount,
-                USDC_DECIMALS,
+                buyAsset.decimals,
+                6,
               )}{" "}
-              USDC
+              {
+                buyAsset
+                  .symbol
+              }
             </strong>
           </div>
 
-          <div className={styles.rule}>
-            <span>Price impact</span>
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Price impact
+            </span>
+
             <strong>
-              {Number.isFinite(quote.priceImpact)
-                ? `${(quote.priceImpact / 100).toFixed(4)}%`
+              {Number.isFinite(
+                quote.priceImpact,
+              )
+                ? `${(
+                    quote.priceImpact /
+                    100
+                  ).toFixed(
+                    4,
+                  )}%`
                 : "—"}
             </strong>
           </div>
 
-          <div className={styles.rule}>
-            <span>AVNU fee</span>
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              AVNU fee
+            </span>
+
             <strong>
-              {Number.isFinite(quote.fee.avnuFeesInUsd)
+              {Number.isFinite(
+                quote.fee
+                  .avnuFeesInUsd,
+              )
                 ? `$${quote.fee.avnuFeesInUsd.toFixed(4)}`
                 : "—"}
             </strong>
           </div>
 
-          <div className={styles.rule}>
-            <span>Estimated gas</span>
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Estimated gas
+            </span>
+
             <strong>
-              {typeof quote.gasFeesInUsd === "number"
+              {typeof quote
+                .gasFeesInUsd ===
+              "number"
                 ? `$${quote.gasFeesInUsd.toFixed(4)}`
                 : "Review in wallet"}
             </strong>
           </div>
 
-          <p className={styles.helper}>
+          <p
+            className={
+              styles.helper
+            }
+          >
             {mode === "normal"
               ? "Slippage limit: 0.5%. Final approval happens in Ready."
               : mode === "shield"
-                ? "Slippage limit: 0.5%. Ready will generate a STRK20 privacy proof; this can take longer than a normal swap."
-                : "Step 1 swaps private STRK into private USDC. After the new note matures, CAREL will ask Ready for a second approval to withdraw that USDC publicly."}
+                ? "Slippage limit: 0.5%. Ready will generate a STRK20 privacy proof."
+                : `Step 1 swaps private ${sellAsset.symbol} into private ${buyAsset.symbol}. After maturity CAREL can withdraw the reviewed ${buyAsset.symbol} amount publicly.`}
           </p>
 
           <button
             type="button"
-            className={styles.primary}
-            disabled={executing || wallet.busy}
-            onClick={() => void execute()}
+            className={
+              styles.primary
+            }
+            disabled={
+              executing ||
+              wallet.busy
+            }
+            onClick={() =>
+              void execute()
+            }
           >
-            {executing ? (
-              <LoaderCircle size={16} />
-            ) : (
-              <ArrowRight size={16} />
-            )}
+            {executing
+              ? (
+                <LoaderCircle
+                  size={16}
+                />
+              )
+              : (
+                <ArrowRight
+                  size={16}
+                />
+              )}
+
             {executing
               ? "Waiting for Ready…"
               : mode === "normal"
@@ -553,13 +1022,23 @@ export function AvnuSwap({
       )}
 
       {error && (
-        <p className={styles.notice} role="alert">
+        <p
+          className={
+            styles.notice
+          }
+          role="alert"
+        >
           {error}
         </p>
       )}
 
       {success && (
-        <p className={styles.notice} role="status">
+        <p
+          className={
+            styles.notice
+          }
+          role="status"
+        >
           {success}
         </p>
       )}
