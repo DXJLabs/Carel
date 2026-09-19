@@ -124,8 +124,10 @@ export type ExecutionReceipt =
 
 export interface ExecutionAdapter {
   readonly id: string;
-  readonly ecosystem: Ecosystem;
-  readonly actions: readonly CarelAction[];
+  readonly ecosystems:
+    readonly Ecosystem[];
+  readonly actions:
+    readonly CarelAction[];
 
   /**
    * Determines whether this adapter can execute an intent in the current
