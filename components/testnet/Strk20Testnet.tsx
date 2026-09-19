@@ -1701,14 +1701,28 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      await assertSession();
+      try {
+        await assertSession();
+      } catch (cause) {
+        throw new Error(
+          `Ready session check failed: ${
+            cause instanceof Error
+              ? cause.message
+              : "Could not verify the connected wallet."
+          }`,
+        );
+      }
 
-      const balance = await readPublicStrk(
-        account.address,
-        network.provider,
-      );
-
-      if (balance < stakeAmount) {
+      // Do not make a browser-side RPC request here.
+      // Some mobile wallet browsers block/fail public RPC requests,
+      // which previously stopped staking before CAREL reached its API.
+      //
+      // Use the already-observed balance only when available.
+      // Ready + the staking contract remain the final balance authority.
+      if (
+        publicStrk !== null &&
+        publicStrk < stakeAmount
+      ) {
         throw new Error(
           "Insufficient public STRK balance for this stake.",
         );
