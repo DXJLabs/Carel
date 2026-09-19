@@ -29,6 +29,7 @@ import { CarelOrbit } from "./CarelOrbit";
 import { GardenBridge, GardenBalances } from "./bridge/GardenBridge";
 import { AvnuSwap } from "./swap/AvnuSwap";
 import { AvnuStaking } from "./staking/AvnuStaking";
+import { VesuBorrow } from "./borrow/VesuBorrow";
 import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
@@ -50,7 +51,7 @@ const TOOLS = [
   { name: "Swap", Icon: ArrowLeftRight, prompt: "Swap 1 STRK for USDC." },
   { name: "Bridge", Icon: Network, prompt: "Bridge 0.0005 BTC to Starknet Sepolia." },
   { name: "Staking", Icon: TrendingUp, prompt: "Stake 1 STRK." },
-  { name: "Borrow", Icon: Landmark, prompt: "Explore borrowing against my STRK." },
+  { name: "Borrow", Icon: Landmark, prompt: "Borrow 10 USDC against 1000 STRK." },
 ] as const;
 
 function shortAddress(address: string) { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
@@ -63,7 +64,11 @@ function txName(label: string) {
       ? "Shield"
       : value.includes("swap")
         ? "Swap"
-        : "Agent execution";
+        : value.includes("borrow")
+          ? "Borrow"
+          : value.includes("stake")
+            ? "Staking"
+            : "Agent execution";
 }
 function txDate(ts: number) { return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
 function SectionHeading({ title, children }: { title: string; children?: ReactNode }) {
@@ -421,6 +426,25 @@ export function CarelApp() {
       return;
     }
 
+    if (routed.tool === "Borrow") {
+      if (
+        routed.status !== "ready" ||
+        !routed.borrowRequest
+      ) {
+        setSelectedTool("Borrow");
+        setBridgeIntent(null);
+        setGoalError(
+          routed.message ||
+            "Enter an explicit Borrow goal.",
+        );
+        return;
+      }
+
+      setSelectedTool("Borrow");
+      setBridgeIntent(null);
+      return;
+    }
+
     if (routed.tool !== "Balance") {
       setSelectedTool(routed.tool);
       setGoalError(
@@ -572,6 +596,12 @@ export function CarelApp() {
         <AvnuSwap mode={mode} goal={goalText}/>
       ) : selectedTool === "Staking" ? (
         <AvnuStaking
+          mode={mode}
+          goal={goalText}
+          onPublicMode={useNormalMode}
+        />
+      ) : selectedTool === "Borrow" ? (
+        <VesuBorrow
           mode={mode}
           goal={goalText}
           onPublicMode={useNormalMode}

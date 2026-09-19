@@ -70,12 +70,10 @@ export function routeAgentGoal(goal: string): AgentRoute {
     try {
       return {
         tool: "Borrow",
-        status: "unsupported",
-        provider: null,
+        status: "ready",
+        provider: "Vesu",
         borrowRequest:
           parseBorrowGoal(text),
-        message:
-          "Borrow intent is valid. CAREL still needs a verified lending market before execution.",
       };
     } catch (error) {
       return {

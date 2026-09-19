@@ -153,6 +153,129 @@
 .coin { width: 35px; height: 35px; display: grid; place-items: center; background: #252525; border-radius: 50%; font-family: var(--font-carel-display), sans-serif; flex-shrink: 0; }
 .holdingAmount { text-align: right; font-size: 15px; font-weight: 500; max-width: 45%; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .holdingAmount small { display: block; font-size: 10px; color: var(--muted); }
+
+.borrowPanel {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.borrowPair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.borrowField {
+  min-width: 0;
+}
+
+.borrowField > span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.borrowInput {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #181818;
+}
+
+.borrowInput:focus-within {
+  border-color: #70412f;
+}
+
+.borrowInput input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.borrowInput strong {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.borrowArrow {
+  width: 32px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.borrowSelect {
+  max-width: 58%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #181818;
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 12px;
+  text-align: right;
+}
+
+.borrowAddress {
+  max-width: 58%;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+}
+
+.borrowPanel > .secondary {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.borrowRisk {
+  margin-top: 18px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.borrowRiskTrack {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  margin: 12px 0 5px;
+  border-radius: 999px;
+  background: #2a2a2a;
+}
+
+.borrowRiskTrack > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+
+.borrowRisk > .primary {
+  width: 100%;
+  margin-top: 7px;
+}
+
+.borrowRisk > .notice {
+  margin-bottom: 0;
+}
+
 .activityList { margin: 18px 0 24px; }
 .hash { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; padding-block: 15px; }
 .settingsGroup { border-bottom: 1px solid var(--border); }
@@ -185,6 +308,21 @@
   .textButton:hover, .nav button:hover { color: var(--text) !important; }
 }
 @media (max-width: 420px) {
+  .borrowPair {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .borrowArrow {
+    width: 100%;
+    height: 24px;
+    transform: rotate(90deg);
+  }
+
+  .borrowSelect,
+  .borrowAddress {
+    max-width: 62%;
+  }
   .main { padding-inline: 20px; }
   .headerInner { padding-inline: 20px; gap: 8px; }
   .walletButton { width: 44px; padding: 0; }
