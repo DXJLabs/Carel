@@ -77,7 +77,7 @@ test("strkBTC is only offered when Garden explicitly lists it on Sepolia", () =>
   assert.throws(() => protocol.routeAssets(catalog, "to-starknet", "starknet_sepolia:strkbtc"));
   const added = clone(assets[1]); added.id = "starknet_sepolia:strkbtc";
   assert.deepEqual(protocol.parseCatalog([...assets, added]).starknet.map(asset => asset.symbol), ["strkBTC", "WBTC"]);
-  const wrongChain = clone(assets); wrongChain[1].chain = "starknet";
+  const wrongChain = clone(assets); wrongChain[1].chain = "starknet_mainnet";
   assert.throws(() => protocol.parseCatalog(wrongChain));
 });
 test("agent bridge goals retain amount, asset and testnet direction", () => {
@@ -94,7 +94,7 @@ test("orders are scoped to the intended wallet and reject mainnet legs", () => {
   const badRecipient = order(); badRecipient.destination_swap.redeemer = BTC.replace("tb1", "bc1");
   assert.throws(() => protocol.parseOrder(badRecipient, catalog, ID, OWNER));
   assert.throws(() => protocol.parseOrder(order(), catalog, ID, "0x124"));
-  const wrong = order(); wrong.destination_swap.chain = "bitcoin";
+  const wrong = order(); wrong.destination_swap.asset = "bitcoin:btc";
   assert.throws(() => protocol.parseOrder(wrong, catalog, ID, OWNER));
 });
 test("source confirmation alone never marks a bridge as delivered", () => {
