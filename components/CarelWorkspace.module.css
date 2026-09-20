@@ -665,3 +665,48 @@
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+
+.pointsMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pointsMetaCard {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel);
+}
+
+.pointsMetaCard > span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.pointsMetaCard > strong {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--font-carel-display), sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pointsMetaCard > small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+@media (max-width: 359px) {
+  .pointsMetaGrid {
+    grid-template-columns: 1fr;
+  }
+}

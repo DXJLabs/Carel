@@ -298,3 +298,131 @@ test(
     );
   },
 );
+
+
+test(
+  "season total is separated from lifetime total",
+  () => {
+    const day =
+      24 *
+      60 *
+      60 *
+      1000;
+
+    const now =
+      20 *
+      day;
+
+    const season = {
+      id: "season-test",
+      name: "Season Test",
+      status: "active",
+      startsAt:
+        now -
+        2 *
+          day,
+    };
+
+    const summary =
+      points
+        .buildPointsSummary(
+          [
+            {
+              hash: "0xold",
+              label: "Bridge BTC",
+              status: "confirmed",
+              ts:
+                now -
+                5 *
+                  day,
+            },
+            {
+              hash: "0xnew",
+              label: "Shield STRK",
+              status: "confirmed",
+              ts:
+                now -
+                day,
+            },
+          ],
+          now,
+          season,
+        );
+
+    assert.equal(
+      summary.seasonTotal,
+      100,
+    );
+
+    assert.equal(
+      summary.lifetimeTotal,
+      175,
+    );
+
+    assert.equal(
+      summary.history.length,
+      1,
+    );
+
+    assert.equal(
+      summary.lifetimeHistory.length,
+      2,
+    );
+  },
+);
+
+
+test(
+  "season end timestamp bounds season activity",
+  () => {
+    const season = {
+      id: "season-ended",
+      name: "Season Ended",
+      status: "ended",
+      startsAt: 100,
+      endsAt: 200,
+    };
+
+    const summary =
+      points
+        .buildPointsSummary(
+          [
+            {
+              hash: "0xbefore",
+              label: "Shield STRK",
+              status: "confirmed",
+              ts: 99,
+            },
+            {
+              hash: "0xduring",
+              label: "Swap STRK for USDC",
+              status: "confirmed",
+              ts: 150,
+            },
+            {
+              hash: "0xafter",
+              label: "Bridge BTC",
+              status: "confirmed",
+              ts: 201,
+            },
+          ],
+          250,
+          season,
+        );
+
+    assert.equal(
+      summary.seasonTotal,
+      40,
+    );
+
+    assert.equal(
+      summary.lifetimeTotal,
+      215,
+    );
+
+    assert.equal(
+      summary.season.id,
+      "season-ended",
+    );
+  },
+);

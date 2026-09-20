@@ -19,8 +19,36 @@ export type PointExecution =
     ts: number;
   }>;
 
+export type PointSeasonStatus =
+  | "upcoming"
+  | "active"
+  | "ended";
+
+export type PointSeason =
+  Readonly<{
+    id: string;
+    name: string;
+    status: PointSeasonStatus;
+    startsAt: number;
+    endsAt?: number;
+  }>;
+
 export const POINT_LEVEL_SIZE =
   500;
+
+/**
+ * Season 1 intentionally includes existing CAREL activity.
+ *
+ * Future seasons can use real startsAt / endsAt timestamps while Lifetime
+ * Points remain untouched.
+ */
+export const ACTIVE_POINT_SEASON:
+  PointSeason = {
+    id: "season-1",
+    name: "Season 1",
+    status: "active",
+    startsAt: 0,
+  };
 
 export const POINT_RULES =
   [
@@ -85,12 +113,30 @@ export type PointHistoryItem =
 
 export type PointsSummary =
   Readonly<{
+    season: PointSeason;
+
+    /**
+     * Compatibility alias for the active season total.
+     */
     total: number;
+
+    seasonTotal: number;
+    lifetimeTotal: number;
     last7Days: number;
     level: number;
     levelProgress: number;
     levelProgressPercent: number;
+
+    /**
+     * History for the selected season.
+     */
     history:
+      readonly PointHistoryItem[];
+
+    /**
+     * Confirmed CAREL Points across all seasons.
+     */
+    lifetimeHistory:
       readonly PointHistoryItem[];
   }>;
 
@@ -107,12 +153,6 @@ const RULE_BY_ACTION =
     ),
   );
 
-/**
- * Maps CAREL transaction labels to one reward category.
- *
- * Privacy transitions are checked before generic actions so a Shield Swap
- * remains one reward event instead of accidentally earning multiple rewards.
- */
 export function pointActionFromLabel(
   label: string,
 ): PointAction | null {
@@ -210,22 +250,48 @@ export function pointsForAction(
   );
 }
 
+export function isInPointSeason(
+  ts: number,
+  season: PointSeason,
+): boolean {
+  if (
+    ts <
+    season.startsAt
+  ) {
+    return false;
+  }
+
+  if (
+    season.endsAt !==
+      undefined &&
+    ts >
+      season.endsAt
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
- * Builds wallet-local Points from confirmed execution history.
+ * Builds wallet-local season and lifetime Points from confirmed CAREL
+ * execution history.
  *
- * Transaction hashes are deduplicated and unknown transaction labels fail
- * closed, preventing unrelated wallet activity from generating CAREL Points.
+ * A transaction hash can earn only once. Unknown labels fail closed.
  */
 export function buildPointsSummary(
   executions:
     readonly PointExecution[],
   now:
     number = Date.now(),
+  season:
+    PointSeason =
+      ACTIVE_POINT_SEASON,
 ): PointsSummary {
   const seen =
     new Set<string>();
 
-  const history:
+  const lifetimeHistory:
     PointHistoryItem[] = [];
 
   for (
@@ -265,7 +331,7 @@ export function buildPointsSummary(
       hash,
     );
 
-    history.push({
+    lifetimeHistory.push({
       hash,
       label:
         execution.label,
@@ -279,13 +345,30 @@ export function buildPointsSummary(
     });
   }
 
-  history.sort(
+  lifetimeHistory.sort(
     (left, right) =>
       right.ts -
       left.ts,
   );
 
-  const total =
+  const history =
+    lifetimeHistory.filter(
+      (item) =>
+        isInPointSeason(
+          item.ts,
+          season,
+        ),
+    );
+
+  const lifetimeTotal =
+    lifetimeHistory.reduce(
+      (sum, item) =>
+        sum +
+        item.points,
+      0,
+    );
+
+  const seasonTotal =
     history.reduce(
       (sum, item) =>
         sum +
@@ -305,7 +388,9 @@ export function buildPointsSummary(
     history.reduce(
       (sum, item) =>
         item.ts >=
-        sevenDaysAgo
+          sevenDaysAgo &&
+        item.ts <=
+          now
           ? sum +
             item.points
           : sum,
@@ -314,13 +399,13 @@ export function buildPointsSummary(
 
   const level =
     Math.floor(
-      total /
+      seasonTotal /
         POINT_LEVEL_SIZE,
     ) +
     1;
 
   const levelProgress =
-    total %
+    seasonTotal %
     POINT_LEVEL_SIZE;
 
   const levelProgressPercent =
@@ -331,11 +416,18 @@ export function buildPointsSummary(
     100;
 
   return {
-    total,
+    season,
+
+    total:
+      seasonTotal,
+
+    seasonTotal,
+    lifetimeTotal,
     last7Days,
     level,
     levelProgress,
     levelProgressPercent,
     history,
+    lifetimeHistory,
   };
 }
