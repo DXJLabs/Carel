@@ -11,7 +11,6 @@ import {
 import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
 import { buildLivePlan } from "@/lib/agent/livePlanner";
-import { routeAgentGoal } from "@/lib/agent/router";
 import {
   resolveWorkspaceAgentGoal,
 } from "@/lib/agent/workspace";
@@ -19,14 +18,16 @@ import {
   CAREL_EXECUTION_CAPABILITY_REGISTRY,
 } from "@/lib/carel/adapters";
 import {
+  bridgeSurfaceIntentFromGoal,
+  bridgeSurfaceIntentFromRoute,
+  type BridgeSurfaceIntent,
+} from "@/lib/carel/runtime/bridge";
+import {
   fallbackRuntimeSurface,
   runtimeSurfaceForAdapter,
 } from "@/lib/carel/runtime/surfaces";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
-import {
-  gardenBridgeIntentFromRequest,
-} from "@/lib/garden/protocol";
 import { getCarelNetwork } from "@/lib/carel/networks";
 import {
   buildPortfolioHoldings,
@@ -44,7 +45,6 @@ import { AvnuSwap } from "./swap/AvnuSwap";
 import { AvnuStaking } from "./staking/AvnuStaking";
 import { VesuBorrow } from "./borrow/VesuBorrow";
 import { VesuRepay } from "./borrow/VesuRepay";
-import type { BridgeIntent } from "@/lib/garden/types";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
@@ -134,7 +134,10 @@ export function CarelApp() {
     selectedAdapterId,
     setSelectedAdapterId,
   ] = useState<string | null>(null);
-  const [bridgeIntent, setBridgeIntent] = useState<BridgeIntent | null>(null);
+  const [bridgeIntent, setBridgeIntent] =
+    useState<BridgeSurfaceIntent | null>(
+      null,
+    );
   const [goalText, setGoalText] = useState("Swap 1 STRK for USDC.");
   const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
@@ -395,36 +398,35 @@ export function CarelApp() {
     await run(async () => { await wallet.refreshPublicBalance(); setSample(value => value + 1); });
   }
   function chooseTool(tool: typeof TOOLS[number]) {
-    const routed = routeAgentGoal(tool.prompt);
+    setSelectedTool(
+      tool.name,
+    );
 
-    setSelectedTool(tool.name);
-    setSelectedAdapterId(null);
-    setGoalText(tool.prompt);
-    setPlanned(false);
-    setGoalError(null);
+    setSelectedAdapterId(
+      null,
+    );
 
-    if (
-      routed.tool === "Bridge" &&
-      routed.status === "ready" &&
-      routed.bridgeRequest
-    ) {
-      try {
-        setBridgeIntent(
-          gardenBridgeIntentFromRequest(
-            routed.bridgeRequest,
-          ),
-        );
-      } catch {
-        setBridgeIntent(
-          null,
-        );
-      }
-    } else {
-      setBridgeIntent(
-        null,
-      );
-    }
+    setGoalText(
+      tool.prompt,
+    );
+
+    setPlanned(
+      false,
+    );
+
+    setGoalError(
+      null,
+    );
+
+    setBridgeIntent(
+      tool.name === "Bridge"
+        ? bridgeSurfaceIntentFromGoal(
+            tool.prompt,
+          )
+        : null,
+    );
   }
+
   function chooseBalanceGoal(
     nextMode: "shield" | "unshield" =
       mode === "unshield" ? "unshield" : "shield",
@@ -510,26 +512,13 @@ export function CarelApp() {
 
       if (
         decision.tool ===
-          "Bridge" &&
-        decision.route
-          .bridgeRequest
+        "Bridge"
       ) {
-        try {
-          /*
-           * GardenBridge still presents the live destination asset choice.
-           * Agent planning must not guess WBTC versus strkBTC.
-           */
-          setBridgeIntent(
-            gardenBridgeIntentFromRequest(
-              decision.route
-                .bridgeRequest,
-            ),
-          );
-        } catch {
-          setBridgeIntent(
-            null,
-          );
-        }
+        setBridgeIntent(
+          bridgeSurfaceIntentFromRoute(
+            decision.route,
+          ),
+        );
       }
 
       return;
