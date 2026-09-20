@@ -114,6 +114,14 @@ import {
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
 
 import {
+  buildVesuShieldLendActions,
+  configuredVesuLendingAnonymizer,
+  VESU_LENDING_ANONYMIZER_CLASS_HASH,
+  VESU_MAINNET_POOL_FACTORY,
+  type VesuShieldLendExecutionPayload,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/private-lending";
+
+import {
   validateVesuAddCollateralCalls,
   validateVesuWithdrawCollateralCalls,
   type VesuAddCollateralExecutionPayload,
@@ -230,6 +238,10 @@ type CarelTestnetContextValue = {
     label: string,
   ) => Promise<string>;
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
+  executeShieldLend: (
+    payload: VesuShieldLendExecutionPayload,
+    label: string,
+  ) => Promise<PrivateTransferResult>;
   executeLend: (
     payload: VesuLendExecutionPayload,
     label: string,
@@ -3010,6 +3022,340 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Shield Lend:
+   * public underlying -> STRK20 -> Vesu anonymizer -> private vToken note.
+   *
+   * The vToken is independently resolved again through Vesu PoolFactory
+   * before Ready receives the private action sequence.
+   */
+  const executeShieldLend = async (
+    payload: VesuShieldLendExecutionPayload,
+    label: string,
+  ): Promise<PrivateTransferResult> => {
+    if (
+      lendSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const {
+      account,
+      network,
+    } = assertPrivateReady();
+
+    if (
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "Shield Lend is enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+        network.chainId
+    ) {
+      throw new Error(
+        "Prepared Shield Lend belongs to another network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Shield Lend review expired. Review the Vesu market again.",
+      );
+    }
+
+    const anonymizer =
+      configuredVesuLendingAnonymizer();
+
+    if (!anonymizer) {
+      throw new Error(
+        "No verified Vesu Lending Anonymizer is configured for Mainnet.",
+      );
+    }
+
+    if (
+      felt(
+        anonymizer,
+      ) !==
+      felt(
+        payload.anonymizerAddress,
+      )
+    ) {
+      throw new Error(
+        "Prepared Shield Lend references an unexpected anonymizer.",
+      );
+    }
+
+    /*
+     * Independent wallet-side verification.
+     * Even a compromised preparation endpoint cannot substitute another
+     * contract at the configured anonymizer address.
+     */
+    const anonymizerClassHash =
+      await network.provider
+        .getClassHashAt(
+          anonymizer,
+        );
+
+    if (
+      BigInt(
+        anonymizerClassHash,
+      ) !==
+      BigInt(
+        VESU_LENDING_ANONYMIZER_CLASS_HASH,
+      )
+    ) {
+      throw new Error(
+        "Vesu Lending Anonymizer failed wallet-side class-hash verification.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(
+        pool.address,
+      ) !==
+      felt(
+        payload.poolAddress,
+      )
+    ) {
+      throw new Error(
+        "Prepared Shield Lend references an unapproved Vesu pool.",
+      );
+    }
+
+    if (
+      felt(
+        payload.owner,
+      ) !==
+      felt(
+        account.address,
+      )
+    ) {
+      throw new Error(
+        "Prepared Shield Lend belongs to another wallet.",
+      );
+    }
+
+    const asset =
+      network.assetList.find(
+        (candidate) =>
+          candidate.id ===
+          payload.assetId,
+      );
+
+    if (!asset) {
+      throw new Error(
+        "Prepared Shield Lend references an unsupported asset.",
+      );
+    }
+
+    const assetAddress =
+      requireStarknetBalanceAddress(
+        asset,
+      );
+
+    if (
+      felt(
+        assetAddress,
+      ) !==
+      felt(
+        payload.assetAddress,
+      )
+    ) {
+      throw new Error(
+        "Shield Lend underlying does not match CAREL's asset registry.",
+      );
+    }
+
+    let amount: bigint;
+
+    try {
+      amount =
+        BigInt(
+          payload.amount,
+        );
+    } catch {
+      throw new Error(
+        "Prepared Shield Lend contains an invalid amount.",
+      );
+    }
+
+    if (
+      amount <= 0n
+    ) {
+      throw new Error(
+        "Shield Lend amount must be greater than zero.",
+      );
+    }
+
+    const knownPublic =
+      findAssetBalance(
+        balances,
+        asset.id,
+        "public",
+      )?.amount;
+
+    if (
+      knownPublic !== null &&
+      knownPublic !== undefined &&
+      knownPublic < amount
+    ) {
+      throw new Error(
+        `Insufficient public ${asset.symbol} balance for Shield Lend.`,
+      );
+    }
+
+    /*
+     * Re-resolve vToken directly from upstream Vesu state.
+     */
+    const resolved =
+      await network.provider
+        .callContract({
+          contractAddress:
+            VESU_MAINNET_POOL_FACTORY,
+
+          entrypoint:
+            "v_token_for_asset",
+
+          calldata: [
+            pool.address,
+            assetAddress,
+          ],
+        });
+
+    if (
+      !resolved[0] ||
+      felt(
+        resolved[0],
+      ) !==
+      felt(
+        payload.vTokenAddress,
+      )
+    ) {
+      throw new Error(
+        "Prepared vToken does not match Vesu PoolFactory.",
+      );
+    }
+
+    /*
+     * The vault itself must also report the reviewed underlying.
+     */
+    const underlying =
+      await network.provider
+        .callContract({
+          contractAddress:
+            payload.vTokenAddress,
+
+          entrypoint:
+            "asset",
+
+          calldata: [],
+        });
+
+    if (
+      !underlying[0] ||
+      felt(
+        underlying[0],
+      ) !==
+      felt(
+        assetAddress,
+      )
+    ) {
+      throw new Error(
+        "Vesu vToken underlying does not match the reviewed asset.",
+      );
+    }
+
+    const actions =
+      buildVesuShieldLendActions({
+        assetAddress,
+
+        vTokenAddress:
+          payload.vTokenAddress,
+
+        anonymizerAddress:
+          anonymizer,
+
+        owner:
+          account.address,
+
+        amount,
+      });
+
+    lendSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Shield Lend review expired before signing.",
+        );
+      }
+
+      const result =
+        await submit(
+          label,
+          actions,
+          true,
+        );
+
+      /*
+       * The new private vToken note changes private state.
+       * Require a fresh disclosure afterwards.
+       */
+      setPrivateStrk(null);
+      setPrivateXstrk(null);
+      setPrivateRevealed(false);
+
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
+
+      return result;
+    } finally {
+      lendSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
+
+  /**
    * Executes a server-prepared public Vesu Lend after independently
    * rebuilding and validating every wallet call.
    */
@@ -4930,6 +5276,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeStakingAction,
       executeShieldStaking,
       executeBridge,
+      executeShieldLend,
       executeLend,
       executeBorrow,
       executeRepay,

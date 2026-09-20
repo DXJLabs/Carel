@@ -64,6 +64,10 @@ const lending = require(
   "../lib/carel/ecosystems/starknet/protocols/vesu/lending.ts",
 );
 
+const privateLending = require(
+  "../lib/carel/ecosystems/starknet/protocols/vesu/private-lending.ts",
+);
+
 const CHAIN = Object.freeze({
   id: "starknet:mainnet",
   ecosystem: "starknet",
@@ -916,6 +920,82 @@ test(
         "WBTC",
         "strkBTC",
       ],
+    );
+  },
+);
+
+
+
+test(
+  "Shield Lend builds STRK20 anonymizer flow with private vToken output",
+  () => {
+    const actions =
+      privateLending
+        .buildVesuShieldLendActions({
+          assetAddress:
+            "0x111",
+
+          vTokenAddress:
+            "0x555",
+
+          anonymizerAddress:
+            "0x666",
+
+          owner:
+            "0x444",
+
+          amount:
+            5n,
+        });
+
+    assert.equal(
+      actions.length,
+      4,
+    );
+
+    assert.deepEqual(
+      actions[0],
+      {
+        type: "deposit",
+        token: "0x111",
+        amount: "0x5",
+      },
+    );
+
+    assert.deepEqual(
+      actions[1],
+      {
+        type: "withdraw",
+        token: "0x111",
+        amount: "0x5",
+        recipient: "0x666",
+      },
+    );
+
+    assert.deepEqual(
+      actions[2],
+      {
+        type: "transfer",
+        token: "0x555",
+        amount: "OPEN",
+        recipient: "0x444",
+      },
+    );
+
+    assert.deepEqual(
+      actions[3],
+      {
+        type: "invoke",
+        contract: "0x666",
+        calldata: [
+          "0x0",
+          "0x111",
+          "0x555",
+          "0x5",
+          "0x0",
+          "${openNoteIds[0]}",
+        ],
+      },
     );
   },
 );

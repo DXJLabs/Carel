@@ -42,6 +42,10 @@ import {
   type VesuLendExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
 
+import type {
+  VesuShieldLendExecutionPayload,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/private-lending";
+
 import styles from "../CarelWorkspace.module.css";
 
 
@@ -391,7 +395,6 @@ export function VesuLend({
     setSuccess("");
 
     if (
-      mode !== "shield" &&
       wallet.connected &&
       network?.id ===
         "mainnet"
@@ -672,6 +675,150 @@ export function VesuLend({
       return;
     }
 
+    if (
+      mode === "shield"
+    ) {
+      if (
+        !wallet.strk20Capable
+      ) {
+        setError(
+          "Ready does not report the STRK20 Wallet API required for Shield Lend.",
+        );
+
+        return;
+      }
+
+      let shieldAmount: bigint;
+
+      try {
+        shieldAmount =
+          parseUnits(
+            amount,
+            selectedAsset.decimals,
+          );
+      } catch {
+        setError(
+          `Enter a valid ${selectedAsset.symbol} amount.`,
+        );
+
+        return;
+      }
+
+      const publicBalance =
+        findAssetBalance(
+          wallet.balances,
+          selectedAsset.id,
+          "public",
+        )?.amount;
+
+      if (
+        publicBalance !== null &&
+        publicBalance !== undefined &&
+        publicBalance <
+          shieldAmount
+      ) {
+        setError(
+          `Public ${selectedAsset.symbol} balance is below this Shield Lend amount.`,
+        );
+
+        return;
+      }
+
+      setExecuting(true);
+      setError("");
+      setSuccess("");
+
+      try {
+        const response =
+          await fetch(
+            "/api/vesu/lend/private/prepare",
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              body:
+                JSON.stringify({
+                  poolId:
+                    selectedMarket
+                      .pool.id,
+
+                  owner:
+                    wallet.address,
+
+                  assetId:
+                    selectedAsset.id,
+
+                  counterpartAssetId:
+                    selectedMarket
+                      .counterpart.id,
+
+                  amount,
+                }),
+            },
+          );
+
+        const raw: unknown =
+          await response.json();
+
+        const prepared =
+          responseObject(
+            raw,
+          );
+
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            typeof prepared.error ===
+              "string"
+              ? prepared.error
+              : "Shield Lend preparation failed.",
+          );
+        }
+
+        const execution =
+          prepared.execution as
+            VesuShieldLendExecutionPayload;
+
+        if (!execution) {
+          throw new Error(
+            "CAREL received an invalid Shield Lend preparation.",
+          );
+        }
+
+        const result =
+          await wallet
+            .executeShieldLend(
+              execution,
+
+              `Shield Lend ${amount} ${selectedAsset.symbol} · Vesu ${selectedMarket.pool.name}`,
+            );
+
+        setSuccess(
+          `Shield Lend ${result.status}: ${result.hash.slice(
+            0,
+            10,
+          )}…${result.hash.slice(-6)}`,
+        );
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Shield Lend failed.",
+        );
+      } finally {
+        setExecuting(false);
+      }
+
+      return;
+    }
+
+
     setExecuting(true);
     setError("");
     setSuccess("");
@@ -770,52 +917,6 @@ export function VesuLend({
     } finally {
       setExecuting(false);
     }
-  }
-
-
-  if (
-    mode === "shield"
-  ) {
-    return (
-      <section
-        className={
-          styles.borrowPanel
-        }
-      >
-        <div
-          className={
-            styles.notice
-          }
-        >
-          <p>
-            Direct Shield Lend is
-            not wired yet. CAREL will
-            use the Vesu lending
-            anonymizer instead of
-            pretending a normal
-            public Vesu position is
-            private. Unshield Lend is
-            available now.
-          </p>
-
-          <button
-            type="button"
-            className={
-              styles.textButton
-            }
-            onClick={
-              onPublicMode
-            }
-          >
-            Use Normal mode
-
-            <ArrowRight
-              size={14}
-            />
-          </button>
-        </div>
-      </section>
-    );
   }
 
 
@@ -951,6 +1052,86 @@ export function VesuLend({
         styles.borrowPanel
       }
     >
+      {mode === "shield" && (
+        <div
+          className={
+            styles.borrowRisk
+          }
+        >
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Route
+            </span>
+
+            <strong>
+              Public {
+                selectedAsset.symbol
+              }
+              {" → "}
+              STRK20
+              {" → "}
+              Vesu
+              {" → "}
+              Private vToken
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Public {
+                selectedAsset.symbol
+              }
+            </span>
+
+            <strong>
+              {publicBalance === null
+                ? "—"
+                : `${formatUnits(
+                    publicBalance,
+                    selectedAsset.decimals,
+                    6,
+                  )} ${selectedAsset.symbol}`}
+            </strong>
+          </div>
+
+          <p
+            className={
+              styles.privacyNote
+            }
+          >
+            The Vesu lending
+            anonymizer supplies the
+            underlying asset to the
+            Vesu vault and returns
+            the minted vToken as a
+            private STRK20 note.
+          </p>
+
+          <button
+            type="button"
+            className={
+              styles.textButton
+            }
+            onClick={
+              onPublicMode
+            }
+          >
+            Use Normal mode
+            <ArrowRight
+              size={14}
+            />
+          </button>
+        </div>
+      )}
+
       {mode === "unshield" && (
         <div
           className={
@@ -1457,11 +1638,9 @@ export function VesuLend({
           styles.privacyNote
         }
       >
-        Lending is public.
-        Candidate assets are not
-        treated as executable until
-        CAREL verifies an active
-        Vesu pool context on-chain.
+        {mode === "shield"
+          ? "Shield Lend verifies the active Vesu pool and its vToken before the anonymizer transaction is sent to Ready."
+          : "The Vesu lending position is public. CAREL verifies an active pool context before execution."}
       </p>
 
       <button
@@ -1499,7 +1678,11 @@ export function VesuLend({
         disabled={
           busy ||
           !selectedMarket ||
-          !unshieldLendReady
+          !unshieldLendReady ||
+          (
+            mode === "shield" &&
+            !wallet.strk20Capable
+          )
         }
         onClick={() =>
           void executeLend()
@@ -1517,7 +1700,9 @@ export function VesuLend({
 
         {executing
           ? "Waiting for wallet…"
-          : `Review & Lend ${selectedAsset.symbol}`}
+          : mode === "shield"
+            ? `Review & Shield Lend ${selectedAsset.symbol}`
+            : `Review & Lend ${selectedAsset.symbol}`}
       </button>
 
       {error && (
