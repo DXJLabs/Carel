@@ -8,6 +8,16 @@ import {
   type ParsedBorrowRequest,
 } from "@/lib/agent/borrow";
 
+import {
+  parseStakeGoal,
+  type ParsedStakeRequest,
+} from "@/lib/agent/staking";
+
+import {
+  parseSwapGoal,
+  type ParsedSwapRequest,
+} from "@/lib/agent/swap";
+
 export type AgentTool =
   | "Bridge"
   | "Swap"
@@ -28,6 +38,12 @@ export type AgentRoute =
     bridgeRequest?:
       ParsedBridgeRequest;
 
+    swapRequest?:
+      ParsedSwapRequest;
+
+    stakeRequest?:
+      ParsedStakeRequest;
+
     borrowRequest?:
       ParsedBorrowRequest;
 
@@ -35,10 +51,7 @@ export type AgentRoute =
   }>;
 
 /**
- * Understands the requested CAREL action without selecting a provider.
- *
- * Protocol/provider selection belongs to the execution/adapters layer so
- * future ecosystems can satisfy the same Agent intent.
+ * Understands a CAREL goal without selecting an execution provider.
  */
 export function routeAgentGoal(
   goal: string,
@@ -98,13 +111,33 @@ export function routeAgentGoal(
       text,
     )
   ) {
-    return {
-      tool:
-        "Swap",
+    try {
+      return {
+        tool:
+          "Swap",
 
-      status:
-        "ready",
-    };
+        status:
+          "ready",
+
+        swapRequest:
+          parseSwapGoal(
+            text,
+          ),
+      };
+    } catch (error) {
+      return {
+        tool:
+          "Swap",
+
+        status:
+          "invalid",
+
+        message:
+          error instanceof Error
+            ? error.message
+            : "Enter an explicit Swap goal.",
+      };
+    }
   }
 
   if (
@@ -112,13 +145,33 @@ export function routeAgentGoal(
       text,
     )
   ) {
-    return {
-      tool:
-        "Staking",
+    try {
+      return {
+        tool:
+          "Staking",
 
-      status:
-        "ready",
-    };
+        status:
+          "ready",
+
+        stakeRequest:
+          parseStakeGoal(
+            text,
+          ),
+      };
+    } catch (error) {
+      return {
+        tool:
+          "Staking",
+
+        status:
+          "invalid",
+
+        message:
+          error instanceof Error
+            ? error.message
+            : "Enter an explicit Staking goal.",
+      };
+    }
   }
 
   if (
