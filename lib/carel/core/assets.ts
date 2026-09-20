@@ -13,6 +13,11 @@ export type AssetIdentifier =
   | Readonly<{
       kind: "mint";
       address: string;
+    }>
+  | Readonly<{
+      kind: "provider";
+      provider: string;
+      assetId: string;
     }>;
 
 export type AssetRef = Readonly<{
@@ -121,7 +126,30 @@ export function assetsForChain(
 export function assetAddress(
   asset: AssetRef,
 ): string | null {
-  return asset.identifier.kind === "native"
-    ? null
-    : asset.identifier.address;
+  return (
+    asset.identifier.kind ===
+      "contract" ||
+    asset.identifier.kind ===
+      "mint"
+  )
+    ? asset.identifier.address
+    : null;
+}
+
+/**
+ * Returns the protocol/provider-native asset id for assets whose executable
+ * address or representation is discovered and verified at runtime.
+ */
+export function providerAssetId(
+  asset: AssetRef,
+  provider: string,
+): string | null {
+  return (
+    asset.identifier.kind ===
+      "provider" &&
+    asset.identifier.provider ===
+      provider
+  )
+    ? asset.identifier.assetId
+    : null;
 }
