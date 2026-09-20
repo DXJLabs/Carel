@@ -15,17 +15,15 @@ import {
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/markets";
 
 import {
-  getVesuBorrowPair,
-} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
-
-import {
   getVesuPool,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
 
 import {
   buildVesuLendCalls,
   createVesuLendIntent,
+  getVesuLendPair,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
+
 
 export const runtime =
   "nodejs";
@@ -35,6 +33,7 @@ export const dynamic =
 
 const PREPARED_WINDOW_MS =
   45_000;
+
 
 function amountText(
   value: unknown,
@@ -54,6 +53,7 @@ function amountText(
 
   return value;
 }
+
 
 export async function POST(
   request: Request,
@@ -108,6 +108,17 @@ export async function POST(
       );
     }
 
+    if (
+      typeof body.assetId !==
+        "string" ||
+      typeof body.counterpartAssetId !==
+        "string"
+    ) {
+      throw new Error(
+        "Choose a verified Vesu lending market.",
+      );
+    }
+
     const owner =
       normalizeStarknetAddress(
         body.owner,
@@ -118,25 +129,25 @@ export async function POST(
         body.amount,
       );
 
-    const network =
-      CAREL_NETWORKS.mainnet;
-
     const pair =
-      getVesuBorrowPair(
-        network.assets.strk.id,
-        typeof body.counterpartAssetId ===
-          "string"
-          ? body.counterpartAssetId
-          : network.assets.usdc.id,
+      getVesuLendPair(
+        body.assetId,
+        body.counterpartAssetId,
       );
 
     if (!pair) {
       throw new Error(
-        "CAREL does not enable this Vesu Lend market.",
+        "CAREL does not enable this Vesu Lend pair.",
       );
     }
 
-    // Fresh on-chain verification immediately before preparation.
+    const network =
+      CAREL_NETWORKS.mainnet;
+
+    /*
+     * Re-read the exact pool + pair immediately before
+     * transaction preparation.
+     */
     const risk =
       await readVesuBorrowRisk({
         provider:
@@ -148,10 +159,10 @@ export async function POST(
           network.chainId,
 
         collateralAsset:
-          pair.collateralAsset,
+          pair.asset,
 
         debtAsset:
-          pair.debtAsset,
+          pair.counterpart,
       });
 
     const intent =
@@ -191,6 +202,17 @@ export async function POST(
             pool.address,
         },
 
+        asset: {
+          id:
+            pair.asset.id,
+
+          symbol:
+            pair.asset.symbol,
+
+          decimals:
+            pair.asset.decimals,
+        },
+
         execution: {
           chainId:
             network.chainId,
@@ -204,10 +226,10 @@ export async function POST(
           owner,
 
           assetId:
-            pair.collateralAsset.id,
+            pair.asset.id,
 
           counterpartAssetId:
-            pair.debtAsset.id,
+            pair.counterpart.id,
 
           amount:
             intent.amount

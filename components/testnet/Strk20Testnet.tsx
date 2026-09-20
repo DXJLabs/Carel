@@ -102,6 +102,7 @@ import {
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
 
 import {
+  getVesuLendPair,
   validateVesuLendCalls,
   type VesuLendExecutionPayload,
   type VesuLendIntent,
@@ -2782,7 +2783,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
 
     const pair =
-      getVesuBorrowPair(
+      getVesuLendPair(
         payload.assetId,
         payload.counterpartAssetId,
       );
@@ -2818,7 +2819,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const market:
       VesuBorrowMarket = {
         id:
-          `vesu:${pool.id}:${pair.collateralAsset.symbol}:${pair.debtAsset.symbol}`,
+          `vesu:${pool.id}:${pair.asset.symbol}:${pair.counterpart.symbol}`,
 
         chainId:
           network.chainId,
@@ -2827,16 +2828,16 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           pool.address,
 
         collateralAsset:
-          pair.collateralAsset,
+          pair.asset,
 
         debtAsset:
-          pair.debtAsset,
+          pair.counterpart,
       };
 
     const intent:
       VesuLendIntent = {
         assetId:
-          pair.collateralAsset.id,
+          pair.asset.id,
 
         amount:
           lendAmount,
@@ -2860,7 +2861,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const knownBalance =
       findAssetBalance(
         balances,
-        pair.collateralAsset.id,
+        pair.asset.id,
         "public",
       )?.amount;
 
@@ -2873,7 +2874,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         lendAmount
     ) {
       throw new Error(
-        `Insufficient public ${pair.collateralAsset.symbol} balance for this Lend.`,
+        `Insufficient public ${pair.asset.symbol} balance for this Lend.`,
       );
     }
 

@@ -30,19 +30,19 @@ import {
 } from "@/lib/agent/lending";
 
 import {
-  VESU_BORROW_DEBT_ASSETS,
-} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
-
-import type {
-  VesuLendExecutionPayload,
+  VESU_LEND_ASSETS,
+  getVesuLendAssetBySymbol,
+  type VesuLendExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
 
 import styles from "../CarelWorkspace.module.css";
+
 
 type LendMode =
   | "normal"
   | "shield"
   | "unshield";
+
 
 type LendMarket =
   Readonly<{
@@ -57,20 +57,28 @@ type LendMarket =
         address: string;
       }>;
 
-    collateral:
+    asset:
       Readonly<{
         id: string;
         symbol: string;
         decimals: number;
       }>;
 
-    debt:
+    counterpart:
       Readonly<{
         id: string;
         symbol: string;
         decimals: number;
       }>;
+
+    market:
+      Readonly<{
+        utilizationBps: number;
+        maxUtilizationBps: number;
+        observedAt: number;
+      }>;
   }>;
+
 
 function responseObject(
   value: unknown,
@@ -92,6 +100,7 @@ function responseObject(
   >;
 }
 
+
 function shortAddress(
   address: string,
 ): string {
@@ -106,6 +115,16 @@ function shortAddress(
     8,
   )}…${address.slice(-6)}`;
 }
+
+
+function percentFromBps(
+  value: number,
+): string {
+  return `${(
+    value / 100
+  ).toFixed(2)}%`;
+}
+
 
 export function VesuLend({
   mode,
@@ -127,7 +146,14 @@ export function VesuLend({
   const [
     amount,
     setAmount,
-  ] = useState("10");
+  ] = useState("1");
+
+  const [
+    selectedAssetId,
+    setSelectedAssetId,
+  ] = useState(
+    VESU_LEND_ASSETS[0].id,
+  );
 
   const [
     markets,
@@ -161,6 +187,21 @@ export function VesuLend({
     setSuccess,
   ] = useState("");
 
+
+  const selectedAsset =
+    useMemo(
+      () =>
+        VESU_LEND_ASSETS.find(
+          (asset) =>
+            asset.id ===
+            selectedAssetId,
+        ) ??
+        VESU_LEND_ASSETS[0],
+
+      [selectedAssetId],
+    );
+
+
   const selectedMarket =
     useMemo(
       () =>
@@ -178,10 +219,12 @@ export function VesuLend({
       ],
     );
 
+
   const busy =
     loading ||
     executing ||
     wallet.busy;
+
 
   useEffect(() => {
     try {
@@ -190,20 +233,31 @@ export function VesuLend({
           goal,
         );
 
-      if (
-        parsed.symbol ===
-          "STRK"
-      ) {
+      const asset =
+        getVesuLendAssetBySymbol(
+          parsed.symbol,
+        );
+
+      if (asset) {
+        setSelectedAssetId(
+          asset.id,
+        );
+
         setAmount(
           parsed.amountText,
         );
       }
     } catch {
-      // Manual amount remains available.
+      // Manual form remains available.
     }
   }, [goal]);
 
-  async function loadMarkets() {
+
+  async function loadMarkets(
+    assetId:
+      string =
+      selectedAssetId,
+  ) {
     if (
       !network ||
       network.id !==
@@ -221,87 +275,52 @@ export function VesuLend({
     setSuccess("");
 
     try {
-      const batches =
-        await Promise.all(
-          VESU_BORROW_DEBT_ASSETS.map(
-            async (
-              counterpart,
-            ) => {
-              try {
-                const query =
-                  new URLSearchParams({
-                    debtAssetId:
-                      counterpart.id,
-                  });
+      const query =
+        new URLSearchParams({
+          assetId,
+        });
 
-                const response =
-                  await fetch(
-                    `/api/vesu/borrow/markets?${query.toString()}`,
-                    {
-                      cache:
-                        "no-store",
-                    },
-                  );
-
-                if (
-                  !response.ok
-                ) {
-                  return [];
-                }
-
-                const raw:
-                  unknown =
-                  await response.json();
-
-                const payload =
-                  responseObject(
-                    raw,
-                  );
-
-                return Array.isArray(
-                  payload.markets,
-                )
-                  ? payload.markets as LendMarket[]
-                  : [];
-              } catch {
-                return [];
-              }
-            },
-          ),
+      const response =
+        await fetch(
+          `/api/vesu/lend/markets?${query.toString()}`,
+          {
+            cache:
+              "no-store",
+          },
         );
 
-      const seen =
-        new Set<string>();
+      const raw:
+        unknown =
+        await response.json();
+
+      const payload =
+        responseObject(
+          raw,
+        );
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          typeof payload.error ===
+            "string"
+            ? payload.error
+            : "Could not load Vesu lending markets.",
+        );
+      }
 
       const discovered =
-        batches
-          .flat()
-          .filter(
-            (market) => {
-              if (
-                market.collateral
-                  .symbol !==
-                  "STRK" ||
-                seen.has(
-                  market.pool.id,
-                )
-              ) {
-                return false;
-              }
-
-              seen.add(
-                market.pool.id,
-              );
-
-              return true;
-            },
-          );
+        Array.isArray(
+          payload.markets,
+        )
+          ? payload.markets as LendMarket[]
+          : [];
 
       if (
         !discovered.length
       ) {
         throw new Error(
-          "No verified Vesu STRK lending market is available right now.",
+          `No verified Vesu ${selectedAsset.symbol} lending market is available right now.`,
         );
       }
 
@@ -309,22 +328,15 @@ export function VesuLend({
         discovered,
       );
 
-      if (
-        !discovered.some(
-          (market) =>
-            market.pool.id ===
-            selectedPoolId,
-        )
-      ) {
-        setSelectedPoolId(
-          discovered[0]
-            .pool.id,
-        );
-      }
+      setSelectedPoolId(
+        discovered[0]
+          .pool.id,
+      );
     } finally {
       setLoading(false);
     }
   }
+
 
   useEffect(() => {
     setMarkets([]);
@@ -338,16 +350,17 @@ export function VesuLend({
       network?.id ===
         "mainnet"
     ) {
-      void loadMarkets()
-        .catch(
-          (cause) => {
-            setError(
-              cause instanceof Error
-                ? cause.message
-                : "Could not load Vesu lending markets.",
-            );
-          },
-        );
+      void loadMarkets(
+        selectedAssetId,
+      ).catch(
+        (cause) => {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Could not load Vesu lending markets.",
+          );
+        },
+      );
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -355,7 +368,9 @@ export function VesuLend({
     wallet.address,
     wallet.chainId,
     mode,
+    selectedAssetId,
   ]);
+
 
   async function executeLend() {
     if (
@@ -370,7 +385,8 @@ export function VesuLend({
       if (
         parseUnits(
           amount,
-          18,
+          selectedAsset
+            .decimals,
         ) <= 0n
       ) {
         throw new Error(
@@ -379,7 +395,7 @@ export function VesuLend({
       }
     } catch {
       setError(
-        "Enter a valid STRK amount.",
+        `Enter a valid ${selectedAsset.symbol} amount.`,
       );
 
       return;
@@ -411,11 +427,14 @@ export function VesuLend({
                 owner:
                   wallet.address,
 
-                amount,
+                assetId:
+                  selectedAsset.id,
 
                 counterpartAssetId:
                   selectedMarket
-                    .debt.id,
+                    .counterpart.id,
+
+                amount,
               }),
           },
         );
@@ -453,7 +472,8 @@ export function VesuLend({
       const hash =
         await wallet.executeLend(
           execution,
-          `Lend ${amount} STRK · Vesu ${selectedMarket.pool.name}`,
+
+          `Lend ${amount} ${selectedAsset.symbol} · Vesu ${selectedMarket.pool.name}`,
         );
 
       setSuccess(
@@ -464,9 +484,11 @@ export function VesuLend({
       );
 
       try {
-        await loadMarkets();
+        await loadMarkets(
+          selectedAsset.id,
+        );
       } catch {
-        // Keep execution result visible.
+        // Keep transaction result visible.
       }
     } catch (cause) {
       setError(
@@ -478,6 +500,7 @@ export function VesuLend({
       setExecuting(false);
     }
   }
+
 
   if (
     mode !== "normal"
@@ -496,9 +519,8 @@ export function VesuLend({
           <p>
             Vesu lending positions
             are public. Shield and
-            Unshield Lend are not
-            enabled in this first
-            lending release.
+            Unshield Lend remain
+            disabled.
           </p>
 
           <button
@@ -511,6 +533,7 @@ export function VesuLend({
             }
           >
             Use Normal mode
+
             <ArrowRight
               size={14}
             />
@@ -519,6 +542,7 @@ export function VesuLend({
       </section>
     );
   }
+
 
   if (
     !wallet.connected
@@ -562,6 +586,7 @@ export function VesuLend({
     );
   }
 
+
   if (
     !network ||
     network.id !==
@@ -587,6 +612,7 @@ export function VesuLend({
     );
   }
 
+
   return (
     <section
       className={
@@ -598,6 +624,55 @@ export function VesuLend({
           styles.borrowPair
         }
       >
+        <label
+          className={
+            styles.borrowField
+          }
+        >
+          <span>
+            Asset
+          </span>
+
+          <select
+            className={
+              styles.borrowSelect
+            }
+            value={
+              selectedAssetId
+            }
+            disabled={busy}
+            onChange={(
+              event,
+            ) => {
+              setSelectedAssetId(
+                event.target.value,
+              );
+
+              setMarkets([]);
+              setSelectedPoolId("");
+              setError("");
+              setSuccess("");
+            }}
+          >
+            {VESU_LEND_ASSETS.map(
+              (asset) => (
+                <option
+                  key={
+                    asset.id
+                  }
+                  value={
+                    asset.id
+                  }
+                >
+                  {
+                    asset.symbol
+                  }
+                </option>
+              ),
+            )}
+          </select>
+        </label>
+
         <label
           className={
             styles.borrowField
@@ -627,11 +702,14 @@ export function VesuLend({
                 setError("");
                 setSuccess("");
               }}
-              aria-label="STRK lend amount"
+              aria-label={`${selectedAsset.symbol} lend amount`}
             />
 
             <strong>
-              STRK
+              {
+                selectedAsset
+                  .symbol
+              }
             </strong>
           </div>
         </label>
@@ -702,7 +780,9 @@ export function VesuLend({
           <strong>
             {selectedMarket
               ?.pool.name ??
-              "Loading…"}
+              (loading
+                ? "Checking…"
+                : "—")}
           </strong>
         )}
       </div>
@@ -715,14 +795,38 @@ export function VesuLend({
             }
           >
             <span>
-              Verified pair
+              Verified context
             </span>
 
             <strong>
-              STRK / {
+              {
                 selectedMarket
-                  .debt.symbol
+                  .asset.symbol
+              }{" "}
+              /{" "}
+              {
+                selectedMarket
+                  .counterpart
+                  .symbol
               }
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Utilization
+            </span>
+
+            <strong>
+              {percentFromBps(
+                selectedMarket
+                  .market
+                  .utilizationBps,
+              )}
             </strong>
           </div>
 
@@ -755,9 +859,10 @@ export function VesuLend({
         }
       >
         Lending is public.
-        CAREL re-checks the Vesu
-        market immediately before
-        preparing the transaction.
+        Candidate assets are not
+        treated as executable until
+        CAREL verifies an active
+        Vesu pool context on-chain.
       </p>
 
       <button
@@ -812,7 +917,7 @@ export function VesuLend({
 
         {executing
           ? "Waiting for wallet…"
-          : "Review & Lend"}
+          : `Review & Lend ${selectedAsset.symbol}`}
       </button>
 
       {error && (

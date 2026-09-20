@@ -2,9 +2,22 @@ import type {
   Call,
 } from "starknet";
 
+import type {
+  AssetRef,
+} from "@/lib/carel/core/assets";
+
 import {
   parseUnits,
 } from "@/lib/carel/core/amounts";
+
+import {
+  STARKNET_MAINNET_ETH,
+  STARKNET_MAINNET_STRK,
+  STARKNET_MAINNET_STRKBTC,
+  STARKNET_MAINNET_USDC,
+  STARKNET_MAINNET_USDT,
+  STARKNET_MAINNET_WBTC,
+} from "@/lib/carel/ecosystems/starknet/assets";
 
 import {
   normalizeStarknetAddress,
@@ -23,12 +36,98 @@ import {
   validateVesuCallSequence,
 } from "./validation";
 
+
+export const VESU_LEND_ASSETS:
+  readonly AssetRef[] = [
+    STARKNET_MAINNET_STRK,
+    STARKNET_MAINNET_USDC,
+    STARKNET_MAINNET_ETH,
+    STARKNET_MAINNET_USDT,
+    STARKNET_MAINNET_WBTC,
+    STARKNET_MAINNET_STRKBTC,
+  ];
+
+
+export type VesuLendPair =
+  Readonly<{
+    asset: AssetRef;
+    counterpart: AssetRef;
+  }>;
+
+
+export function getVesuLendAsset(
+  assetId: string,
+): AssetRef | null {
+  return (
+    VESU_LEND_ASSETS.find(
+      (asset) =>
+        asset.id === assetId,
+    ) ?? null
+  );
+}
+
+
+export function getVesuLendAssetBySymbol(
+  symbol: string,
+): AssetRef | null {
+  const normalized =
+    symbol
+      .trim()
+      .toLowerCase();
+
+  return (
+    VESU_LEND_ASSETS.find(
+      (asset) =>
+        asset.symbol
+          .toLowerCase() ===
+        normalized,
+    ) ?? null
+  );
+}
+
+
+export function getVesuLendPair(
+  assetId: string,
+  counterpartAssetId: string,
+): VesuLendPair | null {
+  if (
+    assetId ===
+    counterpartAssetId
+  ) {
+    return null;
+  }
+
+  const asset =
+    getVesuLendAsset(
+      assetId,
+    );
+
+  const counterpart =
+    getVesuLendAsset(
+      counterpartAssetId,
+    );
+
+  if (
+    !asset ||
+    !counterpart
+  ) {
+    return null;
+  }
+
+  return {
+    asset,
+    counterpart,
+  };
+}
+
+
 export type VesuLendIntent =
   Readonly<{
     assetId: string;
     amount: bigint;
     privacy: "public";
   }>;
+
 
 export type VesuLendExecutionPayload =
   Readonly<{
@@ -51,6 +150,7 @@ export type VesuLendExecutionPayload =
       readonly Call[];
   }>;
 
+
 export function createVesuLendIntent({
   market,
   amount,
@@ -69,7 +169,9 @@ export function createVesuLendIntent({
         .decimals,
     );
 
-  if (parsed <= 0n) {
+  if (
+    parsed <= 0n
+  ) {
     throw new Error(
       "Lend amount must be greater than zero.",
     );
@@ -87,9 +189,10 @@ export function createVesuLendIntent({
   };
 }
 
+
 /**
- * Vesu supply is a positive collateral delta with zero debt.
- * CAREL supplies only into a pair independently verified on-chain.
+ * Vesu supply:
+ * exact ERC20 approval + positive collateral delta + zero debt.
  */
 export function buildVesuLendCalls({
   market,
@@ -153,7 +256,6 @@ export function buildVesuLendCalls({
       intent.amount,
     );
 
-  // Cairo Amount::default() uses zero Native amount.
   const zeroDebt =
     encodeVesuNativeAmount(
       0n,
@@ -184,12 +286,14 @@ export function buildVesuLendCalls({
         asset,
         counterpart,
         account,
+
         ...supply,
         ...zeroDebt,
       ],
     },
   ];
 }
+
 
 export function validateVesuLendCalls({
   calls,
@@ -212,6 +316,7 @@ export function validateVesuLendCalls({
   return validateVesuCallSequence({
     calls,
     expected,
+
     label:
       "Lend",
 

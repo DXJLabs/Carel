@@ -856,3 +856,66 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Vesu Lend registry resolves multiple Mainnet assets safely",
+  () => {
+    const pair =
+      lending
+        .getVesuLendPair(
+          "starknet:mainnet:USDC",
+          "starknet:mainnet:ETH",
+        );
+
+    assert.ok(
+      pair,
+    );
+
+    assert.equal(
+      pair.asset.symbol,
+      "USDC",
+    );
+
+    assert.equal(
+      pair.counterpart.symbol,
+      "ETH",
+    );
+
+    assert.equal(
+      lending
+        .getVesuLendPair(
+          "starknet:mainnet:USDC",
+          "starknet:mainnet:USDC",
+        ),
+      null,
+    );
+
+    assert.equal(
+      lending
+        .getVesuLendAssetBySymbol(
+          "strkbtc",
+        )
+        .symbol,
+      "strkBTC",
+    );
+
+    assert.deepEqual(
+      lending
+        .VESU_LEND_ASSETS
+        .map(
+          asset =>
+            asset.symbol,
+        ),
+      [
+        "STRK",
+        "USDC",
+        "ETH",
+        "USDT",
+        "WBTC",
+        "strkBTC",
+      ],
+    );
+  },
+);

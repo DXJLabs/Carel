@@ -260,3 +260,36 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Lend parser supports multi-asset goals",
+  () => {
+    const route =
+      router.routeAgentGoal(
+        "Lend 0.01 WBTC.",
+      );
+
+    assert.equal(
+      route.tool,
+      "Lend",
+    );
+
+    assert.equal(
+      route.status,
+      "ready",
+    );
+
+    assert.deepEqual(
+      route.lendRequest,
+      {
+        amountText:
+          "0.01",
+
+        symbol:
+          "WBTC",
+      },
+    );
+  },
+);
