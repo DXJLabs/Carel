@@ -68,6 +68,14 @@ const privateLending = require(
   "../lib/carel/ecosystems/starknet/protocols/vesu/private-lending.ts",
 );
 
+const lendingPositions = require(
+  "../lib/carel/ecosystems/starknet/protocols/vesu/lending-positions.ts",
+);
+
+const lendingWithdraw = require(
+  "../lib/carel/ecosystems/starknet/protocols/vesu/lending-withdraw.ts",
+);
+
 const CHAIN = Object.freeze({
   id: "starknet:mainnet",
   ecosystem: "starknet",
@@ -1042,6 +1050,222 @@ test(
           "${openNoteIds[0]}",
         ],
       },
+    );
+  },
+);
+
+
+
+test(
+  "Vesu lending position reads public vToken shares and underlying assets",
+  async () => {
+    const pool = {
+      id: "test",
+      name: "Test Pool",
+      address: MARKET.poolAddress,
+    };
+
+    const provider = {
+      callContract:
+        async ({
+          contractAddress,
+          entrypoint,
+        }) => {
+          if (
+            entrypoint ===
+              "v_token_for_asset"
+          ) {
+            return [
+              "0x555",
+            ];
+          }
+
+          assert.equal(
+            contractAddress,
+            "0x555",
+          );
+
+          if (
+            entrypoint ===
+              "asset"
+          ) {
+            return [
+              STRK.identifier.address,
+            ];
+          }
+
+          if (
+            entrypoint ===
+              "pool_contract"
+          ) {
+            return [
+              MARKET.poolAddress,
+            ];
+          }
+
+          if (
+            entrypoint ===
+              "balance_of"
+          ) {
+            return [
+              "0x7",
+              "0x0",
+            ];
+          }
+
+          if (
+            entrypoint ===
+              "convert_to_assets"
+          ) {
+            return [
+              "0x6",
+              "0x0",
+            ];
+          }
+
+          if (
+            entrypoint ===
+              "max_redeem"
+          ) {
+            return [
+              "0x5",
+              "0x0",
+            ];
+          }
+
+          throw new Error(
+            `unexpected ${entrypoint}`,
+          );
+        },
+    };
+
+    const position =
+      await lendingPositions
+        .readVesuLendingPosition({
+          provider,
+          pool,
+          owner:
+            OWNER,
+          asset:
+            STRK,
+        });
+
+    assert.ok(
+      position,
+    );
+
+    assert.equal(
+      position.vTokenAddress,
+      "0x555",
+    );
+
+    assert.equal(
+      position.shares,
+      7n,
+    );
+
+    assert.equal(
+      position.assets,
+      6n,
+    );
+
+    assert.equal(
+      position.maxRedeemShares,
+      5n,
+    );
+  },
+);
+
+
+
+test(
+  "Vesu Lend Withdraw redeems exact public vToken shares to the owner",
+  () => {
+    const calls =
+      lendingWithdraw
+        .buildVesuLendWithdrawCalls({
+          owner:
+            OWNER,
+
+          vTokenAddress:
+            "0x555",
+
+          shares:
+            7n,
+        });
+
+    assert.equal(
+      calls.length,
+      1,
+    );
+
+    assert.equal(
+      calls[0].contractAddress,
+      "0x555",
+    );
+
+    assert.equal(
+      calls[0].entrypoint,
+      "redeem",
+    );
+
+    assert.deepEqual(
+      calls[0].calldata,
+      [
+        "0x7",
+        "0x0",
+
+        // receiver
+        OWNER,
+
+        // owner
+        OWNER,
+      ],
+    );
+
+    assert.deepEqual(
+      lendingWithdraw
+        .validateVesuLendWithdrawCalls({
+          calls,
+
+          owner:
+            OWNER,
+
+          vTokenAddress:
+            "0x555",
+
+          shares:
+            7n,
+        }),
+      calls,
+    );
+
+    const altered =
+      cloneCalls(
+        calls,
+      );
+
+    altered[0]
+      .calldata[2] =
+      "0x999";
+
+    assert.throws(
+      () =>
+        lendingWithdraw
+          .validateVesuLendWithdrawCalls({
+            calls:
+              altered,
+
+            owner:
+              OWNER,
+
+            vTokenAddress:
+              "0x555",
+
+            shares:
+              7n,
+          }),
+      /blocked/i,
     );
   },
 );

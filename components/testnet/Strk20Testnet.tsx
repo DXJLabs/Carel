@@ -107,11 +107,21 @@ import {
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
 
 import {
+  getVesuLendAsset,
   getVesuLendPair,
   validateVesuLendCalls,
   type VesuLendExecutionPayload,
   type VesuLendIntent,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
+
+import {
+  readVesuLendingPosition,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending-positions";
+
+import {
+  validateVesuLendWithdrawCalls,
+  type VesuLendWithdrawExecutionPayload,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending-withdraw";
 
 import {
   buildVesuShieldLendActions,
@@ -244,6 +254,10 @@ type CarelTestnetContextValue = {
   ) => Promise<PrivateTransferResult>;
   executeLend: (
     payload: VesuLendExecutionPayload,
+    label: string,
+  ) => Promise<string>;
+  executeWithdrawVesuLend: (
+    payload: VesuLendWithdrawExecutionPayload,
     label: string,
   ) => Promise<string>;
   executeBorrow: (
@@ -657,6 +671,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const swapSubmitting = useRef(false);
   const stakingSubmitting = useRef(false);
   const lendSubmitting = useRef(false);
+  const lendWithdrawSubmitting = useRef(false);
   const borrowSubmitting = useRef(false);
   const repaySubmitting = useRef(false);
   const closeVesuSubmitting = useRef(false);
@@ -3759,6 +3774,326 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Executes a reviewed public Vesu ERC-4626 redemption.
+   *
+   * The wallet independently reloads the current vToken position and
+   * max_redeem before signing, so a stale server review cannot withdraw
+   * more shares than are still owned/redeemable.
+   */
+  const executeWithdrawVesuLend = async (
+    payload: VesuLendWithdrawExecutionPayload,
+    label: string,
+  ): Promise<string> => {
+    if (
+      lendWithdrawSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const account =
+      walletAccount;
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+    if (
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "Vesu Lend withdrawal is enabled on Starknet Mainnet only.",
+      );
+    }
+
+    if (
+      payload.chainId !==
+        network.chainId
+    ) {
+      throw new Error(
+        "Prepared Vesu Withdraw belongs to another Starknet network.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        payload.preparedAt,
+      ) ||
+      !Number.isFinite(
+        payload.expiresAt,
+      ) ||
+      payload.expiresAt <=
+        payload.preparedAt ||
+      Date.now() >
+        payload.expiresAt
+    ) {
+      throw new Error(
+        "Vesu Withdraw review expired. Refresh the position and review again.",
+      );
+    }
+
+    const pool =
+      getVesuPool(
+        payload.poolId,
+      );
+
+    if (
+      !pool ||
+      felt(
+        pool.address,
+      ) !==
+        felt(
+          payload.poolAddress,
+        )
+    ) {
+      throw new Error(
+        "Prepared Vesu Withdraw references an unapproved pool.",
+      );
+    }
+
+    const owner =
+      felt(
+        account.address,
+      );
+
+    if (
+      felt(
+        payload.owner,
+      ) !==
+        owner
+    ) {
+      throw new Error(
+        "Prepared Vesu Withdraw belongs to another account.",
+      );
+    }
+
+    const asset =
+      getVesuLendAsset(
+        payload.assetId,
+      );
+
+    if (!asset) {
+      throw new Error(
+        "Prepared Vesu Withdraw references an unsupported lending asset.",
+      );
+    }
+
+    let shares:
+      bigint;
+
+    try {
+      shares =
+        BigInt(
+          payload.shares,
+        );
+    } catch {
+      throw new Error(
+        "Prepared Vesu Withdraw contains invalid shares.",
+      );
+    }
+
+    if (
+      shares <= 0n
+    ) {
+      throw new Error(
+        "Prepared Vesu Withdraw shares must be greater than zero.",
+      );
+    }
+
+    /*
+     * Fresh on-chain position verification.
+     */
+    const current =
+      await readVesuLendingPosition({
+        provider:
+          network.provider,
+
+        pool,
+
+        owner,
+
+        asset,
+      });
+
+    if (!current) {
+      throw new Error(
+        "The public Vesu lending position no longer exists.",
+      );
+    }
+
+    if (
+      felt(
+        current.vTokenAddress,
+      ) !==
+        felt(
+          payload.vTokenAddress,
+        )
+    ) {
+      throw new Error(
+        "Vesu vToken changed after review.",
+      );
+    }
+
+    if (
+      shares >
+      current.shares
+    ) {
+      throw new Error(
+        "Vesu Withdraw exceeds the current vToken balance.",
+      );
+    }
+
+    if (
+      shares >
+      current.maxRedeemShares
+    ) {
+      throw new Error(
+        "Vesu Withdraw exceeds the vault's current redeemable liquidity.",
+      );
+    }
+
+    const safeCalls =
+      validateVesuLendWithdrawCalls({
+        calls:
+          payload.calls,
+
+        owner,
+
+        vTokenAddress:
+          current.vTokenAddress,
+
+        shares,
+      });
+
+    const assertSession =
+      async () => {
+        const selected =
+          account
+            .walletProvider as unknown as
+            WalletWithStarknetFeaturesV6;
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6
+              .requestChainId(
+                selected,
+              ),
+
+            account
+              .requestAccounts(
+                true,
+              ),
+          ]);
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(
+            walletChain,
+          ) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(
+            accounts[0],
+          ) !==
+            owner
+        ) {
+          throw new Error(
+            "Wallet account or network changed. Reconnect Ready on Starknet Mainnet.",
+          );
+        }
+      };
+
+    lendWithdrawSubmitting.current =
+      true;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await assertSession();
+
+      if (
+        Date.now() >
+        payload.expiresAt
+      ) {
+        throw new Error(
+          "Vesu Withdraw review expired before signing.",
+        );
+      }
+
+      const response =
+        await account.execute(
+          safeCalls,
+        );
+
+      const hash =
+        response.transaction_hash;
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Vesu Withdraw transaction hash.",
+        );
+      }
+
+      setTx({
+        kind:
+          "pending",
+        label,
+        hash,
+      });
+
+      try {
+        await waitForSubmittedTransaction(
+          hash,
+          network.provider,
+        );
+
+        setTx({
+          kind:
+            "confirmed",
+          label,
+          hash,
+        });
+      } catch {
+        setTx({
+          kind:
+            "submitted",
+          label,
+          hash,
+        });
+      }
+
+      try {
+        await refreshAssetBalances();
+      } catch {
+        // Portfolio remains manually refreshable.
+      }
+
+      return hash;
+    } finally {
+      lendWithdrawSubmitting.current =
+        false;
+
+      setBusy(false);
+    }
+  };
+
+
+  /**
    * Executes a server-prepared public Vesu Borrow only after rebuilding
    * and validating the complete transaction locally.
    */
@@ -5375,6 +5710,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeBridge,
       executeShieldLend,
       executeLend,
+      executeWithdrawVesuLend,
       executeBorrow,
       executeRepay,
       executeCloseVesuPosition,

@@ -1279,8 +1279,8 @@ export function CarelApp() {
           </p>
         ) : (
           <EmptyState title="No visible positions">
-            Staking, liquid-staking, and public
-            Borrow positions will appear here.
+            Staking, lending, and borrowing
+            positions will appear here.
           </EmptyState>
         )}
 

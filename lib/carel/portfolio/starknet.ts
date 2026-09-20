@@ -29,6 +29,10 @@ import {
   VESU_BORROW_DEBT_ASSETS,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
 
+import {
+  discoverVesuLendingPositions,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending-positions";
+
 export type StarknetPortfolioPositions =
   Readonly<{
     positions: readonly PortfolioPosition[];
@@ -172,6 +176,83 @@ export async function loadStarknetPortfolioPositions({
       });
     }
   }
+
+  /*
+   * Vesu ERC-4626 lending positions.
+   *
+   * Public ownership is represented directly by vToken shares,
+   * so no local transaction history is required to reconstruct it.
+   */
+  try {
+    const lendingPositions =
+      await discoverVesuLendingPositions({
+        provider,
+        owner,
+      });
+
+    for (
+      const position
+      of lendingPositions
+    ) {
+      positions.push({
+        id:
+          `starknet:vesu-lend:${position.pool.id}:${position.asset.id}:${owner}`,
+
+        protocol:
+          "Vesu",
+
+        kind:
+          "lending",
+
+        asset:
+          position.asset,
+
+        amount:
+          position.assets,
+
+        visibility:
+          "public",
+
+        label:
+          `Vesu Lend · ${position.pool.name}`,
+
+        detail:
+          position.maxRedeemShares > 0n
+            ? "Public ERC-4626 vToken position"
+            : "Public ERC-4626 vToken position · withdrawal currently unavailable",
+
+        lending: {
+          poolId:
+            position.pool.id,
+
+          poolName:
+            position.pool.name,
+
+          poolAddress:
+            position.pool.address,
+
+          underlyingAsset:
+            position.asset,
+
+          vTokenAddress:
+            position.vTokenAddress,
+
+          shares:
+            position.shares,
+
+          maxRedeemShares:
+            position.maxRedeemShares,
+        },
+      });
+    }
+  } catch (cause) {
+    warnings.push(
+      cause instanceof Error
+        ? cause.message
+        : "Could not load Vesu lending positions.",
+    );
+  }
+
 
   try {
     const positionGroups =

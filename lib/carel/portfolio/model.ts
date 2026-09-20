@@ -60,6 +60,31 @@ export type PortfolioBorrowMetrics =
       boolean;
   }>;
 
+export type PortfolioLendingMetrics =
+  Readonly<{
+    poolId:
+      string;
+
+    poolName:
+      string;
+
+    poolAddress:
+      string;
+
+    underlyingAsset:
+      AssetRef;
+
+    vTokenAddress:
+      string;
+
+    shares:
+      bigint;
+
+    maxRedeemShares:
+      bigint;
+  }>;
+
+
 export type PortfolioPosition =
   Readonly<{
     id: string;
@@ -72,6 +97,9 @@ export type PortfolioPosition =
     detail: string;
     borrow?:
       PortfolioBorrowMetrics;
+
+    lending?:
+      PortfolioLendingMetrics;
   }>;
 
 /**
