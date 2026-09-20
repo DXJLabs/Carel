@@ -44,7 +44,7 @@ export const EVM_CHAINS =
     ETHEREUM_SEPOLIA,
   ] as const;
 
-function normalizeEvmChainId(
+export function normalizeEvmChainId(
   chainId: string,
 ): string {
   const value =
@@ -63,6 +63,32 @@ function normalizeEvmChainId(
   }
 
   return value;
+}
+
+/**
+ * Converts a decimal CAREL EVM chain id to the EIP-1193 hexadecimal form.
+ */
+export function toEvmChainHex(
+  chainId: string,
+): string {
+  const normalized =
+    normalizeEvmChainId(
+      chainId,
+    );
+
+  if (
+    !/^[0-9]+$/.test(
+      normalized,
+    )
+  ) {
+    throw new Error(
+      "Invalid EVM chain id.",
+    );
+  }
+
+  return `0x${BigInt(
+    normalized,
+  ).toString(16)}`;
 }
 
 /**
