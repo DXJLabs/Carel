@@ -1,222 +1,324 @@
 # CAREL
 
-**Agentic Private DeFi on Starknet**
+**Agentic DeFi execution with optional privacy.**
 
-CAREL turns a user's financial objective into a controlled DeFi strategy, checks it against user-defined risk and privacy rules, asks for approval, executes through supported Starknet tools, and continues monitoring the position.
+CAREL is a goal-driven financial interface that converts user intent into reviewed on-chain actions while preserving explicit wallet approval and clear public/private execution boundaries.
 
-> Set the goal. CAREL plans, protects, and executes under your rules.
+CAREL is not designed as a collection of protocol buttons. Swap, Bridge, Staking, Lend, Borrow, Shield, and Unshield are execution tools coordinated by the CAREL Agent.
 
-## Product thesis
-
-DeFi users still act as their own researcher, router, risk manager, execution operator, and privacy manager.
-
-CAREL uses a goal-first loop:
+## Core flow
 
 ```text
-Goal
-→ Understand portfolio
-→ Search / compare opportunities
-→ Risk + privacy policy
-→ Build strategy
-→ Simulate
-→ User approval
-→ Execute
-→ Monitor
-→ Replan when conditions change
+User Goal
+   ↓
+CAREL Agent
+   ↓
+Intent Parsing
+   ↓
+Provider-Neutral Execution Intent
+   ↓
+Capability / Route Resolution
+   ↓
+Protocol-Specific Review
+   ↓
+Wallet Approval
+   ↓
+On-Chain Execution
 ```
 
-Swap, bridge, lend, borrow, stake, shield, private transfer, and unshield are tools used by CAREL. They are not the product identity.
+The Agent determines which supported execution path matches the user's goal. It does **not** own wallet keys and it does **not** bypass wallet approval.
 
-## Current status
+## Agent
 
-CAREL is in early product validation and Starknet Sepolia integration.
+The current CAREL Agent is a deterministic execution coordinator.
 
-### Live product surface
+It can:
 
-- responsive CAREL workspace for mobile and desktop;
-- goal-driven mandate composer;
-- simulated strategy generation;
-- risk, concentration, liquidity, privacy, and approval guardrails;
-- execution-plan preview;
-- monitoring / replan UX.
+- parse a financial goal;
+- detect the requested action;
+- compile supported requests into provider-neutral execution intents;
+- select compatible execution capabilities;
+- preserve explicit multi-stage flows when privacy semantics require them;
+- route the user into the correct reviewed execution surface.
 
-### Testnet phase 1
-
-- Starknet wallet discovery and connection;
-- Sepolia network gate;
-- STRK20 capability detection through Wallet API version/spec queries;
-- public STRK balance read;
-- explicit, consent-based private STRK balance read;
-- STRK20 Shield;
-- STRK20 Unshield;
-- post-Shield note-maturity tracker;
-- transaction hash + Sepolia explorer fallback.
-
-Strategy APYs and protocol allocations are still **simulated**. CAREL does not claim mock opportunity data is live market data.
-
-## STRK20 integration model
-
-CAREL uses the **Privacy Wallet API via starknet.js**.
-
-The wallet owns keys, notes, proving, and private-state handling. CAREL does not receive a viewing key and does not generate privacy proofs itself.
-
-Pinned integration versions:
+Example:
 
 ```text
-@starknet-io/get-starknet-discovery      6.0.3
-@starknet-io/get-starknet-wallet-standard 6.0.3
-@starknet-io/types-js                    0.10.3
-starknet                                 10.4.0
-```
-
-### Capability detection
-
-CAREL does not call private-balance APIs just to detect STRK20 support.
-
-It first uses Wallet API version/spec discovery. Private balances are requested only after the user explicitly chooses **Reveal private**.
-
-### Honest privacy boundaries
-
-```text
-PUBLIC WALLET
-     ↓
-Shield / deposit          PUBLIC
-     ↓
-PRIVATE NOTE
-     ↓
-~10 blocks maturity
-     ↓
-Private execution        PROTECTED when supported
-     ↓
-Unshield                 PUBLIC amount + destination
-```
-
-CAREL labels these boundaries per step instead of describing the entire workflow as generically private.
-
-A Shield flow can require two wallet confirmations:
-
-1. ERC-20 approval;
-2. privacy-pool deposit.
-
-Fresh notes generally need around 10 blocks before they are spendable.
-
-## Architecture
-
-```text
-CAREL UI
-   ↓
-Goal / mandate
-   ↓
-Planner
-   ↓
-Policy engine
-   ↓
-Simulation
-   ↓
-Approval
-   ↓
-Tool router
-   ├── Starknet wallet
-   ├── STRK20 Wallet API
-   └── DeFi protocol adapters
-   ↓
+"Swap 10 STRK for USDC"
+          ↓
+Agent Router
+          ↓
+Swap Intent
+          ↓
+Capability Registry
+          ↓
+AVNU
+          ↓
+Quote + Review
+          ↓
+Wallet Approval
+          ↓
 Execution
-   ↓
-Monitoring + replan
 ```
 
-Current source areas:
+The current Agent is not an unrestricted autonomous fund manager and is not presented as an LLM that can generate arbitrary calldata.
+
+See [Agent Architecture](docs/technical/AGENT.md).
+
+## Execution modes
+
+```text
+NORMAL
+Public → Public
+
+SHIELD
+Public → Private
+
+UNSHIELD
+Private → Public
+```
+
+Privacy is treated as an execution property, not a blanket label applied to an entire workflow.
+
+## Current integrations
+
+### AVNU
+- public Swap;
+- public Starknet Staking.
+
+### STRK20 / Starknet Privacy
+- explicit private balance reveal;
+- Shield;
+- Unshield;
+- private-note maturity tracking;
+- private execution composition.
+
+### Endur
+- Shield Staking;
+- private xSTRK flow.
+
+### Vesu
+- Borrow;
+- Repay;
+- Close Position;
+- Add Collateral;
+- Withdraw Collateral;
+- multi-asset Lend;
+- ERC-4626 vToken lending;
+- Shield Lend through a verified `VesuLendingAnonymizer`;
+- public lending-position discovery;
+- public vToken redemption execution engine.
+
+### Garden
+- Bitcoin Testnet4 ↔ Starknet Sepolia bridge routes when supported by Garden's live catalogue.
+
+## Current lending status
+
+```text
+Normal Lend
+public underlying
+→ vToken.deposit()
+→ public vToken shares
+
+Shield Lend
+public underlying
+→ STRK20 privacy flow
+→ Vesu Lending Anonymizer
+→ private vToken note
+
+Unshield Lend
+private underlying
+→ public underlying
+→ vToken.deposit()
+→ public vToken shares
+```
+
+Public lending positions can be reconstructed from live vToken state.
+
+The current codebase also contains the public vToken redemption execution engine. Private vToken portfolio disclosure and private vToken redemption should not be documented as production-complete until their UI/runtime integration is finished.
+
+## Network model
+
+### Starknet Sepolia
+- STRK
+- USDC
+- STRK20 privacy
+- Garden testnet bridge integration
+
+### Starknet Mainnet
+- STRK
+- USDC
+- ETH
+- USDT
+- WBTC
+- strkBTC
+- xSTRK
+- AVNU
+- Endur
+- Vesu
+- STRK20 privacy
+
+The CAREL core already contains generic multi-ecosystem abstractions so additional chains do not need to be embedded directly into the Agent parser.
+
+## High-level architecture
+
+```text
+┌──────────────────────────┐
+│        CAREL UI          │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│       Agent Layer        │
+│ parse / compile / route  │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│   Execution Intent       │
+│   provider-neutral       │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│ Capability Registry      │
+└────────────┬─────────────┘
+             │
+             ▼
+┌───────────────────────────────┐
+│ Protocol / Ecosystem Adapters │
+│ AVNU · Garden · Endur · Vesu  │
+└────────────┬──────────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│ Review / Validation      │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│ Wallet Approval          │
+└────────────┬─────────────┘
+             │
+             ▼
+         Blockchain
+```
+
+## Agent safety boundary
+
+```text
+Agent decides WHAT supported path matches intent
+                 ↓
+CAREL verifies WHAT will execute
+                 ↓
+Wallet decides WHETHER to sign
+```
+
+CAREL currently does not enable unrestricted autonomous capital management or background transaction signing.
+
+## Repository structure
 
 ```text
 app/
-  page.tsx
+├── api/
+└── ...
 
 components/
-  CarelApp.tsx
-  testnet/
-    Strk20Testnet.tsx
+├── CarelWorkspace.tsx
+├── swap/
+├── bridge/
+├── staking/
+├── lending/
+├── borrow/
+└── testnet/
 
 lib/
-  carel.ts
-  strk20/
-    config.ts
-    units.ts
+├── agent/
+│   ├── router.ts
+│   ├── execution.ts
+│   ├── workspace.ts
+│   └── livePlanner.ts
+│
+└── carel/
+    ├── core/
+    ├── ecosystems/
+    ├── protocols/
+    ├── portfolio/
+    ├── runtime/
+    └── points/
 ```
 
-## Run in Termux
+## Technical documentation
+
+- [Architecture](docs/technical/ARCHITECTURE.md)
+- [Agent](docs/technical/AGENT.md)
+- [Privacy](docs/technical/PRIVACY.md)
+- [Protocols](docs/technical/PROTOCOLS.md)
+- [Security](docs/technical/SECURITY.md)
+- [Deployment](docs/technical/DEPLOYMENT.md)
+
+## Development
 
 ```bash
 npm install
-npx tsc --noEmit --pretty false
-npm run dev -- --hostname 0.0.0.0
+npx tsc --noEmit
+npm test
 ```
 
-Open:
+Protocol-specific tests:
+
+```bash
+npm run test:garden
+npm run test:vesu
+```
+
+Development server:
+
+```bash
+npm run dev
+```
+
+Production build:
+
+```bash
+npm run build
+```
+
+## Verified baseline
 
 ```text
-http://localhost:3000
+Full regression: 117 tests
+Pass:            117
+Fail:            0
 ```
 
-Use a small Starknet Sepolia test amount.
-
-## Test sequence
-
-1. Open CAREL in Mises/Ready.
-2. Connect Ready.
-3. Confirm CAREL reports **Starknet Sepolia**.
-4. Confirm **STRK20 Wallet API: Supported**.
-5. Refresh public STRK balance.
-6. Press **Reveal private** and approve disclosure if Ready asks.
-7. Shield a small amount of STRK.
-8. Expect the wallet to potentially show two confirmations.
-9. Save the transaction hash.
-10. Wait for the maturity indicator to reach zero.
-11. Refresh private balance.
-12. Unshield a small mature amount.
-13. Save the unshield transaction hash.
-
-Do not test with production funds.
-
-## Next milestones
-
-### Phase 2 — planner → real privacy action
-
-Make a CAREL plan call a real STRK20 action only after policy checks and user approval.
-
-### Phase 3 — one real DeFi route
-
-Connect one supported Starknet DeFi path. Do not add many protocol adapters until one full goal → plan → execute → monitor loop works.
-
-### Phase 4 — monitoring + replan
+## Production
 
 ```text
-position
-→ monitor conditions
-→ detect material change
-→ propose action
-→ policy check
-→ approval
-→ rebalance
+https://carel-v2-mock.vercel.app
 ```
 
-## Product rules
+Repository:
 
-- Explicit user approval for the testnet MVP.
-- No unrestricted autonomous capital management.
-- No viewing keys collected by CAREL.
-- Private balances read only after explicit user action.
-- Public/private boundaries shown per step.
-- Mock APY and routes remain labeled as simulation until backed by real data.
-- Unsupported wallets/networks fail closed for private execution.
+```text
+https://github.com/DXJLabs/Carel
+```
 
-## References
+## Documentation layers
 
-- STRK20 — https://strk20.starknet.io/
-- STRK20 integration skill — https://github.com/starkience/strk20-agent-skills
-- Starknet Privacy — https://github.com/starkware-libs/starknet-privacy
-- STRK20 starter kit — https://github.com/Akashneelesh/strk20-starter-kit
-- Starknet — https://www.starknet.io/
+```text
+Technical
+→ how CAREL works
+
+Product
+→ what problem CAREL solves
+
+Business
+→ how CAREL can become a sustainable product
+```
+
+This directory covers the technical layer. Product and business documentation should remain separate.
 
 ---
 
-**CAREL by DXJ Labs**
+**CAREL — DXJ Labs**
