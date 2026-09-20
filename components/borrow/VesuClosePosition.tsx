@@ -224,6 +224,12 @@ export function VesuClosePosition({
 
                 owner:
                   wallet.address,
+
+                collateralAssetId:
+                  collateralAsset.id,
+
+                debtAssetId:
+                  debtAsset.id,
               }),
           },
         );

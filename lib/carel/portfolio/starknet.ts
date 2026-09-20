@@ -25,6 +25,10 @@ import {
   vesuPositionFractionToBps,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/positions";
 
+import {
+  VESU_BORROW_DEBT_ASSETS,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
 export type StarknetPortfolioPositions =
   Readonly<{
     positions: readonly PortfolioPosition[];
@@ -40,7 +44,6 @@ export async function loadStarknetPortfolioPositions({
   provider,
   baseUrl,
   stakeAsset,
-  borrowAsset,
   liquidStakingAsset,
   balances,
   privateRevealed,
@@ -49,7 +52,6 @@ export async function loadStarknetPortfolioPositions({
   provider: RpcProvider;
   baseUrl: string;
   stakeAsset: AssetRef;
-  borrowAsset: AssetRef;
   liquidStakingAsset: AssetRef | null;
   balances: readonly AssetBalance[];
   privateRevealed: boolean;
@@ -172,15 +174,22 @@ export async function loadStarknetPortfolioPositions({
   }
 
   try {
+    const positionGroups =
+      await Promise.all(
+        VESU_BORROW_DEBT_ASSETS.map(
+          (debtAsset) =>
+            discoverVesuBorrowPositions({
+              provider,
+              owner,
+              collateralAsset:
+                stakeAsset,
+              debtAsset,
+            }),
+        ),
+      );
+
     const borrowPositions =
-      await discoverVesuBorrowPositions({
-        provider,
-        owner,
-        collateralAsset:
-          stakeAsset,
-        debtAsset:
-          borrowAsset,
-      });
+      positionGroups.flat();
 
     for (
       const position
@@ -188,7 +197,7 @@ export async function loadStarknetPortfolioPositions({
     ) {
       positions.push({
         id:
-          `starknet:vesu-borrow:${position.pool.id}:${owner}`,
+          `starknet:vesu-borrow:${position.pool.id}:${position.debtAsset.id}:${owner}`,
 
         protocol:
           "Vesu",

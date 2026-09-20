@@ -107,6 +107,7 @@ export function VesuWithdrawCollateral({
   poolName,
   collateralAsset,
   collateralAmount,
+  debtAsset,
   hidden,
   onComplete,
 }: {
@@ -114,6 +115,7 @@ export function VesuWithdrawCollateral({
   poolName: string;
   collateralAsset: AssetRef;
   collateralAmount: bigint;
+  debtAsset: AssetRef;
   hidden: boolean;
   onComplete: () => void;
 }) {
@@ -211,6 +213,12 @@ export function VesuWithdrawCollateral({
 
                 collateralAmount:
                   amount,
+
+                collateralAssetId:
+                  collateralAsset.id,
+
+                debtAssetId:
+                  debtAsset.id,
               }),
           },
         );
@@ -499,7 +507,7 @@ export function VesuWithdrawCollateral({
             }
           >
             <span>
-              STRK utilization
+              {collateralAsset.symbol} utilization
             </span>
 
             <strong>

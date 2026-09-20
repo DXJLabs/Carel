@@ -76,6 +76,7 @@ export function VesuAddCollateral({
   poolName,
   collateralAsset,
   collateralAmount,
+  debtAsset,
   hidden,
   onComplete,
 }: {
@@ -83,6 +84,7 @@ export function VesuAddCollateral({
   poolName: string;
   collateralAsset: AssetRef;
   collateralAmount: bigint;
+  debtAsset: AssetRef;
   hidden: boolean;
   onComplete: () => void;
 }) {
@@ -186,6 +188,12 @@ export function VesuAddCollateral({
 
                 collateralAmount:
                   amount,
+
+                collateralAssetId:
+                  collateralAsset.id,
+
+                debtAssetId:
+                  debtAsset.id,
               }),
           },
         );

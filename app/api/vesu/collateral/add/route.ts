@@ -34,6 +34,10 @@ import {
   getVesuPool,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
 
+import {
+  getVesuBorrowPair,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
 export const runtime =
   "nodejs";
 
@@ -143,6 +147,25 @@ export async function POST(
     const network =
       CAREL_NETWORKS.mainnet;
 
+    const pair =
+      getVesuBorrowPair(
+        typeof body.collateralAssetId ===
+          "string"
+          ? body.collateralAssetId
+          : network.assets.strk.id,
+        typeof body.debtAssetId ===
+          "string"
+          ? body.debtAssetId
+          : network.assets.usdc.id,
+      );
+
+    if (!pair) {
+      throw new Error(
+        "CAREL does not enable this Vesu Borrow pair.",
+      );
+    }
+
+
     const [
       position,
       risk,
@@ -157,10 +180,10 @@ export async function POST(
           owner,
 
           collateralAsset:
-            network.assets.strk,
+            pair.collateralAsset,
 
           debtAsset:
-            network.assets.usdc,
+            pair.debtAsset,
         }),
 
         readVesuBorrowRisk({
@@ -173,10 +196,10 @@ export async function POST(
             network.chainId,
 
           collateralAsset:
-            network.assets.strk,
+            pair.collateralAsset,
 
           debtAsset:
-            network.assets.usdc,
+            pair.debtAsset,
         }),
       ]);
 
@@ -192,7 +215,7 @@ export async function POST(
     const collateralAmount =
       parseUnits(
         collateralText,
-        network.assets.strk
+        pair.collateralAsset
           .decimals,
       );
 
@@ -210,7 +233,7 @@ export async function POST(
           "add-collateral",
 
         collateralAssetId:
-          network.assets.strk.id,
+          pair.collateralAsset.id,
 
         amount:
           collateralAmount,
@@ -278,10 +301,10 @@ export async function POST(
           owner,
 
           collateralAssetId:
-            network.assets.strk.id,
+            pair.collateralAsset.id,
 
           debtAssetId:
-            network.assets.usdc.id,
+            pair.debtAsset.id,
 
           collateralAmount:
             collateralAmount

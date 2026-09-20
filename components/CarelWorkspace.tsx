@@ -330,9 +330,6 @@ export function CarelApp() {
             stakeAsset:
               activeNetwork.assets.strk,
 
-            borrowAsset:
-              activeNetwork.assets.usdc,
-
             liquidStakingAsset:
               activeNetwork.assets.xstrk,
 

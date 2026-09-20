@@ -12,6 +12,10 @@ import {
   vesuFractionToBps,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/markets";
 
+import {
+  getVesuBorrowPair,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
 export const runtime =
   "nodejs";
 
@@ -210,6 +214,34 @@ export async function GET(
     const network =
       CAREL_NETWORKS.mainnet;
 
+    const debtAssetId =
+      url.searchParams.get(
+        "debtAssetId",
+      ) ??
+      network.assets.usdc.id;
+
+    const pair =
+      getVesuBorrowPair(
+        network.assets.strk.id,
+        debtAssetId,
+      );
+
+    if (!pair) {
+      return NextResponse.json(
+        {
+          error:
+            "CAREL does not enable this Vesu Borrow pair.",
+        },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control":
+              "no-store",
+          },
+        },
+      );
+    }
+
     const markets =
       await discoverVesuBorrowMarkets({
         provider:
@@ -217,9 +249,9 @@ export async function GET(
         chainId:
           network.chainId,
         collateralAsset:
-          network.assets.strk,
+          pair.collateralAsset,
         debtAsset:
-          network.assets.usdc,
+          pair.debtAsset,
       });
 
     return NextResponse.json(
@@ -228,7 +260,7 @@ export async function GET(
           network.label,
 
         pair:
-          `${network.assets.strk.symbol}/${network.assets.usdc.symbol}`,
+          `${pair.collateralAsset.symbol}/${pair.debtAsset.symbol}`,
 
         markets:
           markets.map(

@@ -36,6 +36,11 @@ import type {
   VesuBorrowExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
 
+import {
+  getVesuBorrowDebtAssetBySymbol,
+  VESU_BORROW_DEBT_ASSETS,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
 import styles from "../CarelWorkspace.module.css";
 
 type BorrowMode =
@@ -220,6 +225,25 @@ export function VesuBorrow({
   ] = useState("10");
 
   const [
+    debtAssetId,
+    setDebtAssetId,
+  ] = useState(
+    VESU_BORROW_DEBT_ASSETS[0].id,
+  );
+
+  const selectedDebtAsset =
+    useMemo(
+      () =>
+        VESU_BORROW_DEBT_ASSETS.find(
+          (asset) =>
+            asset.id ===
+            debtAssetId,
+        ) ??
+        VESU_BORROW_DEBT_ASSETS[0],
+      [debtAssetId],
+    );
+
+  const [
     markets,
     setMarkets,
   ] = useState<
@@ -314,16 +338,27 @@ export function VesuBorrow({
 
       if (
         parsed.collateralSymbol ===
-          "STRK" &&
-        parsed.borrowSymbol ===
-          "USDC"
+          "STRK"
       ) {
+        const debtAsset =
+          getVesuBorrowDebtAssetBySymbol(
+            parsed.borrowSymbol,
+          );
+
+        if (!debtAsset) {
+          return;
+        }
+
         setCollateralAmount(
           parsed.collateralAmountText,
         );
 
         setBorrowAmount(
           parsed.borrowAmountText,
+        );
+
+        setDebtAssetId(
+          debtAsset.id,
         );
 
         setReviewed(false);
@@ -364,7 +399,7 @@ export function VesuBorrow({
       const debt =
         parseUnits(
           borrowAmount,
-          network.assets.usdc
+          selectedDebtAsset
             .decimals,
         );
 
@@ -385,6 +420,11 @@ export function VesuBorrow({
     try {
       const query =
         new URLSearchParams();
+
+      query.set(
+        "debtAssetId",
+        selectedDebtAsset.id,
+      );
 
       if (withEvaluation) {
         query.set(
@@ -445,7 +485,7 @@ export function VesuBorrow({
         !nextMarkets.length
       ) {
         throw new Error(
-          "No verified STRK → USDC Vesu market is available right now.",
+          `No verified STRK → ${selectedDebtAsset.symbol} Vesu market is available right now.`,
         );
       }
 
@@ -505,6 +545,7 @@ export function VesuBorrow({
   }, [
     wallet.address,
     wallet.chainId,
+    debtAssetId,
   ]);
 
   /**
@@ -569,6 +610,13 @@ export function VesuBorrow({
                 collateralAmount,
 
                 borrowAmount,
+
+                collateralAssetId:
+                  network?.assets
+                    .strk.id,
+
+                debtAssetId:
+                  selectedDebtAsset.id,
               }),
           },
         );
@@ -628,7 +676,7 @@ export function VesuBorrow({
       const hash =
         await wallet.executeBorrow(
           prepared.execution,
-          `Borrow ${borrowAmount} USDC against ${collateralAmount} STRK · Vesu ${prepared.pool.name}`,
+          `Borrow ${borrowAmount} ${selectedDebtAsset.symbol} against ${collateralAmount} STRK · Vesu ${prepared.pool.name}`,
         );
 
       setSuccess(
@@ -773,7 +821,7 @@ export function VesuBorrow({
   const debtDecimals =
     selectedMarket?.debt
       .decimals ??
-    network.assets.usdc
+    selectedDebtAsset
       .decimals;
 
   const available =
@@ -893,14 +941,59 @@ export function VesuBorrow({
                     .value,
                 )
               }
-              aria-label="USDC borrow amount"
+              aria-label={`${selectedDebtAsset.symbol} borrow amount`}
             />
 
             <strong>
-              USDC
+              {selectedDebtAsset.symbol}
             </strong>
           </div>
         </label>
+      </div>
+
+      <div
+        className={
+          styles.rule
+        }
+      >
+        <span>
+          Borrow asset
+        </span>
+
+        <select
+          className={
+            styles.borrowSelect
+          }
+          value={
+            debtAssetId
+          }
+          disabled={busy}
+          onChange={(
+            event,
+          ) => {
+            setDebtAssetId(
+              event.target
+                .value,
+            );
+
+            setMarkets([]);
+            setSelectedPoolId("");
+            setReviewed(false);
+            setError("");
+            setSuccess("");
+          }}
+        >
+          {VESU_BORROW_DEBT_ASSETS.map(
+            (asset) => (
+              <option
+                key={asset.id}
+                value={asset.id}
+              >
+                {asset.symbol}
+              </option>
+            ),
+          )}
+        </select>
       </div>
 
       <div
@@ -1030,7 +1123,7 @@ export function VesuBorrow({
             }
           >
             <span>
-              Available USDC
+              Available {selectedDebtAsset.symbol}
             </span>
 
             <strong>

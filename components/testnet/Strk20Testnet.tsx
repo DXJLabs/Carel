@@ -98,6 +98,10 @@ import {
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
 
 import {
+  getVesuBorrowPair,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
+import {
   validateVesuAddCollateralCalls,
   validateVesuWithdrawCollateralCalls,
   type VesuAddCollateralExecutionPayload,
@@ -2574,14 +2578,15 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    if (
-      payload.collateralAssetId !==
-        network.assets.strk.id ||
-      payload.debtAssetId !==
-        network.assets.usdc.id
-    ) {
+    const pair =
+      getVesuBorrowPair(
+        payload.collateralAssetId,
+        payload.debtAssetId,
+      );
+
+    if (!pair) {
       throw new Error(
-        "Prepared Borrow does not match CAREL's reviewed STRK/USDC pair.",
+        "Prepared Vesu execution references a CAREL-disabled asset pair.",
       );
     }
 
@@ -2619,7 +2624,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const market:
       VesuBorrowMarket = {
         id:
-          `vesu:${pool.id}:STRK:USDC`,
+          `vesu:${pool.id}:${pair.collateralAsset.symbol}:${pair.debtAsset.symbol}`,
         chainId:
           network.chainId,
         poolAddress:
@@ -2635,9 +2640,9 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         action:
           "borrow",
         collateralAssetId:
-          network.assets.strk.id,
+          pair.collateralAsset.id,
         borrowAssetId:
-          network.assets.usdc.id,
+          pair.debtAsset.id,
         collateralAmount,
         borrowAmount,
         privacy:
@@ -2881,14 +2886,15 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    if (
-      payload.collateralAssetId !==
-        network.assets.strk.id ||
-      payload.debtAssetId !==
-        network.assets.usdc.id
-    ) {
+    const pair =
+      getVesuBorrowPair(
+        payload.collateralAssetId,
+        payload.debtAssetId,
+      );
+
+    if (!pair) {
       throw new Error(
-        "Prepared Repay does not match CAREL's reviewed STRK/USDC position.",
+        "Prepared Vesu execution references a CAREL-disabled asset pair.",
       );
     }
 
@@ -2915,7 +2921,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const market:
       VesuBorrowMarket = {
         id:
-          `vesu:${pool.id}:STRK:USDC`,
+          `vesu:${pool.id}:${pair.collateralAsset.symbol}:${pair.debtAsset.symbol}`,
 
         chainId:
           network.chainId,
@@ -2924,10 +2930,10 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           pool.address,
 
         collateralAsset:
-          network.assets.strk,
+          pair.collateralAsset,
 
         debtAsset:
-          network.assets.usdc,
+          pair.debtAsset,
       };
 
     const intent:
@@ -2936,7 +2942,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           "repay",
 
         assetId:
-          network.assets.usdc.id,
+          pair.debtAsset.id,
 
         amount:
           repayAmount,
@@ -2960,21 +2966,21 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         intent,
       });
 
-    const knownUsdc =
+    const knownDebt =
       findAssetBalance(
         balances,
-        network.assets.usdc.id,
+        pair.debtAsset.id,
         "public",
       )?.amount;
 
     if (
-      knownUsdc !== null &&
-      knownUsdc !== undefined &&
-      knownUsdc <
+      knownDebt !== null &&
+      knownDebt !== undefined &&
+      knownDebt <
         repayAmount
     ) {
       throw new Error(
-        "Insufficient public USDC balance for this Repay.",
+        `Insufficient public ${pair.debtAsset.symbol} balance for this Repay.`,
       );
     }
 
@@ -3192,14 +3198,15 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    if (
-      payload.collateralAssetId !==
-        network.assets.strk.id ||
-      payload.debtAssetId !==
-        network.assets.usdc.id
-    ) {
+    const pair =
+      getVesuBorrowPair(
+        payload.collateralAssetId,
+        payload.debtAssetId,
+      );
+
+    if (!pair) {
       throw new Error(
-        "Prepared Add Collateral does not match CAREL's STRK/USDC position.",
+        "Prepared Vesu execution references a CAREL-disabled asset pair.",
       );
     }
 
@@ -3228,7 +3235,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const market:
       VesuBorrowMarket = {
         id:
-          `vesu:${pool.id}:STRK:USDC`,
+          `vesu:${pool.id}:${pair.collateralAsset.symbol}:${pair.debtAsset.symbol}`,
 
         chainId:
           network.chainId,
@@ -3237,10 +3244,10 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           pool.address,
 
         collateralAsset:
-          network.assets.strk,
+          pair.collateralAsset,
 
         debtAsset:
-          network.assets.usdc,
+          pair.debtAsset,
       };
 
     const intent:
@@ -3249,7 +3256,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           "add-collateral",
 
         collateralAssetId:
-          network.assets.strk.id,
+          pair.collateralAsset.id,
 
         amount:
           collateralAmount,
@@ -3501,14 +3508,15 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    if (
-      payload.collateralAssetId !==
-        network.assets.strk.id ||
-      payload.debtAssetId !==
-        network.assets.usdc.id
-    ) {
+    const pair =
+      getVesuBorrowPair(
+        payload.collateralAssetId,
+        payload.debtAssetId,
+      );
+
+    if (!pair) {
       throw new Error(
-        "Prepared withdrawal does not match CAREL's STRK/USDC position.",
+        "Prepared Vesu execution references a CAREL-disabled asset pair.",
       );
     }
 
@@ -3537,7 +3545,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const market:
       VesuBorrowMarket = {
         id:
-          `vesu:${pool.id}:STRK:USDC`,
+          `vesu:${pool.id}:${pair.collateralAsset.symbol}:${pair.debtAsset.symbol}`,
 
         chainId:
           network.chainId,
@@ -3546,10 +3554,10 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           pool.address,
 
         collateralAsset:
-          network.assets.strk,
+          pair.collateralAsset,
 
         debtAsset:
-          network.assets.usdc,
+          pair.debtAsset,
       };
 
     const intent:
@@ -3558,7 +3566,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           "withdraw-collateral",
 
         collateralAssetId:
-          network.assets.strk.id,
+          pair.collateralAsset.id,
 
         amount:
           collateralAmount,
@@ -3792,14 +3800,15 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    if (
-      payload.collateralAssetId !==
-        network.assets.strk.id ||
-      payload.debtAssetId !==
-        network.assets.usdc.id
-    ) {
+    const pair =
+      getVesuBorrowPair(
+        payload.collateralAssetId,
+        payload.debtAssetId,
+      );
+
+    if (!pair) {
       throw new Error(
-        "Prepared Close Position does not match CAREL's reviewed STRK/USDC market.",
+        "Prepared Vesu execution references a CAREL-disabled asset pair.",
       );
     }
 
@@ -3856,7 +3865,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     const market:
       VesuBorrowMarket = {
         id:
-          `vesu:${pool.id}:STRK:USDC`,
+          `vesu:${pool.id}:${pair.collateralAsset.symbol}:${pair.debtAsset.symbol}`,
 
         chainId:
           network.chainId,
@@ -3865,10 +3874,10 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           pool.address,
 
         collateralAsset:
-          network.assets.strk,
+          pair.collateralAsset,
 
         debtAsset:
-          network.assets.usdc,
+          pair.debtAsset,
       };
 
     const safeCalls =
@@ -3887,21 +3896,21 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         approvalCap,
       });
 
-    const knownUsdc =
+    const knownDebt =
       findAssetBalance(
         balances,
-        network.assets.usdc.id,
+        pair.debtAsset.id,
         "public",
       )?.amount;
 
     if (
-      knownUsdc !== null &&
-      knownUsdc !== undefined &&
-      knownUsdc <
+      knownDebt !== null &&
+      knownDebt !== undefined &&
+      knownDebt <
         debtSnapshot
     ) {
       throw new Error(
-        "Public USDC balance is below the current Vesu debt snapshot.",
+        `Public ${pair.debtAsset.symbol} balance is below the current Vesu debt snapshot.`,
       );
     }
 

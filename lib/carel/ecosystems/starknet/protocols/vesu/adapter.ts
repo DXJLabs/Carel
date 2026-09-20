@@ -8,9 +8,8 @@ import type {
 } from "@/lib/carel/core/execution";
 
 import {
-  STARKNET_MAINNET_STRK,
-  STARKNET_MAINNET_USDC,
-} from "@/lib/carel/ecosystems/starknet/assets";
+  getVesuBorrowPair,
+} from "./pairs";
 
 import {
   STARKNET_MAINNET,
@@ -70,10 +69,10 @@ export function supportsVesuBorrowIntent(
   }
 
   if (
-    intent.collateralAssetId !==
-      STARKNET_MAINNET_STRK.id ||
-    intent.borrowAssetId !==
-      STARKNET_MAINNET_USDC.id
+    !getVesuBorrowPair(
+      intent.collateralAssetId,
+      intent.borrowAssetId,
+    )
   ) {
     return false;
   }

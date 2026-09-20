@@ -34,6 +34,10 @@ import {
   getVesuPool,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
 
+import {
+  getVesuBorrowPair,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
 export const runtime =
   "nodejs";
 
@@ -170,6 +174,25 @@ export async function POST(
     const network =
       CAREL_NETWORKS.mainnet;
 
+    const pair =
+      getVesuBorrowPair(
+        typeof body.collateralAssetId ===
+          "string"
+          ? body.collateralAssetId
+          : network.assets.strk.id,
+        typeof body.debtAssetId ===
+          "string"
+          ? body.debtAssetId
+          : network.assets.usdc.id,
+      );
+
+    if (!pair) {
+      throw new Error(
+        "CAREL does not enable this Vesu Borrow pair.",
+      );
+    }
+
+
     const [
       position,
       risk,
@@ -184,10 +207,10 @@ export async function POST(
           owner,
 
           collateralAsset:
-            network.assets.strk,
+            pair.collateralAsset,
 
           debtAsset:
-            network.assets.usdc,
+            pair.debtAsset,
         }),
 
         readVesuBorrowRisk({
@@ -200,10 +223,10 @@ export async function POST(
             network.chainId,
 
           collateralAsset:
-            network.assets.strk,
+            pair.collateralAsset,
 
           debtAsset:
-            network.assets.usdc,
+            pair.debtAsset,
         }),
       ]);
 
@@ -212,14 +235,14 @@ export async function POST(
       position.debtAmount <= 0n
     ) {
       throw new Error(
-        "No active Vesu USDC debt was found in this pool.",
+        `No active Vesu ${pair.debtAsset.symbol} debt was found in this pool.`,
       );
     }
 
     const repayAmount =
       parseUnits(
         repayText,
-        network.assets.usdc
+        pair.debtAsset
           .decimals,
       );
 
@@ -297,7 +320,7 @@ export async function POST(
           "repay",
 
         assetId:
-          network.assets.usdc.id,
+          pair.debtAsset.id,
 
         amount:
           repayAmount,
@@ -365,10 +388,10 @@ export async function POST(
           owner,
 
           collateralAssetId:
-            network.assets.strk.id,
+            pair.collateralAsset.id,
 
           debtAssetId:
-            network.assets.usdc.id,
+            pair.debtAsset.id,
 
           repayAmount:
             repayAmount

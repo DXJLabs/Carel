@@ -252,6 +252,12 @@ export function VesuRepay({
 
                 repayAmount:
                   amount,
+
+                collateralAssetId:
+                  collateralAsset.id,
+
+                debtAssetId:
+                  debtAsset.id,
               }),
           },
         );
@@ -363,6 +369,9 @@ export function VesuRepay({
         collateralAmount={
           collateralAmount
         }
+        debtAsset={
+          debtAsset
+        }
         hidden={
           hidden
         }
@@ -379,6 +388,9 @@ export function VesuRepay({
         }
         collateralAmount={
           collateralAmount
+        }
+        debtAsset={
+          debtAsset
         }
         hidden={
           hidden

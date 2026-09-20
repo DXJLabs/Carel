@@ -25,6 +25,10 @@ import {
   getVesuPool,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pools";
 
+import {
+  getVesuBorrowPair,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
+
 export const runtime =
   "nodejs";
 
@@ -147,6 +151,24 @@ export async function POST(
     const network =
       CAREL_NETWORKS.mainnet;
 
+    const pair =
+      getVesuBorrowPair(
+        typeof body.collateralAssetId ===
+          "string"
+          ? body.collateralAssetId
+          : network.assets.strk.id,
+        typeof body.debtAssetId ===
+          "string"
+          ? body.debtAssetId
+          : network.assets.usdc.id,
+      );
+
+    if (!pair) {
+      throw new Error(
+        "CAREL does not enable this Vesu Borrow pair.",
+      );
+    }
+
     const risk =
       await readVesuBorrowRisk({
         provider:
@@ -155,9 +177,9 @@ export async function POST(
         chainId:
           network.chainId,
         collateralAsset:
-          network.assets.strk,
+          pair.collateralAsset,
         debtAsset:
-          network.assets.usdc,
+          pair.debtAsset,
       });
 
     const evaluation =
@@ -286,10 +308,10 @@ export async function POST(
           owner,
 
           collateralAssetId:
-            network.assets.strk.id,
+            pair.collateralAsset.id,
 
           debtAssetId:
-            network.assets.usdc.id,
+            pair.debtAsset.id,
 
           collateralAmount:
             intent
