@@ -11,6 +11,11 @@ import {
 } from "@/lib/carel/ecosystems/starknet/addresses";
 
 import {
+  requireVesuAssetAddress,
+  toUint256Calldata,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
+
+import {
   readVesuBorrowRisk,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/markets";
 
@@ -23,6 +28,10 @@ import {
   createVesuLendIntent,
   getVesuLendPair,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
+
+import {
+  VESU_MAINNET_POOL_FACTORY,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/private-lending";
 
 
 export const runtime =
@@ -52,6 +61,31 @@ function amountText(
   }
 
   return value;
+}
+
+
+function readUint256(
+  values: readonly string[],
+  label: string,
+): bigint {
+  if (
+    values.length < 2
+  ) {
+    throw new Error(
+      `Vesu ${label} returned malformed uint256 data.`,
+    );
+  }
+
+  return (
+    BigInt(
+      values[0],
+    ) +
+    (
+      BigInt(
+        values[1],
+      ) << 128n
+    )
+  );
 }
 
 
@@ -173,6 +207,177 @@ export async function POST(
         amount,
       });
 
+    const assetAddress =
+      requireVesuAssetAddress(
+        pair.asset,
+      );
+
+    /*
+     * Resolve the canonical Vesu vault instead of maintaining
+     * a hand-written vToken registry.
+     */
+    const resolved =
+      await network.provider
+        .callContract({
+          contractAddress:
+            VESU_MAINNET_POOL_FACTORY,
+
+          entrypoint:
+            "v_token_for_asset",
+
+          calldata: [
+            pool.address,
+            assetAddress,
+          ],
+        });
+
+    if (!resolved[0]) {
+      throw new Error(
+        "Vesu did not return a vToken for this pool and asset.",
+      );
+    }
+
+    const vTokenAddress =
+      normalizeStarknetAddress(
+        resolved[0],
+      );
+
+    if (
+      BigInt(
+        vTokenAddress,
+      ) === 0n
+    ) {
+      throw new Error(
+        "Selected Vesu pool has no active vToken for this asset.",
+      );
+    }
+
+    const amountWords =
+      toUint256Calldata(
+        intent.amount,
+      );
+
+    /*
+     * Verify the vault against its own live state and make sure
+     * this exact deposit amount is currently executable.
+     */
+    const [
+      underlying,
+      vaultPool,
+      maxDepositRaw,
+      previewRaw,
+    ] =
+      await Promise.all([
+        network.provider
+          .callContract({
+            contractAddress:
+              vTokenAddress,
+
+            entrypoint:
+              "asset",
+
+            calldata: [],
+          }),
+
+        network.provider
+          .callContract({
+            contractAddress:
+              vTokenAddress,
+
+            entrypoint:
+              "pool_contract",
+
+            calldata: [],
+          }),
+
+        network.provider
+          .callContract({
+            contractAddress:
+              vTokenAddress,
+
+            entrypoint:
+              "max_deposit",
+
+            calldata: [
+              owner,
+            ],
+          }),
+
+        network.provider
+          .callContract({
+            contractAddress:
+              vTokenAddress,
+
+            entrypoint:
+              "preview_deposit",
+
+            calldata: [
+              ...amountWords,
+            ],
+          }),
+      ]);
+
+    if (
+      !underlying[0] ||
+      BigInt(
+        normalizeStarknetAddress(
+          underlying[0],
+        ),
+      ) !==
+        BigInt(
+          assetAddress,
+        )
+    ) {
+      throw new Error(
+        "Resolved Vesu vToken underlying does not match the reviewed asset.",
+      );
+    }
+
+    if (
+      !vaultPool[0] ||
+      BigInt(
+        normalizeStarknetAddress(
+          vaultPool[0],
+        ),
+      ) !==
+        BigInt(
+          pool.address,
+        )
+    ) {
+      throw new Error(
+        "Resolved Vesu vToken belongs to another pool.",
+      );
+    }
+
+    const maxDeposit =
+      readUint256(
+        maxDepositRaw,
+        "max_deposit",
+      );
+
+    if (
+      intent.amount >
+      maxDeposit
+    ) {
+      throw new Error(
+        "This Vesu vault cannot currently accept the requested deposit amount.",
+      );
+    }
+
+    const previewShares =
+      readUint256(
+        previewRaw,
+        "preview_deposit",
+      );
+
+    if (
+      previewShares <= 0n
+    ) {
+      throw new Error(
+        "Vesu returned zero shares for this deposit.",
+      );
+    }
+
     const calls =
       buildVesuLendCalls({
         market:
@@ -181,6 +386,8 @@ export async function POST(
         owner,
 
         intent,
+
+        vTokenAddress,
       });
 
     const preparedAt =
@@ -230,6 +437,8 @@ export async function POST(
 
           counterpartAssetId:
             pair.counterpart.id,
+
+          vTokenAddress,
 
           amount:
             intent.amount

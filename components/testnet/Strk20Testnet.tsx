@@ -3512,6 +3512,100 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
           "public",
       };
 
+    /*
+     * Do not trust the prepared vToken address by itself.
+     * Re-resolve it directly from Vesu before wallet execution.
+     */
+    const assetAddress =
+      requireStarknetBalanceAddress(
+        pair.asset,
+      );
+
+    const resolvedVToken =
+      await network.provider
+        .callContract({
+          contractAddress:
+            VESU_MAINNET_POOL_FACTORY,
+
+          entrypoint:
+            "v_token_for_asset",
+
+          calldata: [
+            pool.address,
+            assetAddress,
+          ],
+        });
+
+    if (
+      !resolvedVToken[0] ||
+      felt(
+        resolvedVToken[0],
+      ) !==
+        felt(
+          payload.vTokenAddress,
+        )
+    ) {
+      throw new Error(
+        "Prepared Lend vToken does not match Vesu PoolFactory.",
+      );
+    }
+
+    const [
+      vaultUnderlying,
+      vaultPool,
+    ] =
+      await Promise.all([
+        network.provider
+          .callContract({
+            contractAddress:
+              payload.vTokenAddress,
+
+            entrypoint:
+              "asset",
+
+            calldata: [],
+          }),
+
+        network.provider
+          .callContract({
+            contractAddress:
+              payload.vTokenAddress,
+
+            entrypoint:
+              "pool_contract",
+
+            calldata: [],
+          }),
+      ]);
+
+    if (
+      !vaultUnderlying[0] ||
+      felt(
+        vaultUnderlying[0],
+      ) !==
+        felt(
+          assetAddress,
+        )
+    ) {
+      throw new Error(
+        "Vesu vToken underlying changed after review.",
+      );
+    }
+
+    if (
+      !vaultPool[0] ||
+      felt(
+        vaultPool[0],
+      ) !==
+        felt(
+          pool.address,
+        )
+    ) {
+      throw new Error(
+        "Vesu vToken pool changed after review.",
+      );
+    }
+
     const safeCalls =
       validateVesuLendCalls({
         calls:
@@ -3522,6 +3616,9 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
         owner,
 
         intent,
+
+        vTokenAddress:
+          payload.vTokenAddress,
       });
 
     const knownBalance =

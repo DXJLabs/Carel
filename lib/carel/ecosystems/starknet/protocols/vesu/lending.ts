@@ -24,8 +24,6 @@ import {
 } from "@/lib/carel/ecosystems/starknet/addresses";
 
 import {
-  encodePositiveVesuAssetAmount,
-  encodeVesuNativeAmount,
   requireVesuAssetAddress,
   toUint256Calldata,
   validateVesuBorrowMarket,
@@ -141,6 +139,8 @@ export type VesuLendExecutionPayload =
     assetId: string;
     counterpartAssetId: string;
 
+    vTokenAddress: string;
+
     amount: string;
 
     preparedAt: number;
@@ -191,17 +191,25 @@ export function createVesuLendIntent({
 
 
 /**
- * Vesu supply:
- * exact ERC20 approval + positive collateral delta + zero debt.
+ * Public Vesu lending through its ERC-4626 vToken.
+ *
+ * underlying ERC20
+ *   -> exact approval to vToken
+ *   -> vToken.deposit(assets, owner)
+ *   -> public vToken shares
+ *
+ * This intentionally matches the vault model used by Shield Lend.
  */
 export function buildVesuLendCalls({
   market,
   owner,
   intent,
+  vTokenAddress,
 }: {
   market: VesuBorrowMarket;
   owner: string;
   intent: VesuLendIntent;
+  vTokenAddress: string;
 }): Call[] {
   validateVesuBorrowMarket(
     market,
@@ -226,11 +234,6 @@ export function buildVesuLendCalls({
     );
   }
 
-  const pool =
-    normalizeStarknetAddress(
-      market.poolAddress,
-    );
-
   const account =
     normalizeStarknetAddress(
       owner,
@@ -241,24 +244,23 @@ export function buildVesuLendCalls({
       market.collateralAsset,
     );
 
-  const counterpart =
-    requireVesuAssetAddress(
-      market.debtAsset,
+  const vToken =
+    normalizeStarknetAddress(
+      vTokenAddress,
     );
 
-  const approval =
+  if (
+    BigInt(vToken) === 0n ||
+    vToken === asset
+  ) {
+    throw new Error(
+      "Invalid Vesu vToken for this Lend.",
+    );
+  }
+
+  const amount =
     toUint256Calldata(
       intent.amount,
-    );
-
-  const supply =
-    encodePositiveVesuAssetAmount(
-      intent.amount,
-    );
-
-  const zeroDebt =
-    encodeVesuNativeAmount(
-      0n,
     );
 
   return [
@@ -270,25 +272,21 @@ export function buildVesuLendCalls({
         "approve",
 
       calldata: [
-        pool,
-        ...approval,
+        vToken,
+        ...amount,
       ],
     },
 
     {
       contractAddress:
-        pool,
+        vToken,
 
       entrypoint:
-        "modify_position",
+        "deposit",
 
       calldata: [
-        asset,
-        counterpart,
+        ...amount,
         account,
-
-        ...supply,
-        ...zeroDebt,
       ],
     },
   ];
@@ -300,17 +298,20 @@ export function validateVesuLendCalls({
   market,
   owner,
   intent,
+  vTokenAddress,
 }: {
   calls: readonly Call[];
   market: VesuBorrowMarket;
   owner: string;
   intent: VesuLendIntent;
+  vTokenAddress: string;
 }): Call[] {
   const expected =
     buildVesuLendCalls({
       market,
       owner,
       intent,
+      vTokenAddress,
     });
 
   return validateVesuCallSequence({
@@ -322,12 +323,14 @@ export function validateVesuLendCalls({
 
     specs: [
       {
+        // approve(vToken, amount)
         addressIndexes:
           [0],
       },
       {
+        // deposit(amount, receiver)
         addressIndexes:
-          [0, 1, 2],
+          [2],
       },
     ],
   });

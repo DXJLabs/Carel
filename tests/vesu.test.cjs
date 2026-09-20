@@ -786,7 +786,7 @@ test(
 
 
 test(
-  "Vesu Lend uses exact approval and zero-debt supply position",
+  "Vesu Lend uses exact approval and ERC-4626 vToken deposit",
   () => {
     const intent = {
       assetId:
@@ -799,6 +799,9 @@ test(
         "public",
     };
 
+    const vTokenAddress =
+      "0x555";
+
     const calls =
       lending
         .buildVesuLendCalls({
@@ -809,6 +812,8 @@ test(
             OWNER,
 
           intent,
+
+          vTokenAddress,
         });
 
     assert.equal(
@@ -816,33 +821,41 @@ test(
       2,
     );
 
+    assert.equal(
+      calls[0].contractAddress,
+      STRK.identifier.address,
+    );
+
+    assert.equal(
+      calls[0].entrypoint,
+      "approve",
+    );
+
     assert.deepEqual(
       calls[0].calldata,
       [
-        MARKET.poolAddress,
+        vTokenAddress,
         "0x5",
         "0x0",
       ],
     );
 
+    assert.equal(
+      calls[1].contractAddress,
+      vTokenAddress,
+    );
+
+    assert.equal(
+      calls[1].entrypoint,
+      "deposit",
+    );
+
     assert.deepEqual(
       calls[1].calldata,
       [
-        STRK.identifier.address,
-        USDC.identifier.address,
-        OWNER,
-
-        // supplied STRK: Assets +5
-        "1",
         "0x5",
         "0x0",
-        "0",
-
-        // debt: Native zero
-        "0",
-        "0x0",
-        "0x0",
-        "0",
+        OWNER,
       ],
     );
 
@@ -850,17 +863,50 @@ test(
       lending
         .validateVesuLendCalls({
           calls,
+
           market:
             MARKET,
+
           owner:
             OWNER,
+
           intent,
+
+          vTokenAddress,
         }),
       calls,
     );
+
+    const altered =
+      cloneCalls(
+        calls,
+      );
+
+    altered[0]
+      .calldata[0] =
+      "0x999";
+
+    assert.throws(
+      () =>
+        lending
+          .validateVesuLendCalls({
+            calls:
+              altered,
+
+            market:
+              MARKET,
+
+            owner:
+              OWNER,
+
+            intent,
+
+            vTokenAddress,
+          }),
+      /blocked/i,
+    );
   },
 );
-
 
 
 test(
