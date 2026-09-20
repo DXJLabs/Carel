@@ -12,6 +12,12 @@ import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
 import { buildLivePlan } from "@/lib/agent/livePlanner";
 import {
+  buildStarknetAgentPlan,
+} from "@/lib/agent/starknet-planner";
+import type {
+  AgentPlan,
+} from "@/lib/agent/plan";
+import {
   resolveWorkspaceAgentGoal,
 } from "@/lib/agent/workspace";
 import {
@@ -150,6 +156,8 @@ export function CarelApp() {
   const [goalText, setGoalText] = useState("Swap 1 STRK for USDC.");
   const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
+  const [agentPlan, setAgentPlan] =
+    useState<AgentPlan | null>(null);
   const [goalError, setGoalError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
@@ -430,6 +438,10 @@ export function CarelApp() {
       false,
     );
 
+    setAgentPlan(
+      null,
+    );
+
     setGoalError(
       null,
     );
@@ -455,6 +467,7 @@ export function CarelApp() {
       }.`,
     );
     setPlanned(false);
+    setAgentPlan(null);
     setGoalError(null);
   }
 
@@ -462,6 +475,7 @@ export function CarelApp() {
     setMode("normal");
     setSelectedAdapterId(null);
     setPlanned(false);
+    setAgentPlan(null);
     setGoalError(null);
 
     if (!selectedTool) {
@@ -477,6 +491,7 @@ export function CarelApp() {
     setMode(next);
     setSelectedAdapterId(null);
     setPlanned(false);
+    setAgentPlan(null);
     setGoalError(null);
 
     if (!selectedTool) {
@@ -485,8 +500,169 @@ export function CarelApp() {
   }
   function previewPlan() {
     setPlanned(false);
+    setAgentPlan(null);
     setGoalError(null);
 
+    /*
+     * First build CAREL's provider-neutral Agent plan.
+     *
+     * This layer understands execution stages, dependencies,
+     * privacy transitions and the CAREL fee boundary.
+     */
+    const structuredPlan =
+      buildStarknetAgentPlan({
+        goal:
+          goalText,
+
+        chainId:
+          wallet.chainId,
+
+        mode,
+      });
+
+    const structuredTool =
+      structuredPlan
+        .objective
+        .tool;
+
+    /*
+     * Balance targets still use the original live STRK planner.
+     * Execution tools use the new Agent Core.
+     */
+    if (
+      structuredTool !==
+        "Balance"
+    ) {
+      setSelectedTool(
+        structuredTool,
+      );
+
+      if (
+        structuredPlan.status !==
+          "ready"
+      ) {
+        setSelectedAdapterId(
+          null,
+        );
+
+        setBridgeIntent(
+          null,
+        );
+
+        setGoalError(
+          structuredPlan.message ??
+            "CAREL cannot build this Agent plan yet.",
+        );
+
+        return;
+      }
+
+      const effectiveMode =
+        structuredPlan
+          .objective
+          .mode;
+
+      /*
+       * Natural-language privacy intent may override the currently
+       * selected UI mode.
+       *
+       * Example:
+       * "Borrow 50 USDC ... keep the result private"
+       * automatically becomes Shield mode.
+       */
+      if (
+        effectiveMode !==
+          mode
+      ) {
+        setMode(
+          effectiveMode,
+        );
+      }
+
+      const decision =
+        resolveWorkspaceAgentGoal({
+          goal:
+            goalText,
+
+          chainId:
+            wallet.chainId,
+
+          account:
+            wallet.connected
+              ? wallet.address
+              : undefined,
+
+          mode:
+            effectiveMode,
+
+          registry:
+            CAREL_EXECUTION_CAPABILITY_REGISTRY,
+        });
+
+      if (
+        decision.kind ===
+          "execution" ||
+        decision.kind ===
+          "explicit"
+      ) {
+        setAgentPlan(
+          structuredPlan,
+        );
+
+        setSelectedTool(
+          decision.tool,
+        );
+
+        setSelectedAdapterId(
+          decision.kind ===
+            "execution"
+            ? decision.adapterId ??
+              null
+            : null,
+        );
+
+        setBridgeIntent(
+          null,
+        );
+
+        if (
+          decision.tool ===
+            "Bridge"
+        ) {
+          setBridgeIntent(
+            bridgeSurfaceIntentFromRoute(
+              decision.route,
+            ),
+          );
+        }
+
+        return;
+      }
+
+      setSelectedAdapterId(
+        null,
+      );
+
+      setBridgeIntent(
+        null,
+      );
+
+      setGoalError(
+        decision.kind ===
+          "error"
+          ? decision.message
+          : "CAREL could not resolve this Agent plan to an execution surface.",
+      );
+
+      return;
+    }
+
+    /*
+     * Legacy live balance target:
+     *
+     * "Keep at least 1 STRK private."
+     * "Keep at least 1 STRK public."
+     */
     const decision =
       resolveWorkspaceAgentGoal({
         goal:
@@ -506,64 +682,6 @@ export function CarelApp() {
           CAREL_EXECUTION_CAPABILITY_REGISTRY,
       });
 
-    if (
-      decision.kind ===
-        "execution" ||
-      decision.kind ===
-        "explicit"
-    ) {
-      setSelectedTool(
-        decision.tool,
-      );
-
-      setSelectedAdapterId(
-        decision.kind === "execution"
-          ? decision.adapterId ?? null
-          : null,
-      );
-
-      setBridgeIntent(
-        null,
-      );
-
-      if (
-        decision.tool ===
-        "Bridge"
-      ) {
-        setBridgeIntent(
-          bridgeSurfaceIntentFromRoute(
-            decision.route,
-          ),
-        );
-      }
-
-      return;
-    }
-
-    if (
-      decision.kind ===
-      "error"
-    ) {
-      setSelectedTool(
-        decision.tool ??
-          null,
-      );
-
-      setBridgeIntent(
-        null,
-      );
-
-      setSelectedAdapterId(
-        null,
-      );
-
-      setGoalError(
-        decision.message,
-      );
-
-      return;
-    }
-
     const routed =
       decision.route;
 
@@ -581,7 +699,7 @@ export function CarelApp() {
 
     if (
       mode ===
-      "normal"
+        "normal"
     ) {
       setGoalError(
         "Normal mode is public → public. Choose Shield or Unshield for a privacy balance target.",
@@ -591,7 +709,7 @@ export function CarelApp() {
 
     if (
       routed.status ===
-      "invalid"
+        "invalid"
     ) {
       setGoalError(
         routed.message ||
@@ -927,7 +1045,7 @@ export function CarelApp() {
   function renderAgent() {
     return <div className={styles.narrowPage}>
       <div className={styles.intro}><p className={styles.eyebrow}>CAREL AGENT</p><h1>What’s your<br/>next move?</h1><p>Set a goal. Review every step.</p></div>
-      <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
+      <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setAgentPlan(null); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
         <div className={styles.modeRow}>
           <button
             type="button"
@@ -969,6 +1087,106 @@ export function CarelApp() {
         </div>
       </div>
       <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
+
+      {agentPlan && (
+        <section
+          className={styles.plan}
+          aria-live="polite"
+        >
+          <SectionHeading title="Agent plan">
+            <span className={styles.status}>
+              {agentPlan.objective.mode}
+            </span>
+          </SectionHeading>
+
+          <div className={styles.panel}>
+            <div className={styles.rule}>
+              <span>Objective</span>
+              <strong>
+                {agentPlan.objective.tool}
+              </strong>
+            </div>
+
+            <div className={styles.rule}>
+              <span>Network</span>
+              <strong>
+                {activeNetwork?.label ?? "Starknet"}
+              </strong>
+            </div>
+
+            {agentPlan.stages.map(
+              (stage, index) => (
+                <div
+                  key={stage.id}
+                >
+                  <div className={styles.rule}>
+                    <span>
+                      Stage {index + 1}
+                      {" · "}
+                      {stage.action
+                        .slice(0, 1)
+                        .toUpperCase() +
+                        stage.action.slice(1)}
+                    </span>
+
+                    <strong>
+                      {stage.privacyBefore}
+                      {" → "}
+                      {stage.privacyAfter}
+                    </strong>
+                  </div>
+
+                  {(stage.inputAssetSymbol ||
+                    stage.outputAssetSymbol) && (
+                    <p className={styles.helper}>
+                      {stage.inputAssetSymbol ?? "Asset"}
+                      {stage.outputAssetSymbol &&
+                        stage.outputAssetSymbol !==
+                          stage.inputAssetSymbol
+                        ? ` → ${stage.outputAssetSymbol}`
+                        : ""}
+                    </p>
+                  )}
+
+                  {stage.dependsOn.length > 0 && (
+                    <p className={styles.helper}>
+                      Runs after{" "}
+                      {stage.dependsOn.join(", ")}
+                      {" "}is confirmed.
+                    </p>
+                  )}
+
+                  {stage.note && (
+                    <p className={styles.privacyNote}>
+                      {stage.note}
+                    </p>
+                  )}
+                </div>
+              ),
+            )}
+
+            <div className={styles.rule}>
+              <span>CAREL Agent fee</span>
+              <strong>
+                Quoted before execution
+              </strong>
+            </div>
+
+            <p className={styles.helper}>
+              One Agent fee boundary applies to this plan.
+              Protocol and network fees remain separate.
+            </p>
+
+            <div className={styles.rule}>
+              <span>Authorization</span>
+              <strong>
+                Wallet approval required
+              </strong>
+            </div>
+          </div>
+        </section>
+      )}
+
       {selectedRuntimeSurface === "bridge" ? (
         <GardenBridge
           mode={mode}
