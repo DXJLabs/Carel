@@ -12,6 +12,12 @@ import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
 import { buildLivePlan } from "@/lib/agent/livePlanner";
 import { routeAgentGoal } from "@/lib/agent/router";
+import {
+  resolveWorkspaceAgentGoal,
+} from "@/lib/agent/workspace";
+import {
+  CAREL_EXECUTION_CAPABILITY_REGISTRY,
+} from "@/lib/carel/adapters";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import {
@@ -440,123 +446,212 @@ export function CarelApp() {
     }
   }
   function previewPlan() {
-    setPlanned(false); setGoalError(null);
+    setPlanned(false);
+    setGoalError(null);
 
-    const routed = routeAgentGoal(goalText);
+    const decision =
+      resolveWorkspaceAgentGoal({
+        goal:
+          goalText,
 
-    if (routed.tool === "Bridge") {
-      if (
-        routed.status !==
-          "ready" ||
-        !routed.bridgeRequest
-      ) {
-        setSelectedTool(null);
-        setBridgeIntent(null);
-        setGoalError(
-          routed.message ||
-            "Enter an explicit Bridge goal.",
-        );
-        return;
-      }
+        chainId:
+          wallet.chainId,
 
-      try {
-        setBridgeIntent(
-          gardenBridgeIntentFromRequest(
-            routed.bridgeRequest,
-          ),
-        );
+        account:
+          wallet.connected
+            ? wallet.address
+            : undefined,
 
-        setSelectedTool(
-          "Bridge",
-        );
-      } catch (error) {
-        setSelectedTool(
-          "Bridge",
-        );
+        mode,
 
-        setBridgeIntent(
-          null,
-        );
+        registry:
+          CAREL_EXECUTION_CAPABILITY_REGISTRY,
+      });
 
-        setGoalError(
-          error instanceof Error
-            ? error.message
-            : "No current bridge adapter supports that route.",
-        );
-      }
-
-      return;
-    }
-
-    if (routed.tool === "Swap") {
-      setSelectedTool("Swap");
-      setBridgeIntent(null);
-      return;
-    }
-
-    if (routed.tool === "Staking") {
-      setSelectedTool("Staking");
-      setBridgeIntent(null);
-      return;
-    }
-
-    if (routed.tool === "Borrow") {
-      if (
-        routed.status !== "ready" ||
-        !routed.borrowRequest
-      ) {
-        setSelectedTool("Borrow");
-        setBridgeIntent(null);
-        setGoalError(
-          routed.message ||
-            "Enter an explicit Borrow goal.",
-        );
-        return;
-      }
-
-      setSelectedTool("Borrow");
-      setBridgeIntent(null);
-      return;
-    }
-
-    if (routed.tool !== "Balance") {
-      setSelectedTool(routed.tool);
-      setGoalError(
-        routed.message ||
-          `${routed.tool} is recognized but is not connected on CAREL testnet yet.`,
+    if (
+      decision.kind ===
+        "execution" ||
+      decision.kind ===
+        "explicit"
+    ) {
+      setSelectedTool(
+        decision.tool,
       );
+
+      setBridgeIntent(
+        null,
+      );
+
+      if (
+        decision.tool ===
+          "Bridge" &&
+        decision.route
+          .bridgeRequest
+      ) {
+        try {
+          /*
+           * GardenBridge still presents the live destination asset choice.
+           * Agent planning must not guess WBTC versus strkBTC.
+           */
+          setBridgeIntent(
+            gardenBridgeIntentFromRequest(
+              decision.route
+                .bridgeRequest,
+            ),
+          );
+        } catch {
+          setBridgeIntent(
+            null,
+          );
+        }
+      }
+
       return;
     }
 
-    if (mode === "normal") {
+    if (
+      decision.kind ===
+      "error"
+    ) {
+      setSelectedTool(
+        decision.tool ??
+          null,
+      );
+
+      setBridgeIntent(
+        null,
+      );
+
+      setGoalError(
+        decision.message,
+      );
+
+      return;
+    }
+
+    const routed =
+      decision.route;
+
+    setSelectedTool(
+      null,
+    );
+
+    setBridgeIntent(
+      null,
+    );
+
+    if (
+      mode ===
+      "normal"
+    ) {
       setGoalError(
         "Normal mode is public → public. Choose Shield or Unshield for a privacy balance target.",
       );
       return;
     }
 
-    if (routed.status === "invalid") {
-      setGoalError(routed.message || "Enter a valid goal.");
+    if (
+      routed.status ===
+      "invalid"
+    ) {
+      setGoalError(
+        routed.message ||
+          "Enter a valid goal.",
+      );
       return;
     }
-    if (!/\bSTRK\b/i.test(goalText) || /\b(USDC|USDT|ETH|BTC)\b/i.test(goalText)) {
-      setGoalError("Use a STRK balance target, for example: Keep at least 1 STRK private."); return;
-    }
-    const quantities = Array.from(goalText.matchAll(/(?:^|\s)(\S+)\s+STRK\b/gi));
-    const value = quantities[0]?.[1];
-    if (quantities.length !== 1 || !value) { setGoalError("Include one STRK target, for example: Keep at least 1 STRK private."); return; }
-    try { if (parseUnits18(value) <= ZERO) throw new Error(); }
-    catch { setGoalError("Use a positive STRK amount with up to 18 decimal places."); return; }
-    const asksPublic = /\b(public|withdraw|unshield)\b/i.test(goalText);
-    const asksPrivate = /\b(private|shield|privacy)\b/i.test(goalText);
+
     if (
-      (mode === "shield" && asksPublic) ||
-      (mode === "unshield" && asksPrivate)
+      !/\bSTRK\b/i.test(
+        goalText,
+      ) ||
+      /\b(USDC|USDT|ETH|BTC)\b/i.test(
+        goalText,
+      )
     ) {
-      setGoalError(`Your goal does not match ${mode === "shield" ? "Shield" : "Unshield"} mode. Switch the mode or edit the goal.`); return;
+      setGoalError(
+        "Use a STRK balance target, for example: Keep at least 1 STRK private.",
+      );
+      return;
     }
-    setPlanTarget(value); setPlanned(true);
+
+    const quantities =
+      Array.from(
+        goalText.matchAll(
+          /(?:^|\s)(\S+)\s+STRK\b/gi,
+        ),
+      );
+
+    const value =
+      quantities[0]?.[1];
+
+    if (
+      quantities.length !==
+        1 ||
+      !value
+    ) {
+      setGoalError(
+        "Include one STRK target, for example: Keep at least 1 STRK private.",
+      );
+      return;
+    }
+
+    try {
+      if (
+        parseUnits18(
+          value,
+        ) <= ZERO
+      ) {
+        throw new Error();
+      }
+    } catch {
+      setGoalError(
+        "Use a positive STRK amount with up to 18 decimal places.",
+      );
+      return;
+    }
+
+    const asksPublic =
+      /\b(public|withdraw|unshield)\b/i.test(
+        goalText,
+      );
+
+    const asksPrivate =
+      /\b(private|shield|privacy)\b/i.test(
+        goalText,
+      );
+
+    if (
+      (
+        mode ===
+          "shield" &&
+        asksPublic
+      ) ||
+      (
+        mode ===
+          "unshield" &&
+        asksPrivate
+      )
+    ) {
+      setGoalError(
+        `Your goal does not match ${
+          mode === "shield"
+            ? "Shield"
+            : "Unshield"
+        } mode. Switch the mode or edit the goal.`,
+      );
+      return;
+    }
+
+    setPlanTarget(
+      value,
+    );
+
+    setPlanned(
+      true,
+    );
   }
+
   async function executePlan() {
     if (busy || !planned || plan.status !== "ready" || !ready) return;
     setExecuting(true);
