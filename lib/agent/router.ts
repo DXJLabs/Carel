@@ -14,6 +14,11 @@ import {
 } from "@/lib/agent/staking";
 
 import {
+  parseLendGoal,
+  type ParsedLendRequest,
+} from "@/lib/agent/lending";
+
+import {
   parseSwapGoal,
   type ParsedSwapRequest,
 } from "@/lib/agent/swap";
@@ -22,6 +27,7 @@ export type AgentTool =
   | "Bridge"
   | "Swap"
   | "Staking"
+  | "Lend"
   | "Borrow"
   | "Balance";
 
@@ -43,6 +49,9 @@ export type AgentRoute =
 
     stakeRequest?:
       ParsedStakeRequest;
+
+    lendRequest?:
+      ParsedLendRequest;
 
     borrowRequest?:
       ParsedBorrowRequest;
@@ -141,7 +150,41 @@ export function routeAgentGoal(
   }
 
   if (
-    /\b(earn|earning|stake|staking|yield|lend|lending)\b/i.test(
+    /\b(lend|lending|supply)\b/i.test(
+      text,
+    )
+  ) {
+    try {
+      return {
+        tool:
+          "Lend",
+
+        status:
+          "ready",
+
+        lendRequest:
+          parseLendGoal(
+            text,
+          ),
+      };
+    } catch (error) {
+      return {
+        tool:
+          "Lend",
+
+        status:
+          "invalid",
+
+        message:
+          error instanceof Error
+            ? error.message
+            : "Enter an explicit Lend goal.",
+      };
+    }
+  }
+
+  if (
+    /\b(earn|earning|stake|staking|yield)\b/i.test(
       text,
     )
   ) {

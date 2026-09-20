@@ -60,6 +60,10 @@ const collateral = require(
   "../lib/carel/ecosystems/starknet/protocols/vesu/collateral.ts",
 );
 
+const lending = require(
+  "../lib/carel/ecosystems/starknet/protocols/vesu/lending.ts",
+);
+
 const CHAIN = Object.freeze({
   id: "starknet:mainnet",
   ecosystem: "starknet",
@@ -771,6 +775,84 @@ test(
             },
           }),
       /private/i,
+    );
+  },
+);
+
+
+
+test(
+  "Vesu Lend uses exact approval and zero-debt supply position",
+  () => {
+    const intent = {
+      assetId:
+        STRK.id,
+
+      amount:
+        5n,
+
+      privacy:
+        "public",
+    };
+
+    const calls =
+      lending
+        .buildVesuLendCalls({
+          market:
+            MARKET,
+
+          owner:
+            OWNER,
+
+          intent,
+        });
+
+    assert.equal(
+      calls.length,
+      2,
+    );
+
+    assert.deepEqual(
+      calls[0].calldata,
+      [
+        MARKET.poolAddress,
+        "0x5",
+        "0x0",
+      ],
+    );
+
+    assert.deepEqual(
+      calls[1].calldata,
+      [
+        STRK.identifier.address,
+        USDC.identifier.address,
+        OWNER,
+
+        // supplied STRK: Assets +5
+        "1",
+        "0x5",
+        "0x0",
+        "0",
+
+        // debt: Native zero
+        "0",
+        "0x0",
+        "0x0",
+        "0",
+      ],
+    );
+
+    assert.deepEqual(
+      lending
+        .validateVesuLendCalls({
+          calls,
+          market:
+            MARKET,
+          owner:
+            OWNER,
+          intent,
+        }),
+      calls,
     );
   },
 );

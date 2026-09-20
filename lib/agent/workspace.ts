@@ -70,6 +70,7 @@ function executionTool(
     case "Swap":
     case "Bridge":
     case "Staking":
+    case "Lend":
     case "Borrow":
       return tool;
 
@@ -110,6 +111,12 @@ function usesExplicitExecutionFlow(
   if (
     tool === "Borrow" &&
     mode !== "normal"
+  ) {
+    return true;
+  }
+
+  if (
+    tool === "Lend"
   ) {
     return true;
   }

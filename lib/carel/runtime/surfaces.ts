@@ -22,6 +22,7 @@ export type CarelRuntimeSurface =
   | "swap"
   | "bridge"
   | "staking"
+  | "lend"
   | "borrow";
 
 /**
@@ -59,6 +60,7 @@ export function fallbackRuntimeSurface(
     | "Swap"
     | "Bridge"
     | "Staking"
+    | "Lend"
     | "Borrow"
     | null,
 ): CarelRuntimeSurface | null {
@@ -71,6 +73,9 @@ export function fallbackRuntimeSurface(
 
     case "Staking":
       return "staking";
+
+    case "Lend":
+      return "lend";
 
     case "Borrow":
       return "borrow";

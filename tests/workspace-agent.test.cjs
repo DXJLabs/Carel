@@ -436,3 +436,40 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Vesu Lend remains an explicit reviewed execution flow",
+  () => {
+    const result =
+      workspace
+        .resolveWorkspaceAgentGoal({
+          goal:
+            "Lend 10 STRK.",
+
+          chainId:
+            chains
+              .STARKNET_MAINNET
+              .chainId,
+
+          account:
+            "0x123",
+
+          mode:
+            "normal",
+
+          registry,
+        });
+
+    assert.equal(
+      result.kind,
+      "explicit",
+    );
+
+    assert.equal(
+      result.tool,
+      "Lend",
+    );
+  },
+);

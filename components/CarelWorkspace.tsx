@@ -5,7 +5,7 @@ import {
   Activity, ArrowDownToLine, ArrowLeft, ArrowLeftRight, ArrowRight,
   ArrowUpFromLine, ArrowUpRight, Bot, Check, ChevronDown, ChevronRight,
   Eye, EyeOff, Home, Landmark, Layers3, LoaderCircle, LogOut, Moon,
-  Network, Orbit, RefreshCw, Settings, ShieldCheck, ShieldOff,
+  Network, Orbit, PiggyBank, RefreshCw, Settings, ShieldCheck, ShieldOff,
   SlidersHorizontal, Sparkles, TrendingUp, WalletCards, X,
 } from "lucide-react";
 import { constants } from "starknet";
@@ -50,11 +50,12 @@ import { AvnuSwap } from "./swap/AvnuSwap";
 import { AvnuStaking } from "./staking/AvnuStaking";
 import { VesuBorrow } from "./borrow/VesuBorrow";
 import { VesuRepay } from "./borrow/VesuRepay";
+import { VesuLend } from "./lending/VesuLend";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
 type Mode = "normal" | "shield" | "unshield";
-type Tool = "Swap" | "Bridge" | "Staking" | "Borrow";
+type Tool = "Swap" | "Bridge" | "Staking" | "Lend" | "Borrow";
 type Period = "1D" | "7D" | "30D";
 type Execution = { hash: string; label: string; status: "pending" | "submitted" | "confirmed"; ts: number };
 type Observation = { ts: number; total: number };
@@ -70,6 +71,7 @@ const TOOLS = [
   { name: "Swap", Icon: ArrowLeftRight, prompt: "Swap 1 STRK for USDC." },
   { name: "Bridge", Icon: Network, prompt: "Bridge 0.0005 BTC to Starknet Sepolia." },
   { name: "Staking", Icon: TrendingUp, prompt: "Stake 1 STRK." },
+  { name: "Lend", Icon: PiggyBank, prompt: "Lend 10 STRK." },
   { name: "Borrow", Icon: Landmark, prompt: "Borrow 10 USDC against 1000 STRK." },
 ] as const;
 
@@ -83,7 +85,9 @@ function txName(label: string) {
       ? "Shield"
       : value.includes("swap")
         ? "Swap"
-        : value.includes("borrow")
+        : value.includes("lend")
+          ? "Lend"
+          : value.includes("borrow")
           ? "Borrow"
           : value.includes("close vesu") ||
             value.includes("close position")
@@ -975,6 +979,12 @@ export function CarelApp() {
         <AvnuSwap mode={mode} goal={goalText}/>
       ) : selectedRuntimeSurface === "staking" ? (
         <AvnuStaking
+          mode={mode}
+          goal={goalText}
+          onPublicMode={useNormalMode}
+        />
+      ) : selectedRuntimeSurface === "lend" ? (
+        <VesuLend
           mode={mode}
           goal={goalText}
           onPublicMode={useNormalMode}

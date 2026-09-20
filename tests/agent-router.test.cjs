@@ -84,6 +84,7 @@ test(
       const goal of [
         "Swap 1 STRK for USDC.",
         "Stake 1 STRK.",
+        "Lend 10 STRK.",
         "Borrow 10 USDC against 1000 STRK.",
         "Bridge 0.0005 BTC to Starknet Sepolia.",
       ]
@@ -223,6 +224,39 @@ test(
     assert.equal(
       "provider" in route,
       false,
+    );
+  },
+);
+
+
+
+test(
+  "Lend parsing does not fall through to Staking",
+  () => {
+    const route =
+      router.routeAgentGoal(
+        "Lend 25 STRK.",
+      );
+
+    assert.equal(
+      route.tool,
+      "Lend",
+    );
+
+    assert.equal(
+      route.status,
+      "ready",
+    );
+
+    assert.deepEqual(
+      route.lendRequest,
+      {
+        amountText:
+          "25",
+
+        symbol:
+          "STRK",
+      },
     );
   },
 );
