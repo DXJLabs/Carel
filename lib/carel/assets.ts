@@ -13,6 +13,14 @@ import {
 } from "@/lib/carel/ecosystems/bitcoin/assets";
 
 import {
+  EVM_ASSET_REGISTRY,
+} from "@/lib/carel/ecosystems/evm/assets";
+
+import {
+  SOLANA_ASSET_REGISTRY,
+} from "@/lib/carel/ecosystems/solana/assets";
+
+import {
   GARDEN_STARKNET_SEPOLIA_STRKBTC,
   GARDEN_STARKNET_SEPOLIA_WBTC,
 } from "@/lib/carel/protocols/garden/assets";
@@ -21,6 +29,8 @@ export const CAREL_ASSET_REGISTRY =
   createAssetRegistry([
     ...STARKNET_ASSET_REGISTRY.values(),
     BITCOIN_TESTNET4_BTC,
+    ...EVM_ASSET_REGISTRY.values(),
+    ...SOLANA_ASSET_REGISTRY.values(),
     GARDEN_STARKNET_SEPOLIA_WBTC,
     GARDEN_STARKNET_SEPOLIA_STRKBTC,
   ]);
