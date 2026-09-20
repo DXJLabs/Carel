@@ -18,6 +18,10 @@ import {
 import {
   CAREL_EXECUTION_CAPABILITY_REGISTRY,
 } from "@/lib/carel/adapters";
+import {
+  fallbackRuntimeSurface,
+  runtimeSurfaceForAdapter,
+} from "@/lib/carel/runtime/surfaces";
 import { formatUnits18, parseUnits18 } from "@/lib/strk20/units";
 import { SEPOLIA_EXPLORER_TX } from "@/lib/strk20/config";
 import {
@@ -126,6 +130,10 @@ export function CarelApp() {
   const [pointsOpen, setPointsOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("normal");
   const [selectedTool, setSelectedTool] = useState<Tool | null>("Swap");
+  const [
+    selectedAdapterId,
+    setSelectedAdapterId,
+  ] = useState<string | null>(null);
   const [bridgeIntent, setBridgeIntent] = useState<BridgeIntent | null>(null);
   const [goalText, setGoalText] = useState("Swap 1 STRK for USDC.");
   const [planTarget, setPlanTarget] = useState("1");
@@ -162,6 +170,14 @@ export function CarelApp() {
   const walletDetails = useRef<HTMLDetailsElement>(null);
   const sessionKey = `${wallet.chainId}:${wallet.address.toLowerCase()}`;
   const activeNetwork = getCarelNetwork(wallet.chainId);
+
+  const selectedRuntimeSurface =
+    runtimeSurfaceForAdapter(
+      selectedAdapterId,
+    ) ??
+    fallbackRuntimeSurface(
+      selectedTool,
+    );
 
   const portfolioHoldings =
     useMemo(
@@ -382,6 +398,7 @@ export function CarelApp() {
     const routed = routeAgentGoal(tool.prompt);
 
     setSelectedTool(tool.name);
+    setSelectedAdapterId(null);
     setGoalText(tool.prompt);
     setPlanned(false);
     setGoalError(null);
@@ -413,6 +430,7 @@ export function CarelApp() {
       mode === "unshield" ? "unshield" : "shield",
   ) {
     setSelectedTool(null);
+    setSelectedAdapterId(null);
     setGoalText(
       `Keep at least 1 STRK ${
         nextMode === "shield" ? "private" : "public"
@@ -424,6 +442,7 @@ export function CarelApp() {
 
   function useNormalMode() {
     setMode("normal");
+    setSelectedAdapterId(null);
     setPlanned(false);
     setGoalError(null);
 
@@ -438,6 +457,7 @@ export function CarelApp() {
       mode === "shield" ? "unshield" : "shield";
 
     setMode(next);
+    setSelectedAdapterId(null);
     setPlanned(false);
     setGoalError(null);
 
@@ -476,6 +496,12 @@ export function CarelApp() {
     ) {
       setSelectedTool(
         decision.tool,
+      );
+
+      setSelectedAdapterId(
+        decision.kind === "execution"
+          ? decision.adapterId ?? null
+          : null,
       );
 
       setBridgeIntent(
@@ -522,6 +548,10 @@ export function CarelApp() {
         null,
       );
 
+      setSelectedAdapterId(
+        null,
+      );
+
       setGoalError(
         decision.message,
       );
@@ -533,6 +563,10 @@ export function CarelApp() {
       decision.route;
 
     setSelectedTool(
+      null,
+    );
+
+    setSelectedAdapterId(
       null,
     );
 
@@ -713,7 +747,7 @@ export function CarelApp() {
   function renderAgent() {
     return <div className={styles.narrowPage}>
       <div className={styles.intro}><p className={styles.eyebrow}>CAREL AGENT</p><h1>What’s your<br/>next move?</h1><p>Set a goal. Review every step.</p></div>
-      <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setGoalError(null); setSelectedTool(null); }} spellCheck={false}/>
+      <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
         <div className={styles.modeRow}>
           <button
             type="button"
@@ -755,21 +789,21 @@ export function CarelApp() {
         </div>
       </div>
       <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
-      {selectedTool === "Bridge" ? (
+      {selectedRuntimeSurface === "bridge" ? (
         <GardenBridge
           mode={mode}
           intent={bridgeIntent}
           onPublicMode={() => setMode("normal")}
         />
-      ) : selectedTool === "Swap" ? (
+      ) : selectedRuntimeSurface === "swap" ? (
         <AvnuSwap mode={mode} goal={goalText}/>
-      ) : selectedTool === "Staking" ? (
+      ) : selectedRuntimeSurface === "staking" ? (
         <AvnuStaking
           mode={mode}
           goal={goalText}
           onPublicMode={useNormalMode}
         />
-      ) : selectedTool === "Borrow" ? (
+      ) : selectedRuntimeSurface === "borrow" ? (
         <VesuBorrow
           mode={mode}
           goal={goalText}
