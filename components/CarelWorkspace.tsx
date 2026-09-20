@@ -37,6 +37,11 @@ import {
   type PortfolioPosition,
 } from "@/lib/carel/portfolio/model";
 import {
+  buildPointsSummary,
+  POINT_LEVEL_SIZE,
+  POINT_RULES,
+} from "@/lib/carel/points/model";
+import {
   loadStarknetPortfolioPositions,
 } from "@/lib/carel/portfolio/starknet";
 import { CarelOrbit } from "./CarelOrbit";
@@ -227,6 +232,16 @@ export function CarelApp() {
   const busy = wallet.busy || executing || wallet.connecting;
   const ready = privacyReady;
   const records = executions.owner === sessionKey && wallet.connected ? executions.records : [];
+
+  const pointsSummary =
+    useMemo(
+      () =>
+        buildPointsSummary(
+          records,
+        ),
+      [records],
+    );
+
   const visibleRecords = records.filter(record => activityFilter === "all" || (activityFilter === "pending" ? record.status !== "confirmed" : record.status === "confirmed"));
   const selectedExecution = records.find(record => record.hash === selectedHash);
 
@@ -721,18 +736,153 @@ export function CarelApp() {
         <div className={styles.panel}><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p><p className={styles.helper}>{balanceHelp}</p>
           {wallet.connected && wallet.publicStrk === null && <button className={styles.textButton} disabled={!publicReady || busy} onClick={() => void refreshBalances()}><RefreshCw size={14}/>Load balance</button>}
         </div>
-        <button type="button" className={styles.pointsCard} onClick={openPoints}><span className={styles.pointsIcon}><Sparkles size={19}/></span><span><strong>— PTS</strong><small>Points · waiting for sync</small></span><ChevronRight size={17}/></button>
+        <button type="button" className={styles.pointsCard} onClick={openPoints}><span className={styles.pointsIcon}><Sparkles size={19}/></span><span><strong>{pointsSummary.total.toLocaleString()} PTS</strong><small>{wallet.connected ? `+${pointsSummary.last7Days.toLocaleString()} last 7 days` : "Connect wallet to view activity points"}</small></span><ChevronRight size={17}/></button>
       </section>
       <section className={styles.homeActivity}><SectionHeading title="Latest activity"><button className={styles.textButton} onClick={() => navigate("activity")}>View all<ArrowRight size={14}/></button></SectionHeading>{records.length ? records.slice(0, 2).map(renderExecution) : <EmptyState title="Your next move starts here">Completed and pending executions appear here.</EmptyState>}</section>
     </div>;
   }
   function renderPoints() {
+    const remaining =
+      POINT_LEVEL_SIZE -
+      pointsSummary.levelProgress;
+
     return <div className={styles.narrowPage}>
-      <section className={styles.pointsTotal}><CarelOrbit className={styles.pointsOrbit} centered paused={reduceMotion}/><span className={styles.medal}><Sparkles size={27}/></span><p className={styles.label}>Total Points</p><p className={styles.pointsNumber}>— <span>PTS</span></p><p className={styles.helper}>Points are not synced yet.</p></section>
-      <SectionHeading title="How you earned"/><p className={styles.helper}>Earning rules will appear here when the Points program is connected.</p>
-      <SectionHeading title="Points history"/><EmptyState title="No points history yet">Your earned points and their source will appear here after sync.</EmptyState>
+      <section className={styles.pointsTotal}>
+        <CarelOrbit
+          className={styles.pointsOrbit}
+          centered
+          paused={reduceMotion}
+        />
+        <span className={styles.medal}>
+          <Sparkles size={27}/>
+        </span>
+        <p className={styles.label}>
+          Total Points
+        </p>
+        <p className={styles.pointsNumber}>
+          {pointsSummary.total.toLocaleString()} <span>PTS</span>
+        </p>
+        <p className={styles.helper}>
+          Confirmed CAREL executions only.
+        </p>
+      </section>
+
+      <SectionHeading title="Progress">
+        <span className={styles.status}>
+          Level {pointsSummary.level}
+        </span>
+      </SectionHeading>
+
+      <div className={styles.panel}>
+        <div className={styles.pointsProgressHeader}>
+          <strong>
+            Level {pointsSummary.level}
+          </strong>
+          <span>
+            {pointsSummary.levelProgress.toLocaleString()}
+            {" / "}
+            {POINT_LEVEL_SIZE.toLocaleString()} PTS
+          </span>
+        </div>
+
+        <div
+          className={styles.pointsProgressTrack}
+          role="progressbar"
+          aria-label={`Level ${pointsSummary.level} progress`}
+          aria-valuemin={0}
+          aria-valuemax={POINT_LEVEL_SIZE}
+          aria-valuenow={pointsSummary.levelProgress}
+        >
+          <span
+            style={{
+              width:
+                `${pointsSummary.levelProgressPercent}%`,
+            }}
+          />
+        </div>
+
+        <p className={styles.helper}>
+          {remaining.toLocaleString()} PTS to Level{" "}
+          {pointsSummary.level + 1}.
+        </p>
+      </div>
+
+      <SectionHeading title="How you earn"/>
+
+      <div className={styles.panel}>
+        {POINT_RULES.map(
+          (rule) => (
+            <div
+              className={styles.rule}
+              key={rule.action}
+            >
+              <span>
+                {rule.label}
+                <small className={styles.pointsRuleDetail}>
+                  {rule.detail}
+                </small>
+              </span>
+
+              <strong>
+                +{rule.points} PTS
+              </strong>
+            </div>
+          ),
+        )}
+      </div>
+
+      <SectionHeading title="Points history">
+        {pointsSummary.last7Days > 0 && (
+          <span className={styles.status}>
+            +{pointsSummary.last7Days.toLocaleString()} · 7D
+          </span>
+        )}
+      </SectionHeading>
+
+      {pointsSummary.history.length ? (
+        <div className={styles.pointsHistory}>
+          {pointsSummary.history.map(
+            (item) => (
+              <div
+                className={styles.pointsHistoryRow}
+                key={item.hash}
+              >
+                <span className={styles.rowIcon}>
+                  <Sparkles size={16}/>
+                </span>
+
+                <span className={styles.rowCopy}>
+                  <strong>
+                    {item.label}
+                  </strong>
+
+                  <small>
+                    {txDate(item.ts)}
+                  </small>
+                </span>
+
+                <strong className={styles.pointGain}>
+                  +{item.points} PTS
+                </strong>
+              </div>
+            ),
+          )}
+        </div>
+      ) : (
+        <EmptyState title="No Points yet">
+          Complete a supported CAREL execution and wait for confirmation.
+        </EmptyState>
+      )}
+
+      <SectionHeading title="Rewards & utility"/>
+
+      <EmptyState title="Utility not defined yet">
+        Points currently track confirmed CAREL activity. No token,
+        financial value, or redemption utility is promised yet.
+      </EmptyState>
     </div>;
   }
+
   function renderAgent() {
     return <div className={styles.narrowPage}>
       <div className={styles.intro}><p className={styles.eyebrow}>CAREL AGENT</p><h1>What’s your<br/>next move?</h1><p>Set a goal. Review every step.</p></div>
@@ -1117,7 +1267,7 @@ export function CarelApp() {
   return <div className={styles.app} data-reduced-motion={reduceMotion ? "true" : undefined}>
     <header className={styles.header}><div className={styles.headerInner}>
       {pointsOpen ? <button type="button" className={styles.backButton} onClick={() => setPointsOpen(false)}><ArrowLeft size={19}/><span>Points</span></button> : <button type="button" className={styles.brand} onClick={() => navigate("home")} aria-label="CAREL Home"><Orbit size={24}/><span>CAREL</span></button>}
-      <div className={styles.headerActions}>{!pointsOpen && <button type="button" className={styles.pointsBadge} onClick={openPoints} aria-label="Open Points detail"><Sparkles size={14}/><span>—</span><small>PTS</small></button>}
+      <div className={styles.headerActions}>{!pointsOpen && <button type="button" className={styles.pointsBadge} onClick={openPoints} aria-label="Open Points detail"><Sparkles size={14}/><span>{pointsSummary.total.toLocaleString()}</span><small>PTS</small></button>}
       <button type="button" className={styles.walletButton} disabled={wallet.connecting} onClick={wallet.connected ? openWallet : () => void run(() => wallet.connect())} aria-label={wallet.connected ? "Open wallet settings" : "Connect wallet"}>{wallet.connecting ? <LoaderCircle size={18}/> : <WalletCards size={18}/>}<span>{wallet.connected ? shortAddress(wallet.address) : wallet.connecting ? "Connecting…" : "Connect"}</span></button></div>
     </div></header>
     <main className={styles.main}>
