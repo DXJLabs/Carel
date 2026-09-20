@@ -3,7 +3,7 @@ import {
 } from "@/lib/carel/core/amounts";
 
 import type {
-  ExecutionAdapterRegistry,
+  ExecutionCapabilityRegistry,
 } from "@/lib/carel/core/adapters";
 
 import type {
@@ -12,7 +12,7 @@ import type {
 } from "@/lib/carel/core/execution";
 
 import {
-  selectExecutionAdapter,
+  selectExecutionCapability,
 } from "@/lib/carel/core/routes";
 
 import {
@@ -72,7 +72,7 @@ type ResolveInput =
   CompileInput &
   Readonly<{
     account: string;
-    registry: ExecutionAdapterRegistry;
+    registry: ExecutionCapabilityRegistry;
     signal?: AbortSignal;
   }>;
 
@@ -636,7 +636,7 @@ export function resolveAgentExecution(
     };
 
   const adapter =
-    selectExecutionAdapter(
+    selectExecutionCapability(
       compiled.intent,
       context,
       [

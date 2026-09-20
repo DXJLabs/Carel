@@ -1,5 +1,6 @@
 import type {
   ExecutionAdapter,
+  ExecutionCapability,
   ExecutionContext,
   ExecutionIntent,
   ExecutionReceipt,
@@ -86,6 +87,28 @@ export function supportsAvnuStakeIntent(
 /**
  * Registers AVNU public staking behind CAREL's generic execution interface.
  */
+export const AVNU_STAKING_CAPABILITY:
+  ExecutionCapability = {
+    id:
+      AVNU_STAKING_ADAPTER_ID,
+
+    ecosystems:
+      ["starknet"],
+
+    actions:
+      ["stake"],
+
+    supports(
+      intent,
+      context,
+    ) {
+      return supportsAvnuStakeIntent(
+        intent,
+        context,
+      );
+    },
+  };
+
 export function createAvnuStakingExecutionAdapter(
   executeStake:
     AvnuStakeExecutor,

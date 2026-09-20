@@ -4,24 +4,26 @@ import type {
 
 import type {
   ExecutionAdapter,
+  ExecutionCapability,
   ExecutionContext,
   ExecutionIntent,
 } from "./execution";
 
 /**
- * Returns whether an adapter statically declares the requested capability.
+ * Returns whether a capability statically declares the requested action and
+ * ecosystem before its dynamic supports() check is called.
  */
-export function adapterDeclaresIntent({
-  adapter,
+export function capabilityDeclaresIntent({
+  capability,
   intent,
   ecosystem,
 }: {
-  adapter: ExecutionAdapter;
+  capability: ExecutionCapability;
   intent: ExecutionIntent;
   ecosystem?: Ecosystem;
 }): boolean {
   if (
-    !adapter.actions.includes(
+    !capability.actions.includes(
       intent.action,
     )
   ) {
@@ -30,7 +32,7 @@ export function adapterDeclaresIntent({
 
   if (
     ecosystem &&
-    !adapter.ecosystems.includes(
+    !capability.ecosystems.includes(
       ecosystem,
     )
   ) {
@@ -41,24 +43,44 @@ export function adapterDeclaresIntent({
 }
 
 /**
- * Selects the first adapter that both declares the requested capability and
- * dynamically supports the intent in the current chain/account context.
- *
- * Provider names therefore stay outside the Agent intent and parsing layer.
+ * Compatibility alias retained for executable adapter callers.
  */
-export function selectExecutionAdapter(
+export function adapterDeclaresIntent({
+  adapter,
+  intent,
+  ecosystem,
+}: {
+  adapter: ExecutionAdapter;
+  intent: ExecutionIntent;
+  ecosystem?: Ecosystem;
+}): boolean {
+  return capabilityDeclaresIntent({
+    capability:
+      adapter,
+    intent,
+    ecosystem,
+  });
+}
+
+/**
+ * Selects a provider capability without requiring an execution dependency.
+ */
+export function selectExecutionCapability<
+  T extends ExecutionCapability,
+>(
   intent: ExecutionIntent,
   context: ExecutionContext,
-  adapters:
-    readonly ExecutionAdapter[],
+  capabilities:
+    readonly T[],
   ecosystem?: Ecosystem,
-): ExecutionAdapter | null {
+): T | null {
   for (
-    const adapter of adapters
+    const capability
+    of capabilities
   ) {
     if (
-      !adapterDeclaresIntent({
-        adapter,
+      !capabilityDeclaresIntent({
+        capability,
         intent,
         ecosystem,
       })
@@ -67,14 +89,32 @@ export function selectExecutionAdapter(
     }
 
     if (
-      adapter.supports(
+      capability.supports(
         intent,
         context,
       )
     ) {
-      return adapter;
+      return capability;
     }
   }
 
   return null;
+}
+
+/**
+ * Selects an executable adapter using the same capability selection rules.
+ */
+export function selectExecutionAdapter(
+  intent: ExecutionIntent,
+  context: ExecutionContext,
+  adapters:
+    readonly ExecutionAdapter[],
+  ecosystem?: Ecosystem,
+): ExecutionAdapter | null {
+  return selectExecutionCapability(
+    intent,
+    context,
+    adapters,
+    ecosystem,
+  );
 }

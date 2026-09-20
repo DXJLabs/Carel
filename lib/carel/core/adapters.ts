@@ -5,7 +5,14 @@ import type {
 import type {
   CarelAction,
   ExecutionAdapter,
+  ExecutionCapability,
 } from "./execution";
+
+export type ExecutionCapabilityRegistry =
+  ReadonlyMap<
+    string,
+    ExecutionCapability
+  >;
 
 export type ExecutionAdapterRegistry =
   ReadonlyMap<
@@ -19,31 +26,24 @@ export type AdapterFilter =
     ecosystem?: Ecosystem;
   }>;
 
-/**
- * Creates CAREL's protocol adapter registry.
- *
- * Adapter ids must be globally unique because execution receipts and
- * persisted activity can use the id to identify the selected executor.
- */
-export function createExecutionAdapterRegistry(
-  adapters:
-    readonly ExecutionAdapter[],
-): ExecutionAdapterRegistry {
+function createRegistry<
+  T extends ExecutionCapability,
+>(
+  capabilities:
+    readonly T[],
+): ReadonlyMap<string, T> {
   const registry =
-    new Map<
-      string,
-      ExecutionAdapter
-    >();
+    new Map<string, T>();
 
   for (
-    const adapter of adapters
+    const capability of capabilities
   ) {
     const id =
-      adapter.id.trim();
+      capability.id.trim();
 
     if (!id) {
       throw new Error(
-        "CAREL execution adapter id cannot be empty.",
+        "CAREL execution capability id cannot be empty.",
       );
     }
 
@@ -51,12 +51,12 @@ export function createExecutionAdapterRegistry(
       registry.has(id)
     ) {
       throw new Error(
-        `Duplicate CAREL execution adapter id: ${id}`,
+        `Duplicate CAREL execution capability id: ${id}`,
       );
     }
 
     if (
-      adapter.actions.length ===
+      capability.actions.length ===
       0
     ) {
       throw new Error(
@@ -66,9 +66,9 @@ export function createExecutionAdapterRegistry(
 
     if (
       new Set(
-        adapter.actions,
+        capability.actions,
       ).size !==
-      adapter.actions.length
+      capability.actions.length
     ) {
       throw new Error(
         `${id} declares duplicate CAREL actions.`,
@@ -76,7 +76,7 @@ export function createExecutionAdapterRegistry(
     }
 
     if (
-      adapter.ecosystems.length ===
+      capability.ecosystems.length ===
       0
     ) {
       throw new Error(
@@ -86,9 +86,9 @@ export function createExecutionAdapterRegistry(
 
     if (
       new Set(
-        adapter.ecosystems,
+        capability.ecosystems,
       ).size !==
-      adapter.ecosystems.length
+      capability.ecosystems.length
     ) {
       throw new Error(
         `${id} declares duplicate ecosystems.`,
@@ -97,7 +97,7 @@ export function createExecutionAdapterRegistry(
 
     registry.set(
       id,
-      adapter,
+      capability,
     );
   }
 
@@ -105,39 +105,98 @@ export function createExecutionAdapterRegistry(
 }
 
 /**
- * Returns registered adapters matching static action/ecosystem capabilities.
+ * Creates CAREL's planning/discovery registry.
  *
- * This does not call supports(); dynamic chain/account/provider checks remain
- * the adapter's responsibility.
+ * Capabilities contain no execution dependency, so Agent preview can choose a
+ * compatible adapter id without pretending a wallet executor is attached.
  */
-export function listExecutionAdapters(
+export function createExecutionCapabilityRegistry(
+  capabilities:
+    readonly ExecutionCapability[],
+): ExecutionCapabilityRegistry {
+  return createRegistry(
+    capabilities,
+  );
+}
+
+/**
+ * Creates CAREL's executable registry.
+ *
+ * Every entry here has an attached runtime executor.
+ */
+export function createExecutionAdapterRegistry(
+  adapters:
+    readonly ExecutionAdapter[],
+): ExecutionAdapterRegistry {
+  return createRegistry(
+    adapters,
+  );
+}
+
+function listCapabilities<
+  T extends ExecutionCapability,
+>(
   registry:
-    ExecutionAdapterRegistry,
+    ReadonlyMap<string, T>,
   filter:
     AdapterFilter = {},
-): ExecutionAdapter[] {
+): T[] {
   return [
     ...registry.values(),
   ].filter(
-    (adapter) =>
+    (capability) =>
       (
         !filter.action ||
-        adapter.actions.includes(
+        capability.actions.includes(
           filter.action,
         )
       ) &&
       (
         !filter.ecosystem ||
-        adapter.ecosystems.includes(
+        capability.ecosystems.includes(
           filter.ecosystem,
         )
       ),
   );
 }
 
-/**
- * Resolves one adapter by its stable CAREL id.
- */
+export function listExecutionCapabilities(
+  registry:
+    ExecutionCapabilityRegistry,
+  filter:
+    AdapterFilter = {},
+): ExecutionCapability[] {
+  return listCapabilities(
+    registry,
+    filter,
+  );
+}
+
+export function listExecutionAdapters(
+  registry:
+    ExecutionAdapterRegistry,
+  filter:
+    AdapterFilter = {},
+): ExecutionAdapter[] {
+  return listCapabilities(
+    registry,
+    filter,
+  );
+}
+
+export function getExecutionCapability(
+  registry:
+    ExecutionCapabilityRegistry,
+  capabilityId: string,
+): ExecutionCapability | null {
+  return (
+    registry.get(
+      capabilityId,
+    ) ??
+    null
+  );
+}
+
 export function getExecutionAdapter(
   registry:
     ExecutionAdapterRegistry,

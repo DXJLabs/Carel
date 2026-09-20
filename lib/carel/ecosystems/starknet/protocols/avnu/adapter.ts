@@ -4,6 +4,7 @@ import {
 
 import type {
   ExecutionAdapter,
+  ExecutionCapability,
   ExecutionContext,
   ExecutionIntent,
   ExecutionReceipt,
@@ -136,6 +137,28 @@ export function supportsAvnuSwapIntent(
  * - session/network re-checks,
  * - signing/submission.
  */
+export const AVNU_SWAP_CAPABILITY:
+  ExecutionCapability = {
+    id:
+      AVNU_SWAP_ADAPTER_ID,
+
+    ecosystems:
+      ["starknet"],
+
+    actions:
+      ["swap"],
+
+    supports(
+      intent,
+      context,
+    ) {
+      return supportsAvnuSwapIntent(
+        intent,
+        context,
+      );
+    },
+  };
+
 export function createAvnuSwapExecutionAdapter(
   executeSwap:
     AvnuSwapExecutor,

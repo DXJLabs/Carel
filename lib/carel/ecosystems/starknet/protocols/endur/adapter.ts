@@ -1,5 +1,6 @@
 import type {
   ExecutionAdapter,
+  ExecutionCapability,
   ExecutionContext,
   ExecutionIntent,
   ExecutionReceipt,
@@ -79,6 +80,28 @@ export function supportsEndurShieldStakeIntent(
  * Registers the existing guarded Endur Shield Staking flow without moving
  * protocol-specific privacy logic into the Agent or generic core.
  */
+export const ENDUR_SHIELD_STAKING_CAPABILITY:
+  ExecutionCapability = {
+    id:
+      ENDUR_SHIELD_STAKING_ADAPTER_ID,
+
+    ecosystems:
+      ["starknet"],
+
+    actions:
+      ["stake"],
+
+    supports(
+      intent,
+      context,
+    ) {
+      return supportsEndurShieldStakeIntent(
+        intent,
+        context,
+      );
+    },
+  };
+
 export function createEndurShieldStakingExecutionAdapter(
   executeStake:
     EndurShieldStakeExecutor,

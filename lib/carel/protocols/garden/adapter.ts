@@ -1,6 +1,7 @@
 import type {
   BridgeIntent,
   ExecutionAdapter,
+  ExecutionCapability,
   ExecutionContext,
   ExecutionIntent,
   ExecutionReceipt,
@@ -196,6 +197,30 @@ export function resolveGardenBridgeRoute(
  * The injected executor continues to own quote retrieval, Bitcoin address
  * validation, order creation/recovery, funding-call validation and refunds.
  */
+export const GARDEN_BRIDGE_CAPABILITY:
+  ExecutionCapability = {
+    id:
+      GARDEN_BRIDGE_ADAPTER_ID,
+
+    ecosystems: [
+      "bitcoin",
+      "starknet",
+    ],
+
+    actions:
+      ["bridge"],
+
+    supports(
+      intent,
+      context,
+    ) {
+      return supportsGardenBridgeIntent(
+        intent,
+        context,
+      );
+    },
+  };
+
 export function createGardenBridgeExecutionAdapter(
   executeBridge:
     GardenBridgeExecutor,

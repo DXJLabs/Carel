@@ -122,7 +122,7 @@ export type ExecutionReceipt =
       | "pending";
   }>;
 
-export interface ExecutionAdapter {
+export interface ExecutionCapability {
   readonly id: string;
   readonly ecosystems:
     readonly Ecosystem[];
@@ -130,14 +130,17 @@ export interface ExecutionAdapter {
     readonly CarelAction[];
 
   /**
-   * Determines whether this adapter can execute an intent in the current
-   * chain/account context. Protocol names stay outside the agent intent.
+   * Determines whether this capability can satisfy an intent in the current
+   * chain/account context. No transaction execution is performed here.
    */
   supports(
     intent: ExecutionIntent,
     context: ExecutionContext,
   ): boolean;
+}
 
+export interface ExecutionAdapter
+  extends ExecutionCapability {
   /**
    * Executes a previously validated CAREL intent.
    * Adapter implementations own provider-specific transaction details.

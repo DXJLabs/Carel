@@ -1,6 +1,7 @@
 import type {
   BorrowIntent,
   ExecutionAdapter,
+  ExecutionCapability,
   ExecutionContext,
   ExecutionIntent,
   ExecutionReceipt,
@@ -95,6 +96,28 @@ export function supportsVesuBorrowIntent(
  * - wallet-side calldata reconstruction,
  * - signing/submission.
  */
+export const VESU_BORROW_CAPABILITY:
+  ExecutionCapability = {
+    id:
+      VESU_BORROW_ADAPTER_ID,
+
+    ecosystems:
+      ["starknet"],
+
+    actions:
+      ["borrow"],
+
+    supports(
+      intent,
+      context,
+    ) {
+      return supportsVesuBorrowIntent(
+        intent,
+        context,
+      );
+    },
+  };
+
 export function createVesuBorrowExecutionAdapter(
   executeBorrow:
     VesuBorrowExecutor,
