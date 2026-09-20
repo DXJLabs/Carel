@@ -48,6 +48,21 @@ type BorrowMode =
   | "shield"
   | "unshield";
 
+type UnshieldBorrowProgress =
+  | Readonly<{
+      kind: "idle";
+    }>
+  | Readonly<{
+      kind: "waiting";
+      hash: string;
+      amount: string;
+    }>
+  | Readonly<{
+      kind: "ready";
+      hash: string;
+      amount: string;
+    }>;
+
 type BorrowEvaluation =
   Readonly<{
     eligible: boolean;
@@ -271,6 +286,23 @@ export function VesuBorrow({
   ] = useState(false);
 
   const [
+    unshielding,
+    setUnshielding,
+  ] = useState(false);
+
+  const [
+    checkingUnshield,
+    setCheckingUnshield,
+  ] = useState(false);
+
+  const [
+    unshieldProgress,
+    setUnshieldProgress,
+  ] = useState<UnshieldBorrowProgress>({
+    kind: "idle",
+  });
+
+  const [
     error,
     setError,
   ] = useState("");
@@ -299,6 +331,8 @@ export function VesuBorrow({
   const busy =
     loading ||
     executing ||
+    unshielding ||
+    checkingUnshield ||
     wallet.busy;
 
   /**
@@ -313,6 +347,14 @@ export function VesuBorrow({
     setReviewed(false);
     setSuccess("");
     setError("");
+
+    if (
+      mode === "unshield"
+    ) {
+      setUnshieldProgress({
+        kind: "idle",
+      });
+    }
   }
 
   /**
@@ -353,6 +395,10 @@ export function VesuBorrow({
           parsed.collateralAmountText,
         );
 
+        setUnshieldProgress({
+          kind: "idle",
+        });
+
         setBorrowAmount(
           parsed.borrowAmountText,
         );
@@ -367,6 +413,16 @@ export function VesuBorrow({
       // Manual Borrow fields remain usable when the goal is incomplete.
     }
   }, [goal]);
+
+  useEffect(() => {
+    setUnshieldProgress({
+      kind: "idle",
+    });
+  }, [
+    wallet.address,
+    wallet.chainId,
+    mode,
+  ]);
 
   /**
    * Loads either market discovery only or a fresh amount-specific
@@ -549,9 +605,211 @@ export function VesuBorrow({
   ]);
 
   /**
+   * Stage 1 of Unshield Borrow:
+   * private STRK -> public STRK.
+   *
+   * This does not execute Vesu. Borrow remains a separate transaction.
+   */
+  async function startUnshieldBorrow() {
+    if (
+      mode !== "unshield" ||
+      !network ||
+      network.id !== "mainnet" ||
+      unshielding ||
+      checkingUnshield
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    let collateral:
+      bigint;
+
+    try {
+      collateral =
+        parseUnits(
+          collateralAmount,
+          network.assets.strk
+            .decimals,
+        );
+    } catch {
+      setError(
+        "Enter a valid STRK collateral amount.",
+      );
+      return;
+    }
+
+    if (
+      collateral <= 0n
+    ) {
+      setError(
+        "Collateral amount must be greater than zero.",
+      );
+      return;
+    }
+
+    if (
+      !wallet.privateRevealed ||
+      wallet.privateStrk === null
+    ) {
+      setError(
+        "Reveal private STRK before starting Unshield Borrow.",
+      );
+      return;
+    }
+
+    if (
+      wallet.privateStrk <
+      collateral
+    ) {
+      setError(
+        "Private STRK balance is below this collateral amount.",
+      );
+      return;
+    }
+
+    setUnshielding(true);
+
+    try {
+      const result =
+        await wallet
+          .executeUnshieldCollateral(
+            collateralAmount,
+            `Unshield ${collateralAmount} STRK for Borrow`,
+          );
+
+      setUnshieldProgress({
+        kind:
+          result.status ===
+            "confirmed"
+            ? "ready"
+            : "waiting",
+
+        hash:
+          result.hash,
+
+        amount:
+          collateralAmount,
+      });
+
+      if (
+        result.status ===
+          "confirmed"
+      ) {
+        await wallet
+          .refreshPublicBalance();
+      }
+    } catch (cause) {
+      setUnshieldProgress({
+        kind: "idle",
+      });
+
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unshield Borrow collateral failed.",
+      );
+    } finally {
+      setUnshielding(false);
+    }
+  }
+
+  /**
+   * If the initial wallet wait timed out, explicitly check the submitted
+   * Unshield transaction before unlocking Vesu.
+   */
+  async function refreshUnshieldConfirmation() {
+    if (
+      mode !== "unshield" ||
+      unshieldProgress.kind !==
+        "waiting" ||
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      return;
+    }
+
+    setCheckingUnshield(true);
+    setError("");
+
+    try {
+      const receipt:
+        unknown =
+        await network.provider
+          .waitForTransaction(
+            unshieldProgress.hash,
+            {
+              retries: 2,
+              retryInterval:
+                1500,
+            },
+          );
+
+      if (
+        receipt &&
+        typeof receipt ===
+          "object"
+      ) {
+        const executionStatus =
+          (
+            receipt as Record<
+              string,
+              unknown
+            >
+          ).execution_status;
+
+        if (
+          executionStatus ===
+            "REVERTED"
+        ) {
+          throw new Error(
+            "The Unshield transaction reverted. Vesu Borrow remains locked.",
+          );
+        }
+      }
+
+      await wallet
+        .refreshPublicBalance();
+
+      setUnshieldProgress({
+        ...unshieldProgress,
+        kind: "ready",
+      });
+    } catch (cause) {
+      setError(
+        cause instanceof Error &&
+        /revert/i.test(
+          cause.message,
+        )
+          ? cause.message
+          : "Unshield is not confirmed yet. Vesu Borrow remains locked.",
+      );
+    } finally {
+      setCheckingUnshield(false);
+    }
+  }
+
+  /**
    * Requests a fresh risk evaluation for the exact user-entered amounts.
    */
   async function reviewBorrow() {
+    if (
+      mode === "unshield" &&
+      unshieldProgress.kind !==
+        "ready"
+    ) {
+      setReviewed(false);
+
+      setError(
+        "Complete and confirm the Unshield collateral step first.",
+      );
+
+      return;
+    }
+
     try {
       await loadMarkets(
         true,
@@ -572,6 +830,18 @@ export function VesuBorrow({
    * checks, and finally sends only the strict execution payload to Ready.
    */
   async function executeBorrow() {
+    if (
+      mode === "unshield" &&
+      unshieldProgress.kind !==
+        "ready"
+    ) {
+      setError(
+        "Unshield collateral must be confirmed before Vesu Borrow.",
+      );
+
+      return;
+    }
+
     if (
       executing ||
       wallet.busy ||
@@ -706,7 +976,7 @@ export function VesuBorrow({
     }
   }
 
-  if (mode !== "normal") {
+  if (mode === "shield") {
     return (
       <section
         className={
@@ -719,11 +989,13 @@ export function VesuBorrow({
           }
         >
           <p>
-            Direct private debt is
-            not enabled for Vesu
-            Borrow. Borrow currently
-            executes as a public
-            Starknet position.
+            Shield Borrow is not
+            enabled. Vesu debt is a
+            public position. Use
+            Normal for public
+            collateral or Unshield
+            to move private STRK
+            public before Borrow.
           </p>
 
           <button
@@ -811,6 +1083,53 @@ export function VesuBorrow({
     );
   }
 
+  let parsedCollateral:
+    bigint | null =
+      null;
+
+  try {
+    const value =
+      parseUnits(
+        collateralAmount,
+        network.assets.strk
+          .decimals,
+      );
+
+    if (
+      value > 0n
+    ) {
+      parsedCollateral =
+        value;
+    }
+  } catch {
+    parsedCollateral =
+      null;
+  }
+
+  const privateEnough =
+    parsedCollateral !==
+      null &&
+    wallet.privateStrk !==
+      null &&
+    wallet.privateStrk >=
+      parsedCollateral;
+
+  const publicEnough =
+    parsedCollateral !==
+      null &&
+    wallet.publicStrk !==
+      null &&
+    wallet.publicStrk >=
+      parsedCollateral;
+
+  const unshieldBorrowReady =
+    mode !== "unshield" ||
+    (
+      unshieldProgress.kind ===
+        "ready" &&
+      publicEnough
+    );
+
   const evaluation =
     reviewed
       ? selectedMarket
@@ -860,6 +1179,324 @@ export function VesuBorrow({
         styles.borrowPanel
       }
     >
+      {mode === "unshield" && (
+        <div
+          className={
+            styles.borrowRisk
+          }
+        >
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Route
+            </span>
+
+            <strong>
+              Private STRK → Public STRK → Vesu
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Collateral
+            </span>
+
+            <strong>
+              {collateralAmount ||
+                "—"}{" "}
+              STRK
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Private STRK
+            </span>
+
+            <strong>
+              {!wallet.privateRevealed
+                ? "Hidden"
+                : wallet.privateStrk ===
+                    null
+                  ? "—"
+                  : `${formatUnits(
+                      wallet.privateStrk,
+                      network.assets
+                        .strk
+                        .decimals,
+                      6,
+                    )} STRK`}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Public STRK
+            </span>
+
+            <strong>
+              {wallet.publicStrk ===
+                null
+                ? "—"
+                : `${formatUnits(
+                    wallet.publicStrk,
+                    network.assets
+                      .strk
+                      .decimals,
+                    6,
+                  )} STRK`}
+            </strong>
+          </div>
+
+          {!wallet.strk20Capable ? (
+            <div
+              className={
+                styles.notice
+              }
+              role="alert"
+            >
+              <p>
+                The connected wallet
+                does not report the
+                STRK20 Wallet API
+                required for
+                Unshield Borrow.
+              </p>
+            </div>
+          ) : !wallet.privateRevealed ? (
+            <button
+              type="button"
+              className={
+                styles.secondary
+              }
+              disabled={busy}
+              onClick={() =>
+                void wallet
+                  .revealPrivateBalance()
+              }
+            >
+              <RefreshCw
+                size={16}
+              />
+              Reveal private STRK
+            </button>
+          ) : unshieldProgress.kind ===
+              "idle" ? (
+            <>
+              {!privateEnough &&
+                parsedCollateral !==
+                  null && (
+                  <div
+                    className={
+                      styles.notice
+                    }
+                    role="alert"
+                  >
+                    <p>
+                      Private STRK
+                      balance is below
+                      this collateral
+                      amount.
+                    </p>
+                  </div>
+                )}
+
+              <button
+                type="button"
+                className={
+                  styles.primary
+                }
+                disabled={
+                  busy ||
+                  parsedCollateral ===
+                    null ||
+                  !privateEnough
+                }
+                onClick={() =>
+                  void startUnshieldBorrow()
+                }
+              >
+                {unshielding ? (
+                  <LoaderCircle
+                    size={16}
+                  />
+                ) : (
+                  <ShieldAlert
+                    size={16}
+                  />
+                )}
+
+                {unshielding
+                  ? "Unshielding collateral…"
+                  : "Review & Unshield collateral"}
+              </button>
+            </>
+          ) : unshieldProgress.kind ===
+              "waiting" ? (
+            <>
+              <div
+                className={
+                  styles.notice
+                }
+                role="status"
+              >
+                <p>
+                  Unshield submitted.
+                  Vesu remains locked
+                  until Starknet
+                  confirms it.
+                </p>
+              </div>
+
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Unshield tx
+                </span>
+
+                <strong
+                  className={
+                    styles.borrowAddress
+                  }
+                >
+                  {shortAddress(
+                    unshieldProgress
+                      .hash,
+                  )}
+                </strong>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void refreshUnshieldConfirmation()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+
+                {checkingUnshield
+                  ? "Checking confirmation…"
+                  : "Check confirmation"}
+              </button>
+            </>
+          ) : !publicEnough ? (
+            <>
+              <p
+                className={
+                  styles.inlineStatus
+                }
+              >
+                <Check
+                  size={16}
+                />
+                Unshield confirmed.
+              </p>
+
+              <div
+                className={
+                  styles.notice
+                }
+                role="status"
+              >
+                <p>
+                  Waiting for the
+                  public STRK balance
+                  to reflect enough
+                  collateral before
+                  Vesu is unlocked.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void wallet
+                    .refreshPublicBalance()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+                Refresh public balance
+              </button>
+            </>
+          ) : (
+            <>
+              <p
+                className={
+                  styles.inlineStatus
+                }
+              >
+                <Check
+                  size={16}
+                />
+                Public collateral
+                ready. Vesu Borrow
+                is unlocked.
+              </p>
+
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Unshielded
+                </span>
+
+                <strong>
+                  {
+                    unshieldProgress
+                      .amount
+                  }{" "}
+                  STRK
+                </strong>
+              </div>
+            </>
+          )}
+
+          <p
+            className={
+              styles.privacyNote
+            }
+          >
+            Unshield and Vesu Borrow
+            are separate transactions.
+            The collateral amount and
+            destination become public
+            before Vesu execution.
+          </p>
+        </div>
+      )}
+
       <div
         className={
           styles.borrowPair
@@ -884,7 +1521,16 @@ export function VesuBorrow({
               value={
                 collateralAmount
               }
-              disabled={busy}
+              disabled={
+                busy ||
+                (
+                  mode ===
+                    "unshield" &&
+                  unshieldProgress
+                    .kind !==
+                    "idle"
+                )
+              }
               onChange={(
                 event,
               ) =>
@@ -1138,7 +1784,10 @@ export function VesuBorrow({
         className={
           styles.secondary
         }
-        disabled={busy}
+        disabled={
+          busy ||
+          !unshieldBorrowReady
+        }
         onClick={() =>
           void reviewBorrow()
         }
@@ -1155,7 +1804,11 @@ export function VesuBorrow({
 
         {loading
           ? "Checking market…"
-          : "Check Borrow risk"}
+          : mode ===
+              "unshield" &&
+            !unshieldBorrowReady
+            ? "Complete Unshield first"
+            : "Check Borrow risk"}
       </button>
 
       {evaluation &&

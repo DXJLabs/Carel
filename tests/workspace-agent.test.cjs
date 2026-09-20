@@ -394,3 +394,45 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Unshield Borrow remains an explicit reviewed multi-stage flow",
+  () => {
+    const result =
+      workspace
+        .resolveWorkspaceAgentGoal({
+          goal:
+            "Borrow 10 USDC against 1000 STRK.",
+
+          chainId:
+            chains
+              .STARKNET_MAINNET
+              .chainId,
+
+          account:
+            "0x123",
+
+          mode:
+            "unshield",
+
+          registry,
+        });
+
+    assert.equal(
+      result.kind,
+      "explicit",
+    );
+
+    assert.equal(
+      result.tool,
+      "Borrow",
+    );
+
+    assert.equal(
+      result.adapterId,
+      undefined,
+    );
+  },
+);

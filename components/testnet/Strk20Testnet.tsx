@@ -120,6 +120,14 @@ type TxState =
   | { kind: "confirmed"; label: string; hash: string }
   | { kind: "submitted"; label: string; hash: string };
 
+export type PrivateTransferResult =
+  Readonly<{
+    hash: string;
+    status:
+      | "confirmed"
+      | "submitted";
+  }>;
+
 type CarelTestnetContextValue = {
   wallets: WalletWithStarknetFeatures[];
   address: string;
@@ -145,6 +153,10 @@ type CarelTestnetContextValue = {
   revealPrivateBalance: () => Promise<void>;
   shield: (amount: string) => Promise<void>;
   unshield: (amount: string) => Promise<void>;
+  executeUnshieldCollateral: (
+    amount: string,
+    label: string,
+  ) => Promise<PrivateTransferResult>;
   executeSwap: (
     quote: Quote,
     expectedSellToken: string,
@@ -1021,24 +1033,36 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     label: string,
     actions: WALLET_API.STRK20_ACTION[],
     trackMaturity: boolean,
-  ) => {
-    const { account, network } = assertPrivateReady();
+  ): Promise<PrivateTransferResult> => {
+    const {
+      account,
+      network,
+    } = assertPrivateReady();
 
-    // Security boundary: wallet/network may have changed after React
-    // rendered but before Ready receives the privacy request.
+    // Re-check account/network immediately before the private wallet request.
     const selected =
       account.walletProvider as unknown as WalletWithStarknetFeaturesV6;
 
-    const [walletChain, accounts] = await Promise.all([
-      walletV6.requestChainId(selected),
-      account.requestAccounts(true),
+    const [
+      walletChain,
+      accounts,
+    ] = await Promise.all([
+      walletV6.requestChainId(
+        selected,
+      ),
+      account.requestAccounts(
+        true,
+      ),
     ]);
 
     if (
-      currentAccount.current !== account ||
-      String(walletChain) !== network.chainId ||
+      currentAccount.current !==
+        account ||
+      String(walletChain) !==
+        network.chainId ||
       !accounts[0] ||
-      felt(accounts[0]) !== felt(account.address)
+      felt(accounts[0]) !==
+        felt(account.address)
     ) {
       throw new Error(
         "Wallet account or network changed. Reconnect Ready before continuing.",
@@ -1046,30 +1070,74 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
 
     const response =
-      await account.strk20InvokeTransaction(actions);
-    const hash = response.transaction_hash;
+      await account
+        .strk20InvokeTransaction(
+          actions,
+        );
 
-    setTx({ kind: "pending", label, hash });
+    const hash =
+      response.transaction_hash;
+
+    if (
+      !/^0x[0-9a-f]{1,64}$/i.test(
+        hash,
+      )
+    ) {
+      throw new Error(
+        "Ready did not return a valid private transaction hash.",
+      );
+    }
+
+    setTx({
+      kind: "pending",
+      label,
+      hash,
+    });
+
+    let status:
+      PrivateTransferResult["status"] =
+        "submitted";
 
     try {
       await waitForSubmittedTransaction(
         hash,
         network.provider,
       );
-      setTx({ kind: "confirmed", label, hash });
+
+      status = "confirmed";
+
+      setTx({
+        kind: "confirmed",
+        label,
+        hash,
+      });
 
       if (trackMaturity) {
-        const block = Number(
-          await network.provider.getBlockNumber(),
-        );
+        const block =
+          Number(
+            await network.provider
+              .getBlockNumber(),
+          );
+
         setCurrentBlock(block);
-        setMaturityTarget(block + 10);
+        setMaturityTarget(
+          block + 10,
+        );
       }
     } catch {
-      setTx({ kind: "submitted", label, hash });
+      setTx({
+        kind: "submitted",
+        label,
+        hash,
+      });
     }
 
     await refreshPublicBalance();
+
+    return {
+      hash,
+      status,
+    };
   };
 
   const shield = async (amount: string) => {
@@ -1130,6 +1198,127 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unshield failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Moves reviewed private STRK collateral back to the public wallet.
+   *
+   * Unlike the generic quick Unshield action, this method propagates errors
+   * and returns confirmation state so a downstream public protocol cannot
+   * execute before the privacy withdrawal is confirmed.
+   */
+  const executeUnshieldCollateral = async (
+    amount: string,
+    label: string,
+  ): Promise<PrivateTransferResult> => {
+    if (
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const {
+      account,
+      network,
+    } = assertPrivateReady();
+
+    if (
+      network.id !==
+        "mainnet"
+    ) {
+      throw new Error(
+        "Unshield Borrow is currently enabled on Starknet Mainnet only.",
+      );
+    }
+
+    const units =
+      parseUnits18(
+        amount,
+      );
+
+    if (units <= 0n) {
+      throw new Error(
+        "Unshield collateral must be greater than zero.",
+      );
+    }
+
+    if (
+      !privateRevealed ||
+      privateStrk === null
+    ) {
+      throw new Error(
+        "Reveal your private STRK balance before starting Unshield Borrow.",
+      );
+    }
+
+    if (
+      privateStrk <
+      units
+    ) {
+      throw new Error(
+        "Private STRK balance is below the requested Borrow collateral.",
+      );
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const result =
+        await submit(
+          label,
+          [
+            {
+              type:
+                "withdraw",
+              token:
+                felt(
+                  STRK_TOKEN,
+                ),
+              amount:
+                num.toHex(
+                  units,
+                ),
+              recipient:
+                felt(
+                  account.address,
+                ),
+            },
+          ],
+          false,
+        );
+
+      // Any previously disclosed private snapshot is stale after spending it.
+      setPrivateStrk(null);
+      setPrivateXstrk(null);
+      setPrivateRevealed(false);
+
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
+
+      return result;
+    } catch (cause) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : "Unshield Borrow collateral failed.";
+
+      setError(message);
+
+      throw new Error(
+        message,
+      );
     } finally {
       setBusy(false);
     }
@@ -4092,6 +4281,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       revealPrivateBalance,
       shield,
       unshield,
+      executeUnshieldCollateral,
       executeSwap,
       executeShieldSwap,
       executeUnshieldSwapStart,
