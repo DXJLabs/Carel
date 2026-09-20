@@ -8,8 +8,10 @@ import {
 
 import {
   ArrowRight,
+  Check,
   LoaderCircle,
   RefreshCw,
+  ShieldAlert,
   WalletCards,
 } from "lucide-react";
 
@@ -22,8 +24,13 @@ import {
 } from "@/lib/carel/networks";
 
 import {
+  formatUnits,
   parseUnits,
 } from "@/lib/carel/core/amounts";
+
+import {
+  findAssetBalance,
+} from "@/lib/carel/core/balances";
 
 import {
   parseLendGoal,
@@ -42,6 +49,22 @@ type LendMode =
   | "normal"
   | "shield"
   | "unshield";
+
+
+type UnshieldLendProgress =
+  | Readonly<{
+      kind: "idle";
+    }>
+  | Readonly<{
+      kind: "waiting";
+      hash: string;
+      amount: string;
+    }>
+  | Readonly<{
+      kind: "ready";
+      hash: string;
+      amount: string;
+    }>;
 
 
 type LendMarket =
@@ -178,6 +201,23 @@ export function VesuLend({
   ] = useState(false);
 
   const [
+    unshielding,
+    setUnshielding,
+  ] = useState(false);
+
+  const [
+    checkingUnshield,
+    setCheckingUnshield,
+  ] = useState(false);
+
+  const [
+    unshieldProgress,
+    setUnshieldProgress,
+  ] = useState<UnshieldLendProgress>({
+    kind: "idle",
+  });
+
+  const [
     error,
     setError,
   ] = useState("");
@@ -223,6 +263,8 @@ export function VesuLend({
   const busy =
     loading ||
     executing ||
+    unshielding ||
+    checkingUnshield ||
     wallet.busy;
 
 
@@ -246,6 +288,10 @@ export function VesuLend({
         setAmount(
           parsed.amountText,
         );
+
+        setUnshieldProgress({
+          kind: "idle",
+        });
       }
     } catch {
       // Manual form remains available.
@@ -345,7 +391,7 @@ export function VesuLend({
     setSuccess("");
 
     if (
-      mode === "normal" &&
+      mode !== "shield" &&
       wallet.connected &&
       network?.id ===
         "mainnet"
@@ -372,7 +418,232 @@ export function VesuLend({
   ]);
 
 
+  useEffect(() => {
+    setUnshieldProgress({
+      kind: "idle",
+    });
+  }, [
+    wallet.address,
+    wallet.chainId,
+    mode,
+    selectedAssetId,
+  ]);
+
+
+  async function startUnshieldLend() {
+    if (
+      mode !== "unshield" ||
+      !network ||
+      network.id !== "mainnet" ||
+      unshielding ||
+      checkingUnshield
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    let units: bigint;
+
+    try {
+      units =
+        parseUnits(
+          amount,
+          selectedAsset.decimals,
+        );
+    } catch {
+      setError(
+        `Enter a valid ${selectedAsset.symbol} amount.`,
+      );
+      return;
+    }
+
+    if (units <= 0n) {
+      setError(
+        "Lend amount must be greater than zero.",
+      );
+      return;
+    }
+
+    if (!wallet.privateRevealed) {
+      setError(
+        `Reveal private ${selectedAsset.symbol} before Unshield Lend.`,
+      );
+      return;
+    }
+
+    const privateBalance =
+      findAssetBalance(
+        wallet.balances,
+        selectedAsset.id,
+        "private",
+      )?.amount ?? 0n;
+
+    if (
+      privateBalance <
+      units
+    ) {
+      setError(
+        `Private ${selectedAsset.symbol} balance is below this Lend amount.`,
+      );
+      return;
+    }
+
+    setUnshielding(true);
+
+    try {
+      const result =
+        await wallet.executeUnshieldAsset(
+          selectedAsset.id,
+          amount,
+          `Unshield ${amount} ${selectedAsset.symbol} for Lend`,
+        );
+
+      setUnshieldProgress({
+        kind:
+          result.status === "confirmed"
+            ? "ready"
+            : "waiting",
+
+        hash:
+          result.hash,
+
+        amount,
+      });
+
+      if (
+        result.status ===
+        "confirmed"
+      ) {
+        await wallet
+          .refreshAssetBalances();
+      }
+    } catch (cause) {
+      setUnshieldProgress({
+        kind: "idle",
+      });
+
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unshield Lend failed.",
+      );
+    } finally {
+      setUnshielding(false);
+    }
+  }
+
+
+  async function refreshUnshieldLendConfirmation() {
+    if (
+      mode !== "unshield" ||
+      unshieldProgress.kind !==
+        "waiting" ||
+      !network ||
+      network.id !== "mainnet"
+    ) {
+      return;
+    }
+
+    setCheckingUnshield(true);
+    setError("");
+
+    try {
+      const receipt: unknown =
+        await network.provider
+          .waitForTransaction(
+            unshieldProgress.hash,
+            {
+              retries: 2,
+              retryInterval: 1500,
+            },
+          );
+
+      if (
+        receipt &&
+        typeof receipt === "object"
+      ) {
+        const executionStatus =
+          (
+            receipt as Record<
+              string,
+              unknown
+            >
+          ).execution_status;
+
+        if (
+          executionStatus ===
+          "REVERTED"
+        ) {
+          throw new Error(
+            "The Unshield transaction reverted. Vesu Lend remains locked.",
+          );
+        }
+      }
+
+      await wallet
+        .refreshAssetBalances();
+
+      setUnshieldProgress({
+        ...unshieldProgress,
+        kind: "ready",
+      });
+    } catch (cause) {
+      setError(
+        cause instanceof Error &&
+        /revert/i.test(
+          cause.message,
+        )
+          ? cause.message
+          : "Unshield is not confirmed yet. Vesu Lend remains locked.",
+      );
+    } finally {
+      setCheckingUnshield(false);
+    }
+  }
+
+
   async function executeLend() {
+    if (
+      mode === "unshield"
+    ) {
+      let units: bigint;
+
+      try {
+        units =
+          parseUnits(
+            amount,
+            selectedAsset.decimals,
+          );
+      } catch {
+        setError(
+          `Enter a valid ${selectedAsset.symbol} amount.`,
+        );
+        return;
+      }
+
+      const publicBalance =
+        findAssetBalance(
+          wallet.balances,
+          selectedAsset.id,
+          "public",
+        )?.amount;
+
+      if (
+        unshieldProgress.kind !==
+          "ready" ||
+        publicBalance === null ||
+        publicBalance === undefined ||
+        publicBalance < units
+      ) {
+        setError(
+          "Complete and confirm Unshield before Vesu Lend.",
+        );
+        return;
+      }
+    }
+
     if (
       !selectedMarket ||
       !wallet.address ||
@@ -503,7 +774,7 @@ export function VesuLend({
 
 
   if (
-    mode !== "normal"
+    mode === "shield"
   ) {
     return (
       <section
@@ -517,10 +788,14 @@ export function VesuLend({
           }
         >
           <p>
-            Vesu lending positions
-            are public. Shield and
-            Unshield Lend remain
-            disabled.
+            Direct Shield Lend is
+            not wired yet. CAREL will
+            use the Vesu lending
+            anonymizer instead of
+            pretending a normal
+            public Vesu position is
+            private. Unshield Lend is
+            available now.
           </p>
 
           <button
@@ -613,12 +888,336 @@ export function VesuLend({
   }
 
 
+  let parsedAmount:
+    bigint | null =
+      null;
+
+  try {
+    const value =
+      parseUnits(
+        amount,
+        selectedAsset.decimals,
+      );
+
+    if (value > 0n) {
+      parsedAmount =
+        value;
+    }
+  } catch {
+    parsedAmount =
+      null;
+  }
+
+  const privateBalance =
+    wallet.privateRevealed
+      ? findAssetBalance(
+          wallet.balances,
+          selectedAsset.id,
+          "private",
+        )?.amount ?? 0n
+      : null;
+
+  const publicBalance =
+    findAssetBalance(
+      wallet.balances,
+      selectedAsset.id,
+      "public",
+    )?.amount ?? null;
+
+  const privateEnough =
+    parsedAmount !== null &&
+    privateBalance !== null &&
+    privateBalance >=
+      parsedAmount;
+
+  const publicEnough =
+    parsedAmount !== null &&
+    publicBalance !== null &&
+    publicBalance >=
+      parsedAmount;
+
+  const unshieldLendReady =
+    mode !== "unshield" ||
+    (
+      unshieldProgress.kind ===
+        "ready" &&
+      publicEnough
+    );
+
+
   return (
     <section
       className={
         styles.borrowPanel
       }
     >
+      {mode === "unshield" && (
+        <div
+          className={
+            styles.borrowRisk
+          }
+        >
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Route
+            </span>
+
+            <strong>
+              Private {selectedAsset.symbol}
+              {" → "}
+              Public {selectedAsset.symbol}
+              {" → "}
+              Vesu
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Private {selectedAsset.symbol}
+            </span>
+
+            <strong>
+              {!wallet.privateRevealed
+                ? "Hidden"
+                : privateBalance === null
+                  ? "—"
+                  : `${formatUnits(
+                      privateBalance,
+                      selectedAsset.decimals,
+                      6,
+                    )} ${selectedAsset.symbol}`}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Public {selectedAsset.symbol}
+            </span>
+
+            <strong>
+              {publicBalance === null
+                ? "—"
+                : `${formatUnits(
+                    publicBalance,
+                    selectedAsset.decimals,
+                    6,
+                  )} ${selectedAsset.symbol}`}
+            </strong>
+          </div>
+
+          {unshieldProgress.kind ===
+            "idle" ? (
+            !wallet.strk20Capable ? (
+              <div
+                className={
+                  styles.notice
+                }
+                role="alert"
+              >
+                <p>
+                  Ready does not report
+                  the STRK20 Wallet API
+                  required for Unshield
+                  Lend.
+                </p>
+              </div>
+            ) : !wallet.privateRevealed ? (
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void wallet
+                    .revealPrivateBalance()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+                Reveal private balance
+              </button>
+            ) : (
+              <>
+                {!privateEnough &&
+                  parsedAmount !==
+                    null && (
+                    <div
+                      className={
+                        styles.notice
+                      }
+                      role="alert"
+                    >
+                      <p>
+                        Private {
+                          selectedAsset
+                            .symbol
+                        } balance is
+                        below this Lend
+                        amount.
+                      </p>
+                    </div>
+                  )}
+
+                <button
+                  type="button"
+                  className={
+                    styles.primary
+                  }
+                  disabled={
+                    busy ||
+                    parsedAmount ===
+                      null ||
+                    !privateEnough
+                  }
+                  onClick={() =>
+                    void startUnshieldLend()
+                  }
+                >
+                  {unshielding ? (
+                    <LoaderCircle
+                      size={16}
+                    />
+                  ) : (
+                    <ShieldAlert
+                      size={16}
+                    />
+                  )}
+
+                  {unshielding
+                    ? "Unshielding…"
+                    : `Review & Unshield ${selectedAsset.symbol}`}
+                </button>
+              </>
+            )
+          ) : unshieldProgress.kind ===
+              "waiting" ? (
+            <>
+              <div
+                className={
+                  styles.notice
+                }
+                role="status"
+              >
+                <p>
+                  Unshield submitted.
+                  Vesu Lend remains
+                  locked until
+                  confirmation.
+                </p>
+              </div>
+
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Unshield tx
+                </span>
+
+                <strong
+                  className={
+                    styles.borrowAddress
+                  }
+                >
+                  {shortAddress(
+                    unshieldProgress.hash,
+                  )}
+                </strong>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void refreshUnshieldLendConfirmation()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+
+                {checkingUnshield
+                  ? "Checking confirmation…"
+                  : "Check confirmation"}
+              </button>
+            </>
+          ) : !publicEnough ? (
+            <>
+              <p
+                className={
+                  styles.inlineStatus
+                }
+              >
+                <Check
+                  size={16}
+                />
+                Unshield confirmed.
+              </p>
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void wallet
+                    .refreshAssetBalances()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+                Refresh public balance
+              </button>
+            </>
+          ) : (
+            <p
+              className={
+                styles.inlineStatus
+              }
+            >
+              <Check
+                size={16}
+              />
+              Public {
+                selectedAsset.symbol
+              } ready. Vesu Lend
+              unlocked.
+            </p>
+          )}
+
+          <p
+            className={
+              styles.privacyNote
+            }
+          >
+            Unshield and Vesu Lend
+            are separate transactions.
+            The Vesu lending position
+            is public.
+          </p>
+        </div>
+      )}
+
       <div
         className={
           styles.borrowPair
@@ -899,7 +1498,8 @@ export function VesuLend({
         }
         disabled={
           busy ||
-          !selectedMarket
+          !selectedMarket ||
+          !unshieldLendReady
         }
         onClick={() =>
           void executeLend()

@@ -29,6 +29,10 @@ import {
 } from "@/lib/carel/core/amounts";
 
 import {
+  findAssetBalance,
+} from "@/lib/carel/core/balances";
+
+import {
   parseBorrowGoal,
 } from "@/lib/agent/borrow";
 
@@ -62,6 +66,41 @@ type UnshieldBorrowProgress =
       hash: string;
       amount: string;
     }>;
+
+type ShieldBorrowProgress =
+  | Readonly<{
+      kind: "idle";
+    }>
+  | Readonly<{
+      kind: "waiting";
+      borrowHash: string;
+      amount: string;
+      amountUnits: string;
+      debtAssetId: string;
+      debtSymbol: string;
+      publicBefore: string;
+    }>
+  | Readonly<{
+      kind: "ready";
+      borrowHash: string;
+      amount: string;
+      amountUnits: string;
+      debtAssetId: string;
+      debtSymbol: string;
+      publicBefore: string;
+    }>
+  | Readonly<{
+      kind: "shielded";
+      borrowHash: string;
+      shieldHash: string;
+      amount: string;
+      debtAssetId: string;
+      debtSymbol: string;
+      status:
+        | "confirmed"
+        | "submitted";
+    }>;
+
 
 type BorrowEvaluation =
   Readonly<{
@@ -303,6 +342,23 @@ export function VesuBorrow({
   });
 
   const [
+    shieldingBorrow,
+    setShieldingBorrow,
+  ] = useState(false);
+
+  const [
+    checkingShieldBorrow,
+    setCheckingShieldBorrow,
+  ] = useState(false);
+
+  const [
+    shieldBorrowProgress,
+    setShieldBorrowProgress,
+  ] = useState<ShieldBorrowProgress>({
+    kind: "idle",
+  });
+
+  const [
     error,
     setError,
   ] = useState("");
@@ -333,6 +389,8 @@ export function VesuBorrow({
     executing ||
     unshielding ||
     checkingUnshield ||
+    shieldingBorrow ||
+    checkingShieldBorrow ||
     wallet.busy;
 
   /**
@@ -355,6 +413,14 @@ export function VesuBorrow({
         kind: "idle",
       });
     }
+
+    if (
+      mode === "shield"
+    ) {
+      setShieldBorrowProgress({
+        kind: "idle",
+      });
+    }
   }
 
   /**
@@ -369,6 +435,14 @@ export function VesuBorrow({
     setReviewed(false);
     setSuccess("");
     setError("");
+
+    if (
+      mode === "shield"
+    ) {
+      setShieldBorrowProgress({
+        kind: "idle",
+      });
+    }
   }
 
   useEffect(() => {
@@ -399,6 +473,10 @@ export function VesuBorrow({
           kind: "idle",
         });
 
+        setShieldBorrowProgress({
+          kind: "idle",
+        });
+
         setBorrowAmount(
           parsed.borrowAmountText,
         );
@@ -416,6 +494,10 @@ export function VesuBorrow({
 
   useEffect(() => {
     setUnshieldProgress({
+      kind: "idle",
+    });
+
+    setShieldBorrowProgress({
       kind: "idle",
     });
   }, [
@@ -793,9 +875,246 @@ export function VesuBorrow({
   }
 
   /**
+   * Confirms stage 1 before CAREL exposes the privacy action.
+   *
+   * Stage 1:
+   * Public STRK -> public Vesu Borrow position + public debt asset.
+   *
+   * Stage 2:
+   * Exact borrowed debt asset -> STRK20 privacy pool.
+   */
+  async function refreshShieldBorrowConfirmation() {
+    if (
+      mode !== "shield" ||
+      shieldBorrowProgress.kind !==
+        "waiting" ||
+      !network ||
+      network.id !== "mainnet"
+    ) {
+      return;
+    }
+
+    setCheckingShieldBorrow(
+      true,
+    );
+
+    setError("");
+
+    try {
+      const receipt: unknown =
+        await network.provider
+          .waitForTransaction(
+            shieldBorrowProgress
+              .borrowHash,
+            {
+              retries: 2,
+              retryInterval: 1500,
+            },
+          );
+
+      if (
+        receipt &&
+        typeof receipt ===
+          "object"
+      ) {
+        const executionStatus =
+          (
+            receipt as Record<
+              string,
+              unknown
+            >
+          ).execution_status;
+
+        if (
+          executionStatus ===
+          "REVERTED"
+        ) {
+          throw new Error(
+            "The Vesu Borrow reverted. Shield remains locked.",
+          );
+        }
+      }
+
+      await wallet
+        .refreshAssetBalances();
+
+      setShieldBorrowProgress({
+        ...shieldBorrowProgress,
+
+        kind: "ready",
+      });
+    } catch (cause) {
+      setError(
+        cause instanceof Error &&
+        /revert/i.test(
+          cause.message,
+        )
+          ? cause.message
+          : "Borrow is not confirmed yet. Shield remains locked.",
+      );
+    } finally {
+      setCheckingShieldBorrow(
+        false,
+      );
+    }
+  }
+
+
+  /**
+   * Shields exactly the reviewed Borrow output.
+   *
+   * The Vesu collateral/debt position stays public.
+   * Only the borrowed proceeds move into STRK20 privacy.
+   */
+  async function shieldBorrowProceeds() {
+    if (
+      mode !== "shield" ||
+      shieldBorrowProgress.kind !==
+        "ready" ||
+      shieldingBorrow
+    ) {
+      return;
+    }
+
+    let expected:
+      bigint;
+
+    let publicBefore:
+      bigint;
+
+    try {
+      expected =
+        BigInt(
+          shieldBorrowProgress
+            .amountUnits,
+        );
+
+      publicBefore =
+        BigInt(
+          shieldBorrowProgress
+            .publicBefore,
+        );
+    } catch {
+      setError(
+        "Shield Borrow contains invalid reviewed balance metadata.",
+      );
+
+      return;
+    }
+
+    const current =
+      findAssetBalance(
+        wallet.balances,
+        shieldBorrowProgress
+          .debtAssetId,
+        "public",
+      )?.amount;
+
+    if (
+      current === null ||
+      current === undefined ||
+      current <
+        publicBefore +
+          expected
+    ) {
+      setError(
+        `The borrowed ${shieldBorrowProgress.debtSymbol} is not visible in the public wallet yet.`,
+      );
+
+      return;
+    }
+
+    if (
+      !wallet.strk20Capable
+    ) {
+      setError(
+        "Ready does not report the STRK20 Wallet API required for Shield Borrow.",
+      );
+
+      return;
+    }
+
+    setShieldingBorrow(
+      true,
+    );
+
+    setError("");
+    setSuccess("");
+
+    try {
+      const result =
+        await wallet
+          .executeShieldAsset(
+            shieldBorrowProgress
+              .debtAssetId,
+
+            shieldBorrowProgress
+              .amount,
+
+            `Shield borrowed ${shieldBorrowProgress.amount} ${shieldBorrowProgress.debtSymbol}`,
+          );
+
+      setShieldBorrowProgress({
+        kind: "shielded",
+
+        borrowHash:
+          shieldBorrowProgress
+            .borrowHash,
+
+        shieldHash:
+          result.hash,
+
+        amount:
+          shieldBorrowProgress
+            .amount,
+
+        debtAssetId:
+          shieldBorrowProgress
+            .debtAssetId,
+
+        debtSymbol:
+          shieldBorrowProgress
+            .debtSymbol,
+
+        status:
+          result.status,
+      });
+
+      setSuccess(
+        `Borrowed ${shieldBorrowProgress.amount} ${shieldBorrowProgress.debtSymbol}; Shield ${result.status}.`,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not Shield the borrowed asset.",
+      );
+    } finally {
+      setShieldingBorrow(
+        false,
+      );
+    }
+  }
+
+
+  /**
    * Requests a fresh risk evaluation for the exact user-entered amounts.
    */
   async function reviewBorrow() {
+    if (
+      mode === "shield" &&
+      shieldBorrowProgress.kind !==
+        "idle"
+    ) {
+      setReviewed(false);
+
+      setError(
+        "Finish the current Shield Borrow flow before reviewing another Borrow.",
+      );
+
+      return;
+    }
+
     if (
       mode === "unshield" &&
       unshieldProgress.kind !==
@@ -830,6 +1149,18 @@ export function VesuBorrow({
    * checks, and finally sends only the strict execution payload to Ready.
    */
   async function executeBorrow() {
+    if (
+      mode === "shield" &&
+      shieldBorrowProgress.kind !==
+        "idle"
+    ) {
+      setError(
+        "Finish the current Shield Borrow flow first.",
+      );
+
+      return;
+    }
+
     if (
       mode === "unshield" &&
       unshieldProgress.kind !==
@@ -943,27 +1274,78 @@ export function VesuBorrow({
         );
       }
 
+      const publicDebtBefore =
+        findAssetBalance(
+          wallet.balances,
+          selectedDebtAsset.id,
+          "public",
+        )?.amount ?? 0n;
+
+      const expectedShieldAmount =
+        parseUnits(
+          borrowAmount,
+          selectedDebtAsset
+            .decimals,
+        );
+
       const hash =
         await wallet.executeBorrow(
           prepared.execution,
           `Borrow ${borrowAmount} ${selectedDebtAsset.symbol} against ${collateralAmount} STRK · Vesu ${prepared.pool.name}`,
         );
 
-      setSuccess(
-        `Borrow submitted: ${hash.slice(
-          0,
-          10,
-        )}…${hash.slice(-6)}`,
-      );
+      if (
+        mode === "shield"
+      ) {
+        setShieldBorrowProgress({
+          kind: "waiting",
+
+          borrowHash:
+            hash,
+
+          amount:
+            borrowAmount,
+
+          amountUnits:
+            expectedShieldAmount
+              .toString(),
+
+          debtAssetId:
+            selectedDebtAsset.id,
+
+          debtSymbol:
+            selectedDebtAsset
+              .symbol,
+
+          publicBefore:
+            publicDebtBefore
+              .toString(),
+        });
+
+        setSuccess(
+          `Borrow submitted. Confirm it before Shielding ${borrowAmount} ${selectedDebtAsset.symbol}.`,
+        );
+      } else {
+        setSuccess(
+          `Borrow submitted: ${hash.slice(
+            0,
+            10,
+          )}…${hash.slice(-6)}`,
+        );
+      }
 
       setReviewed(false);
 
-      try {
-        await loadMarkets(
-          false,
-        );
-      } catch {
-        // Execution result remains visible even if market refresh fails.
+      if (
+        mode !== "shield"
+      ) {
+        try {
+          await loadMarkets(
+            false,
+          );
+        } catch {
+          // Execution result remains visible even if market refresh fails.
+        }
       }
     } catch (cause) {
       setError(
@@ -974,47 +1356,6 @@ export function VesuBorrow({
     } finally {
       setExecuting(false);
     }
-  }
-
-  if (mode === "shield") {
-    return (
-      <section
-        className={
-          styles.borrowPanel
-        }
-      >
-        <div
-          className={
-            styles.notice
-          }
-        >
-          <p>
-            Shield Borrow is not
-            enabled. Vesu debt is a
-            public position. Use
-            Normal for public
-            collateral or Unshield
-            to move private STRK
-            public before Borrow.
-          </p>
-
-          <button
-            type="button"
-            className={
-              styles.textButton
-            }
-            onClick={
-              onPublicMode
-            }
-          >
-            Use Normal mode
-            <ArrowRight
-              size={14}
-            />
-          </button>
-        </div>
-      </section>
-    );
   }
 
   if (!wallet.connected) {
@@ -1082,6 +1423,71 @@ export function VesuBorrow({
       </section>
     );
   }
+
+  const shieldDebtAssetId =
+    shieldBorrowProgress.kind ===
+      "idle"
+      ? null
+      : shieldBorrowProgress
+          .debtAssetId;
+
+  const shieldDebtBalance =
+    shieldDebtAssetId
+      ? findAssetBalance(
+          wallet.balances,
+          shieldDebtAssetId,
+          "public",
+        )?.amount ?? null
+      : null;
+
+  let shieldExpected:
+    bigint | null =
+      null;
+
+  let shieldPublicBefore:
+    bigint | null =
+      null;
+
+  if (
+    shieldBorrowProgress.kind ===
+      "waiting" ||
+    shieldBorrowProgress.kind ===
+      "ready"
+  ) {
+    try {
+      shieldExpected =
+        BigInt(
+          shieldBorrowProgress
+            .amountUnits,
+        );
+
+      shieldPublicBefore =
+        BigInt(
+          shieldBorrowProgress
+            .publicBefore,
+        );
+    } catch {
+      shieldExpected =
+        null;
+
+      shieldPublicBefore =
+        null;
+    }
+  }
+
+  const shieldFundsReady =
+    shieldExpected !== null &&
+    shieldPublicBefore !== null &&
+    shieldDebtBalance !== null &&
+    shieldDebtBalance >=
+      shieldPublicBefore +
+        shieldExpected;
+
+  const shieldFlowLocked =
+    mode === "shield" &&
+    shieldBorrowProgress.kind !==
+      "idle";
+
 
   let parsedCollateral:
     bigint | null =
@@ -1179,6 +1585,264 @@ export function VesuBorrow({
         styles.borrowPanel
       }
     >
+      {mode === "shield" && (
+        <div
+          className={
+            styles.borrowRisk
+          }
+        >
+          <div
+            className={
+              styles.rule
+            }
+          >
+            <span>
+              Route
+            </span>
+
+            <strong>
+              Public STRK → Vesu → Private {
+                shieldBorrowProgress.kind ===
+                  "idle"
+                  ? selectedDebtAsset
+                      .symbol
+                  : shieldBorrowProgress
+                      .debtSymbol
+              }
+            </strong>
+          </div>
+
+          {shieldBorrowProgress.kind ===
+            "idle" ? (
+            <div
+              className={
+                styles.notice
+              }
+              role="status"
+            >
+              <p>
+                Step 1 creates the
+                public Vesu Borrow
+                position. After it is
+                confirmed, CAREL
+                unlocks a separate
+                Shield transaction
+                for the exact borrowed
+                asset amount.
+              </p>
+            </div>
+          ) : shieldBorrowProgress.kind ===
+              "waiting" ? (
+            <>
+              <div
+                className={
+                  styles.notice
+                }
+                role="status"
+              >
+                <p>
+                  Borrow submitted.
+                  Shield remains locked
+                  until the Vesu
+                  transaction is
+                  confirmed.
+                </p>
+              </div>
+
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Borrow tx
+                </span>
+
+                <strong
+                  className={
+                    styles.borrowAddress
+                  }
+                >
+                  {shortAddress(
+                    shieldBorrowProgress
+                      .borrowHash,
+                  )}
+                </strong>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void refreshShieldBorrowConfirmation()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+
+                {checkingShieldBorrow
+                  ? "Checking confirmation…"
+                  : "Check Borrow confirmation"}
+              </button>
+            </>
+          ) : shieldBorrowProgress.kind ===
+              "ready" &&
+            !shieldFundsReady ? (
+            <>
+              <p
+                className={
+                  styles.inlineStatus
+                }
+              >
+                <Check
+                  size={16}
+                />
+                Vesu Borrow confirmed.
+              </p>
+
+              <div
+                className={
+                  styles.notice
+                }
+                role="status"
+              >
+                <p>
+                  Waiting for {
+                    shieldBorrowProgress
+                      .amount
+                  } {
+                    shieldBorrowProgress
+                      .debtSymbol
+                  } to appear in the
+                  public wallet before
+                  Shield.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  styles.secondary
+                }
+                disabled={busy}
+                onClick={() =>
+                  void wallet
+                    .refreshAssetBalances()
+                }
+              >
+                <RefreshCw
+                  size={16}
+                />
+                Refresh public balance
+              </button>
+            </>
+          ) : shieldBorrowProgress.kind ===
+              "ready" ? (
+            <>
+              <p
+                className={
+                  styles.inlineStatus
+                }
+              >
+                <Check
+                  size={16}
+                />
+                Borrowed {
+                  shieldBorrowProgress
+                    .amount
+                } {
+                  shieldBorrowProgress
+                    .debtSymbol
+                } ready to Shield.
+              </p>
+
+              <button
+                type="button"
+                className={
+                  styles.primary
+                }
+                disabled={
+                  busy ||
+                  !wallet.strk20Capable ||
+                  !shieldFundsReady
+                }
+                onClick={() =>
+                  void shieldBorrowProceeds()
+                }
+              >
+                {shieldingBorrow ? (
+                  <LoaderCircle
+                    size={16}
+                  />
+                ) : (
+                  <ShieldAlert
+                    size={16}
+                  />
+                )}
+
+                {shieldingBorrow
+                  ? "Shielding proceeds…"
+                  : `Review & Shield ${shieldBorrowProgress.amount} ${shieldBorrowProgress.debtSymbol}`}
+              </button>
+            </>
+          ) : (
+            <>
+              <p
+                className={
+                  styles.inlineStatus
+                }
+              >
+                <Check
+                  size={16}
+                />
+                Borrow complete.
+                Shield {
+                  shieldBorrowProgress
+                    .status
+                }.
+              </p>
+
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Shield tx
+                </span>
+
+                <strong
+                  className={
+                    styles.borrowAddress
+                  }
+                >
+                  {shortAddress(
+                    shieldBorrowProgress
+                      .shieldHash,
+                  )}
+                </strong>
+              </div>
+            </>
+          )}
+
+          <p
+            className={
+              styles.privacyNote
+            }
+          >
+            Vesu collateral and debt
+            remain public. Shield mode
+            moves only the reviewed
+            borrowed proceeds into
+            STRK20 privacy.
+          </p>
+        </div>
+      )}
+
       {mode === "unshield" && (
         <div
           className={
@@ -1523,6 +2187,7 @@ export function VesuBorrow({
               }
               disabled={
                 busy ||
+                shieldFlowLocked ||
                 (
                   mode ===
                     "unshield" &&
@@ -1578,7 +2243,10 @@ export function VesuBorrow({
               value={
                 borrowAmount
               }
-              disabled={busy}
+              disabled={
+                busy ||
+                shieldFlowLocked
+              }
               onChange={(
                 event,
               ) =>
@@ -1613,7 +2281,10 @@ export function VesuBorrow({
           value={
             debtAssetId
           }
-          disabled={busy}
+          disabled={
+            busy ||
+            shieldFlowLocked
+          }
           onChange={(
             event,
           ) => {
@@ -1627,6 +2298,14 @@ export function VesuBorrow({
             setReviewed(false);
             setError("");
             setSuccess("");
+
+            if (
+              mode === "shield"
+            ) {
+              setShieldBorrowProgress({
+                kind: "idle",
+              });
+            }
           }}
         >
           {VESU_BORROW_DEBT_ASSETS.map(
@@ -1676,7 +2355,10 @@ export function VesuBorrow({
                 ?.pool.id ??
               ""
             }
-            disabled={busy}
+            disabled={
+              busy ||
+              shieldFlowLocked
+            }
             onChange={(
               event,
             ) => {
@@ -1786,7 +2468,8 @@ export function VesuBorrow({
         }
         disabled={
           busy ||
-          !unshieldBorrowReady
+          !unshieldBorrowReady ||
+          shieldFlowLocked
         }
         onClick={() =>
           void reviewBorrow()

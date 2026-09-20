@@ -473,3 +473,64 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Shield Borrow keeps public Borrow and private Shield as separate stages",
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/borrow/VesuBorrow.tsx",
+        ),
+        "utf8",
+      );
+
+    assert.match(
+      source,
+      /await wallet\.executeBorrow\(/,
+    );
+
+    assert.match(
+      source,
+      /await wallet[\s\S]*\.executeShieldAsset\(/,
+    );
+
+    assert.match(
+      source,
+      /Vesu collateral and debt[\s\S]*remain public/,
+    );
+
+    const decision =
+      workspace
+        .resolveWorkspaceAgentGoal({
+          goal:
+            "Borrow 10 USDC against 1000 STRK.",
+
+          chainId:
+            chains
+              .STARKNET_MAINNET
+              .chainId,
+
+          account:
+            "0x123",
+
+          mode:
+            "shield",
+
+          registry,
+        });
+
+    assert.equal(
+      decision.kind,
+      "explicit",
+    );
+
+    assert.equal(
+      decision.tool,
+      "Borrow",
+    );
+  },
+);

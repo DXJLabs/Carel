@@ -71,10 +71,15 @@ import {
 } from "@/lib/carel/core/balances";
 
 import {
+  parseUnits,
+} from "@/lib/carel/core/amounts";
+
+import {
   privateBalanceTokenAddresses,
   readStarknetPublicBalances,
   readStrk20PrivateBalances,
   readStrk20TokenAmount,
+  requireStarknetBalanceAddress,
 } from "@/lib/carel/ecosystems/starknet/balances";
 
 import type {
@@ -160,6 +165,16 @@ type CarelTestnetContextValue = {
   revealPrivateBalance: () => Promise<void>;
   shield: (amount: string) => Promise<void>;
   unshield: (amount: string) => Promise<void>;
+  executeShieldAsset: (
+    assetId: string,
+    amount: string,
+    label: string,
+  ) => Promise<PrivateTransferResult>;
+  executeUnshieldAsset: (
+    assetId: string,
+    amount: string,
+    label: string,
+  ) => Promise<PrivateTransferResult>;
   executeUnshieldCollateral: (
     amount: string,
     label: string,
@@ -1214,6 +1229,311 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   };
+
+  /**
+   * Moves one registered public Starknet asset into STRK20 privacy.
+   *
+   * Used by composed flows such as Shield Borrow, where the public
+   * protocol execution is reviewed separately from the privacy deposit.
+   */
+  const executeShieldAsset = async (
+    assetId: string,
+    amount: string,
+    label: string,
+  ): Promise<PrivateTransferResult> => {
+    if (
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const {
+      network,
+    } =
+      assertPrivateReady();
+
+    const asset =
+      network.assetList.find(
+        (candidate) =>
+          candidate.id ===
+          assetId,
+      );
+
+    if (!asset) {
+      throw new Error(
+        "CAREL does not recognize this Shield asset on the connected network.",
+      );
+    }
+
+    let units:
+      bigint;
+
+    try {
+      units =
+        parseUnits(
+          amount,
+          asset.decimals,
+        );
+    } catch {
+      throw new Error(
+        `Enter a valid ${asset.symbol} amount.`,
+      );
+    }
+
+    if (
+      units <= 0n
+    ) {
+      throw new Error(
+        `Shield ${asset.symbol} amount must be greater than zero.`,
+      );
+    }
+
+    const publicBalance =
+      findAssetBalance(
+        balances,
+        asset.id,
+        "public",
+      )?.amount;
+
+    if (
+      publicBalance !==
+        null &&
+      publicBalance !==
+        undefined &&
+      publicBalance <
+        units
+    ) {
+      throw new Error(
+        `Insufficient public ${asset.symbol} balance for Shield.`,
+      );
+    }
+
+    const token =
+      felt(
+        requireStarknetBalanceAddress(
+          asset,
+        ),
+      );
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const result =
+        await submit(
+          label,
+          [
+            {
+              type:
+                "deposit",
+
+              token,
+
+              amount:
+                num.toHex(
+                  units,
+                ),
+            },
+          ],
+          true,
+        );
+
+      /*
+       * A new private note now exists, but the previous disclosure
+       * snapshot is stale and the note may still be maturing.
+       */
+      setPrivateStrk(null);
+      setPrivateXstrk(null);
+      setPrivateRevealed(false);
+
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
+
+      return result;
+    } catch (cause) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : `Shield ${asset.symbol} failed.`;
+
+      setError(
+        message,
+      );
+
+      throw new Error(
+        message,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+
+  /**
+   * Moves one explicitly disclosed private asset back to the public wallet.
+   *
+   * The caller receives confirmation state so a downstream public protocol
+   * remains locked until the privacy withdrawal is confirmed.
+   */
+  const executeUnshieldAsset = async (
+    assetId: string,
+    amount: string,
+    label: string,
+  ): Promise<PrivateTransferResult> => {
+    if (
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+    const {
+      account,
+      network,
+    } =
+      assertPrivateReady();
+
+    const asset =
+      network.assetList.find(
+        (candidate) =>
+          candidate.id ===
+          assetId,
+      );
+
+    if (!asset) {
+      throw new Error(
+        "CAREL does not recognize this Unshield asset on the connected network.",
+      );
+    }
+
+    let units:
+      bigint;
+
+    try {
+      units =
+        parseUnits(
+          amount,
+          asset.decimals,
+        );
+    } catch {
+      throw new Error(
+        `Enter a valid ${asset.symbol} amount.`,
+      );
+    }
+
+    if (
+      units <= 0n
+    ) {
+      throw new Error(
+        `Unshield ${asset.symbol} amount must be greater than zero.`,
+      );
+    }
+
+    if (
+      !privateRevealed
+    ) {
+      throw new Error(
+        `Reveal private ${asset.symbol} before continuing.`,
+      );
+    }
+
+    const privateBalance =
+      findAssetBalance(
+        balances,
+        asset.id,
+        "private",
+      )?.amount ??
+      0n;
+
+    if (
+      privateBalance <
+      units
+    ) {
+      throw new Error(
+        `Private ${asset.symbol} balance is below the requested amount.`,
+      );
+    }
+
+    const token =
+      felt(
+        requireStarknetBalanceAddress(
+          asset,
+        ),
+      );
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const result =
+        await submit(
+          label,
+          [
+            {
+              type:
+                "withdraw",
+
+              token,
+
+              amount:
+                num.toHex(
+                  units,
+                ),
+
+              recipient:
+                felt(
+                  account.address,
+                ),
+            },
+          ],
+          false,
+        );
+
+      /*
+       * Spending any disclosed note invalidates the complete private
+       * snapshot. Require a fresh Reveal before another private action.
+       */
+      setPrivateStrk(null);
+      setPrivateXstrk(null);
+      setPrivateRevealed(false);
+
+      setBalances(
+        (current) =>
+          clearBalancesByVisibility(
+            current,
+            "private",
+          ),
+      );
+
+      return result;
+    } catch (cause) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : `Unshield ${asset.symbol} failed.`;
+
+      setError(
+        message,
+      );
+
+      throw new Error(
+        message,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
 
   /**
    * Moves reviewed private STRK collateral back to the public wallet.
@@ -4599,6 +4919,8 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       revealPrivateBalance,
       shield,
       unshield,
+      executeShieldAsset,
+      executeUnshieldAsset,
       executeUnshieldCollateral,
       executeSwap,
       executeShieldSwap,
