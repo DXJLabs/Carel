@@ -56,9 +56,9 @@ import {
 } from "@/lib/agent/executor";
 
 import {
-  createStarknetBorrowShieldRuntime,
-  type StarknetBorrowShieldRuntime,
-} from "@/lib/agent/starknet-borrow-shield";
+  createStarknetBorrowRuntime,
+  type StarknetBorrowRuntime,
+} from "@/lib/agent/starknet-borrow-runtime";
 
 import type {
   VesuBorrowExecutionPayload,
@@ -400,7 +400,7 @@ export function VesuBorrow({
     );
 
   const shieldAgentRuntimeRef =
-    useRef<StarknetBorrowShieldRuntime | null>(
+    useRef<StarknetBorrowRuntime | null>(
       null,
     );
 
@@ -945,7 +945,7 @@ export function VesuBorrow({
    * - executeShieldAsset still owns the STRK20 Wallet API boundary.
    */
   function createLiveShieldBorrowRuntime():
-    StarknetBorrowShieldRuntime {
+    StarknetBorrowRuntime {
     if (
       !selectedMarket ||
       !wallet.address
@@ -958,7 +958,7 @@ export function VesuBorrow({
     const reviewedMarket =
       selectedMarket;
 
-    return createStarknetBorrowShieldRuntime({
+    return createStarknetBorrowRuntime({
       async prepareBorrow(
         input,
       ) {
@@ -1105,6 +1105,19 @@ export function VesuBorrow({
       ) {
         return wallet
           .executeShieldAsset(
+            assetId,
+            amountText,
+            label,
+          );
+      },
+
+      async executeUnshieldAsset(
+        assetId,
+        amountText,
+        label,
+      ) {
+        return wallet
+          .executeUnshieldAsset(
             assetId,
             amountText,
             label,

@@ -98,7 +98,7 @@ export type WaitAgentTransactionInput =
   }>;
 
 
-export type StarknetBorrowShieldDependencies =
+export type StarknetBorrowRuntimeDependencies =
   Readonly<{
     prepareBorrow(
       input:
@@ -121,6 +121,13 @@ export type StarknetBorrowShieldDependencies =
     ):
       Promise<AgentWalletTransactionResult>;
 
+    executeUnshieldAsset(
+      assetId: string,
+      amountText: string,
+      label: string,
+    ):
+      Promise<AgentWalletTransactionResult>;
+
     readPublicBalance(
       input:
         ReadAgentPublicBalanceInput,
@@ -135,7 +142,7 @@ export type StarknetBorrowShieldDependencies =
   }>;
 
 
-type BorrowSnapshot =
+type PublicOutputSnapshot =
   Readonly<{
     executionKey: string;
 
@@ -154,10 +161,14 @@ type BorrowSnapshot =
     amountUnits: bigint;
 
     publicBefore: bigint;
+
+    actionLabel:
+      "Borrow" |
+      "Unshield";
   }>;
 
 
-export type StarknetBorrowShieldRuntime =
+export type StarknetBorrowRuntime =
   Readonly<{
     registry:
       AgentStageExecutorRegistry;
@@ -247,7 +258,7 @@ function requireTransactionHash(
 }
 
 
-function borrowSnapshotKey(
+function publicOutputSnapshotKey(
   executionKey:
     string,
   transactionId:
@@ -357,20 +368,20 @@ function requireBorrowInput(
 }
 
 
-export function createStarknetBorrowShieldRuntime(
+export function createStarknetBorrowRuntime(
   dependencies:
-    StarknetBorrowShieldDependencies,
-): StarknetBorrowShieldRuntime {
-  const snapshots =
+    StarknetBorrowRuntimeDependencies,
+): StarknetBorrowRuntime {
+  const publicOutputSnapshots =
     new Map<
       string,
-      BorrowSnapshot
+      PublicOutputSnapshot
     >();
 
 
-  async function verifyBorrowOutput(
+  async function verifyPublicOutput(
     snapshot:
-      BorrowSnapshot,
+      PublicOutputSnapshot,
     signal?:
       AbortSignal,
   ):
@@ -403,7 +414,7 @@ export function createStarknetBorrowShieldRuntime(
       minimum
     ) {
       throw new Error(
-        `Confirmed Borrow output is not visible in public ${snapshot.assetSymbol} balance yet.`,
+        `Confirmed ${snapshot.actionLabel} output is not visible in public ${snapshot.assetSymbol} balance yet.`,
       );
     }
 
@@ -585,7 +596,7 @@ export function createStarknetBorrowShieldRuntime(
         );
 
       const snapshot:
-        BorrowSnapshot = {
+        PublicOutputSnapshot = {
         executionKey:
           input.executionKey,
 
@@ -613,43 +624,194 @@ export function createStarknetBorrowShieldRuntime(
           preparedBorrow,
 
         publicBefore,
+
+        actionLabel:
+          "Borrow",
       };
 
-      snapshots.set(
-        borrowSnapshotKey(
+      publicOutputSnapshots.set(
+        publicOutputSnapshotKey(
           input.executionKey,
           transactionId,
         ),
         snapshot,
       );
 
+      /*
+       * Always enter the state machine as submitted first.
+       *
+       * A wallet may already have observed confirmation, but CAREL still
+       * performs its own receipt + public-output verification before this
+       * stage becomes confirmed.
+       */
+      return {
+        transactionId,
+
+        status:
+          "submitted",
+      };
+    },
+  };
+
+
+  const unshieldExecutor:
+    AgentStageExecutor = {
+    id:
+      "starknet:strk20:agent-unshield",
+
+    actions:
+      ["unshield"],
+
+    supports(
+      input,
+    ) {
+      return (
+        input.stage.action ===
+          "unshield" &&
+        input.stage
+          .sourceChainId ===
+          input.context.chainId &&
+        input.stage
+          .privacyBefore ===
+          "private" &&
+        input.stage
+          .privacyAfter ===
+          "public" &&
+        Boolean(
+          input.stage
+            .inputAssetSymbol &&
+          input.resolvedAmountText,
+        )
+      );
+    },
+
+    async execute(
+      input,
+    ):
+      Promise<AgentStageExecutionReceipt> {
+      const symbol =
+        input.stage
+          .inputAssetSymbol;
+
+      const amountText =
+        input.resolvedAmountText;
+
       if (
-        transaction.status ===
-          "confirmed"
+        !symbol ||
+        !amountText
       ) {
-        const output =
-          await verifyBorrowOutput(
-            snapshot,
-            input.context.signal,
-          );
-
-        snapshots.delete(
-          borrowSnapshotKey(
-            input.executionKey,
-            transactionId,
-          ),
+        throw new Error(
+          "Unshield stage requires a reviewed private asset amount.",
         );
-
-        return {
-          transactionId,
-
-          status:
-            "confirmed",
-
-          output,
-        };
       }
 
+      const asset =
+        findCarelAssetBySymbol(
+          input.context.chainId,
+          symbol,
+        );
+
+      if (!asset) {
+        throw new Error(
+          `CAREL does not recognize ${symbol} on this Starknet network.`,
+        );
+      }
+
+      const amountUnits =
+        parseUnits(
+          amountText,
+          asset.decimals,
+        );
+
+      if (
+        amountUnits <= 0n
+      ) {
+        throw new Error(
+          "Unshield amount must be greater than zero.",
+        );
+      }
+
+      const publicBefore =
+        await dependencies
+          .readPublicBalance({
+            chainId:
+              input.context.chainId,
+
+            account:
+              input.context.account,
+
+            assetId:
+              asset.id,
+
+            ...(input.context.signal
+              ? {
+                  signal:
+                    input.context
+                      .signal,
+                }
+              : {}),
+          });
+
+      const transaction =
+        await dependencies
+          .executeUnshieldAsset(
+            asset.id,
+
+            amountText,
+
+            `Unshield ${amountText} ${asset.symbol} for Borrow`,
+          );
+
+      const transactionId =
+        requireTransactionHash(
+          transaction.hash,
+        );
+
+      const snapshot:
+        PublicOutputSnapshot = {
+        executionKey:
+          input.executionKey,
+
+        transactionId,
+
+        chainId:
+          input.context.chainId,
+
+        account:
+          input.context.account,
+
+        assetId:
+          asset.id,
+
+        assetSymbol:
+          asset.symbol,
+
+        amountText:
+          exactAmountText(
+            amountUnits,
+            asset.decimals,
+          ),
+
+        amountUnits,
+
+        publicBefore,
+
+        actionLabel:
+          "Unshield",
+      };
+
+      publicOutputSnapshots.set(
+        publicOutputSnapshotKey(
+          input.executionKey,
+          transactionId,
+        ),
+        snapshot,
+      );
+
+      /*
+       * Same invariant as Borrow:
+       * record the tx first, verify public output second.
+       */
       return {
         transactionId,
 
@@ -764,6 +926,7 @@ export function createStarknetBorrowShieldRuntime(
     createAgentStageExecutorRegistry(
       [
         borrowExecutor,
+        unshieldExecutor,
         shieldExecutor,
       ],
     );
@@ -839,7 +1002,9 @@ export function createStarknetBorrowShieldRuntime(
 
     if (
       planStage.action !==
-        "borrow"
+        "borrow" &&
+      planStage.action !==
+        "unshield"
     ) {
       return confirmAgentStageExecution(
         plan,
@@ -855,24 +1020,24 @@ export function createStarknetBorrowShieldRuntime(
       );
 
     const key =
-      borrowSnapshotKey(
+      publicOutputSnapshotKey(
         executionKey,
         runtimeStage.txHash,
       );
 
     const snapshot =
-      snapshots.get(
+      publicOutputSnapshots.get(
         key,
       );
 
     if (!snapshot) {
       throw new Error(
-        "CAREL cannot verify this Borrow because its execution snapshot is unavailable.",
+        `CAREL cannot verify this ${planStage.action} stage because its execution snapshot is unavailable.`,
       );
     }
 
     const output =
-      await verifyBorrowOutput(
+      await verifyPublicOutput(
         snapshot,
         context.signal,
       );
@@ -885,7 +1050,7 @@ export function createStarknetBorrowShieldRuntime(
         output,
       );
 
-    snapshots.delete(
+    publicOutputSnapshots.delete(
       key,
     );
 
