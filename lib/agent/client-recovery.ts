@@ -1,4 +1,8 @@
 import type {
+  AgentRuntimeRecovery,
+} from "@/lib/agent/runtime-recovery";
+
+import type {
   AgentRecoveryBoundPayload,
   AgentRecoveryData,
   AgentRecoveryKind,
@@ -457,11 +461,422 @@ export async function loadAgentRecoveryCapsule({
 
     return payload;
   } catch {
-    window.localStorage
-      .removeItem(
-        key,
+    /*
+     * Verification may fail because the network/RPC is temporarily
+     * unavailable. Keep the signed capsule so a later reload can retry it.
+     *
+     * A tampered capsule remains harmless because the server signature is
+     * checked on every load.
+     */
+    return null;
+  }
+}
+
+
+
+export function createAgentRuntimeRecovery(
+  kind:
+    AgentRecoveryKind,
+): AgentRuntimeRecovery {
+  let enabled:
+    boolean | null =
+    null;
+
+
+  async function recoveryEnabled():
+    Promise<boolean> {
+    if (
+      enabled !==
+        null
+    ) {
+      return enabled;
+    }
+
+
+    try {
+      enabled =
+        await agentRecoveryEnabled();
+    } catch {
+      enabled =
+        false;
+    }
+
+
+    return enabled;
+  }
+
+
+  return {
+    async seal(
+      input,
+    ) {
+      if (
+        !await recoveryEnabled()
+      ) {
+        return null;
+      }
+
+
+      return sealAgentRecoverySnapshot({
+        kind,
+
+        runId:
+          input.runId,
+
+        stageId:
+          input.stageId,
+
+        executionKey:
+          input.executionKey,
+
+        chainId:
+          input.chainId,
+
+        account:
+          input.account,
+
+        data:
+          input.data,
+      });
+    },
+
+
+    async bind(
+      draft,
+      transactionId,
+    ) {
+      const capsule =
+        await bindAgentRecoverySnapshot({
+          draft,
+          transactionId,
+        });
+
+
+      saveAgentRecoveryCapsule(
+        capsule,
+      );
+    },
+
+
+    async load(
+      input,
+    ) {
+      const payload =
+        await loadAgentRecoveryCapsule({
+          account:
+            input.account,
+
+          runId:
+            input.runId,
+
+          stageId:
+            input.stageId,
+        });
+
+
+      if (!payload) {
+        return null;
+      }
+
+
+      if (
+        payload.kind !==
+          kind ||
+        payload.executionKey !==
+          input.executionKey ||
+        payload.chainId !==
+          input.chainId ||
+        payload.account
+          .toLowerCase() !==
+          input.account
+            .toLowerCase() ||
+        payload.transactionId
+          .toLowerCase() !==
+          input.transactionId
+            .toLowerCase()
+      ) {
+        return null;
+      }
+
+
+      return payload;
+    },
+  };
+}
+
+
+export type ActiveAgentRecoveryPointer =
+  Readonly<{
+    version:
+      1;
+
+    kind:
+      AgentRecoveryKind;
+
+    account:
+      string;
+
+    chainId:
+      string;
+
+    runId:
+      string;
+
+    stageId:
+      string;
+
+    goal:
+      string;
+
+    mode:
+      "normal" |
+      "shield" |
+      "unshield";
+  }>;
+
+
+function activeRecoveryStorageKey(
+  kind:
+    AgentRecoveryKind,
+
+  account:
+    string,
+): string {
+  return [
+    "carel.agent.active-recovery.v1",
+    kind,
+    account
+      .trim()
+      .toLowerCase(),
+  ].join(
+    ":",
+  );
+}
+
+
+export function loadActiveAgentRecoveryPointer({
+  kind,
+  account,
+}: Readonly<{
+  kind:
+    AgentRecoveryKind;
+
+  account:
+    string;
+}>):
+  ActiveAgentRecoveryPointer | null {
+  if (
+    typeof window ===
+      "undefined"
+  ) {
+    return null;
+  }
+
+
+  try {
+    const raw =
+      window.localStorage
+        .getItem(
+          activeRecoveryStorageKey(
+            kind,
+            account,
+          ),
+        );
+
+
+    if (!raw) {
+      return null;
+    }
+
+
+    const value:
+      unknown =
+      JSON.parse(
+        raw,
       );
 
+
+    if (
+      !value ||
+      typeof value !==
+        "object" ||
+      Array.isArray(
+        value,
+      )
+    ) {
+      return null;
+    }
+
+
+    const item =
+      value as
+        Record<
+          string,
+          unknown
+        >;
+
+
+    if (
+      item.version !==
+        1 ||
+      item.kind !==
+        kind ||
+      typeof item.account !==
+        "string" ||
+      item.account
+        .toLowerCase() !==
+        account
+          .toLowerCase() ||
+      typeof item.chainId !==
+        "string" ||
+      typeof item.runId !==
+        "string" ||
+      typeof item.stageId !==
+        "string" ||
+      typeof item.goal !==
+        "string" ||
+      !item.goal.trim() ||
+      item.goal.length >
+        1024 ||
+      (
+        item.mode !==
+          "normal" &&
+        item.mode !==
+          "shield" &&
+        item.mode !==
+          "unshield"
+      )
+    ) {
+      return null;
+    }
+
+
+    return item as
+      unknown as
+        ActiveAgentRecoveryPointer;
+  } catch {
     return null;
+  }
+}
+
+
+export function saveActiveAgentRecoveryPointer(
+  pointer:
+    ActiveAgentRecoveryPointer,
+) {
+  if (
+    typeof window ===
+      "undefined"
+  ) {
+    return;
+  }
+
+
+  try {
+    const previous =
+      loadActiveAgentRecoveryPointer({
+        kind:
+          pointer.kind,
+
+        account:
+          pointer.account,
+      });
+
+
+    /*
+     * The newly submitted stage supersedes the previous stage's recovery
+     * capsule. It is now safe to remove that older capsule.
+     */
+    if (
+      previous &&
+      (
+        previous.runId !==
+          pointer.runId ||
+        previous.stageId !==
+          pointer.stageId
+      )
+    ) {
+      removeAgentRecoveryCapsule({
+        account:
+          previous.account,
+
+        runId:
+          previous.runId,
+
+        stageId:
+          previous.stageId,
+      });
+    }
+
+
+    window.localStorage
+      .setItem(
+        activeRecoveryStorageKey(
+          pointer.kind,
+          pointer.account,
+        ),
+
+        JSON.stringify(
+          pointer,
+        ),
+      );
+  } catch {
+    /*
+     * Storage failure happens after the protocol transaction may already
+     * exist. Never convert it into an execution failure.
+     */
+  }
+}
+
+
+export function clearActiveAgentRecoveryPointer({
+  kind,
+  account,
+}: Readonly<{
+  kind:
+    AgentRecoveryKind;
+
+  account:
+    string;
+}>) {
+  if (
+    typeof window ===
+      "undefined"
+  ) {
+    return;
+  }
+
+
+  try {
+    const pointer =
+      loadActiveAgentRecoveryPointer({
+        kind,
+        account,
+      });
+
+
+    if (pointer) {
+      removeAgentRecoveryCapsule({
+        account:
+          pointer.account,
+
+        runId:
+          pointer.runId,
+
+        stageId:
+          pointer.stageId,
+      });
+    }
+
+
+    window.localStorage
+      .removeItem(
+        activeRecoveryStorageKey(
+          kind,
+          account,
+        ),
+      );
+  } catch {
+    // Best-effort local cleanup only.
   }
 }

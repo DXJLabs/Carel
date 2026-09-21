@@ -1181,3 +1181,58 @@ test(
     );
   },
 );
+
+
+test(
+  "submitted Agent recovery restores only dependencies before a later stage",
+  () => {
+    const plan =
+      shieldBorrowPlan();
+
+
+    const session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          "recovered-shield-run",
+          "shield-2",
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0xabc",
+          },
+        );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "borrow-1",
+        ).status,
+      "confirmed",
+    );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "shield-2",
+        ).status,
+      "submitted",
+    );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "shield-2",
+        ).txHash,
+      "0xabc",
+    );
+  },
+);

@@ -165,6 +165,9 @@ function createRuntime({
 
   exposeSwapOutput =
     true,
+
+  recovery =
+    undefined,
 } = {}) {
   const STRK =
     asset("STRK");
@@ -193,6 +196,12 @@ function createRuntime({
   const runtime =
     swapRuntime
       .createStarknetSwapRuntime({
+        ...(recovery
+          ? {
+              recovery,
+            }
+          : {}),
+
         async prepareSwap(
           input,
         ) {
@@ -745,6 +754,183 @@ test(
         )
         .status,
       "submitted",
+    );
+  },
+);
+
+
+test(
+  "Swap confirmation can restore its signed public-output snapshot after reload",
+  async () => {
+    const runId =
+      "swap-recovered";
+
+    const stageId =
+      "swap-1";
+
+    let recoveredData =
+      null;
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {
+        // Recovery capsule is treated as already persisted for this test.
+      },
+
+
+      async load(input) {
+        assert.equal(
+          input.runId,
+          runId,
+        );
+
+        assert.equal(
+          input.stageId,
+          stageId,
+        );
+
+        return {
+          version:
+            1,
+
+          kind:
+            "swap",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId:
+            MAINNET,
+
+          account:
+            "0x123",
+
+          data:
+            recoveredData,
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0xabc",
+        };
+      },
+    };
+
+
+    const fixture =
+      createRuntime({
+        recovery,
+
+        exposeSwapOutput:
+          false,
+      });
+
+
+    recoveredData = {
+      action:
+        "swap",
+
+      assetId:
+        fixture.USDC.id,
+
+      assetSymbol:
+        fixture.USDC.symbol,
+
+      decimals:
+        fixture.USDC.decimals
+          .toString(),
+
+      publicBefore:
+        "100000000",
+
+      minimumIncreaseUnits:
+        "9000000",
+    };
+
+
+    fixture.balances.set(
+      fixture.USDC.id,
+      109_750_000n,
+    );
+
+
+    const plan =
+      planner
+        .buildStarknetAgentPlan({
+          goal:
+            "Swap 10 STRK for USDC.",
+
+          chainId:
+            MAINNET,
+
+          mode:
+            "normal",
+        });
+
+
+    let session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0xabc",
+          },
+        );
+
+
+    session =
+      await fixture
+        .runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          context(
+            runId,
+          ),
+        );
+
+
+    assert.equal(
+      session.run.status,
+      "completed",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        stageId
+      ].amountText,
+      "9.75",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        stageId
+      ].assetSymbol,
+      "USDC",
     );
   },
 );

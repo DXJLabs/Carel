@@ -31,6 +31,13 @@ import {
   createAgentFeeGateCoordinator,
 } from "@/lib/agent/client-fee-gate";
 
+import {
+  clearActiveAgentRecoveryPointer,
+  loadActiveAgentRecoveryPointer,
+  loadAgentRecoveryCapsule,
+  saveActiveAgentRecoveryPointer,
+} from "@/lib/agent/client-recovery";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -42,6 +49,7 @@ import {
 import {
   createAgentExecutionSession,
   executeAgentStage,
+  restoreSubmittedAgentExecutionSession,
   type AgentExecutionSession,
 } from "@/lib/agent/executor";
 
@@ -276,6 +284,18 @@ export function useSwapController({
 
 
   function resetFlow() {
+    if (
+      wallet.address
+    ) {
+      clearActiveAgentRecoveryPointer({
+        kind:
+          "swap",
+
+        account:
+          wallet.address,
+      });
+    }
+
     clearAgentFlow();
     setQuote(null);
     setError("");
@@ -453,6 +473,215 @@ export function useSwapController({
   ]);
 
 
+  useEffect(() => {
+    let cancelled =
+      false;
+
+
+    if (
+      !wallet.connected ||
+      !wallet.address
+    ) {
+      return;
+    }
+
+
+    const pointer =
+      loadActiveAgentRecoveryPointer({
+        kind:
+          "swap",
+
+        account:
+          wallet.address,
+      });
+
+
+    if (
+      !pointer ||
+      pointer.chainId !==
+        wallet.chainId ||
+      pointer.mode !==
+        mode
+    ) {
+      return;
+    }
+
+
+    void (
+      async () => {
+        const capsule =
+          await loadAgentRecoveryCapsule({
+            account:
+              wallet.address,
+
+            runId:
+              pointer.runId,
+
+            stageId:
+              pointer.stageId,
+          });
+
+
+        if (
+          cancelled ||
+          !capsule ||
+          capsule.kind !==
+            "swap" ||
+          capsule.chainId !==
+            wallet.chainId
+        ) {
+          return;
+        }
+
+
+        const plan =
+          buildStarknetAgentPlan({
+            goal:
+              pointer.goal,
+
+            chainId:
+              wallet.chainId,
+
+            mode:
+              pointer.mode,
+          });
+
+
+        if (
+          plan.status !==
+            "ready"
+        ) {
+          return;
+        }
+
+
+        const feeGate =
+          await feeGateRef.current
+            .resume(
+              plan,
+              {
+                runId:
+                  pointer.runId,
+
+                chainId:
+                  wallet.chainId,
+
+                payer:
+                  wallet.address,
+              },
+            );
+
+
+        if (cancelled) {
+          return;
+        }
+
+
+        const session =
+          restoreSubmittedAgentExecutionSession(
+            plan,
+            pointer.runId,
+            pointer.stageId,
+            {
+              kind:
+                "transaction",
+
+              id:
+                capsule
+                  .transactionId,
+            },
+            feeGate.authorization,
+          );
+
+
+        const runtime =
+          createAvnuSwapRuntime({
+            wallet,
+          });
+
+
+        planRef.current =
+          plan;
+
+        runtimeRef.current =
+          runtime;
+
+        accountRef.current =
+          wallet.address;
+
+
+        feeGateRef.current
+          .markProtocolStarted(
+            pointer.runId,
+          );
+
+
+        try {
+          const parsed =
+            parseSwapGoal(
+              pointer.goal,
+            );
+
+          setAmount(
+            parsed.amountText,
+          );
+
+          setSellSymbol(
+            parsed.fromSymbol,
+          );
+
+          setBuySymbol(
+            parsed.toSymbol,
+          );
+        } catch {
+          // The exact signed plan remains authoritative.
+        }
+
+
+        setQuote(
+          null,
+        );
+
+        setSwapAgentSession(
+          session,
+        );
+
+        setError(
+          "",
+        );
+
+        setSuccess(
+          "Recovered the submitted Swap Agent transaction. Confirm it to continue.",
+        );
+      }
+    )().catch(
+      (cause) => {
+        if (cancelled) {
+          return;
+        }
+
+
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not recover the submitted Swap Agent transaction.",
+        );
+      },
+    );
+
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    wallet.connected,
+    wallet.address,
+    wallet.chainId,
+    mode,
+  ]);
+
+
   async function loadQuote() {
     if (
       loading ||
@@ -539,6 +768,82 @@ export function useSwapController({
     } finally {
       setLoading(false);
     }
+  }
+
+
+  function rememberSwapRecovery(
+    plan:
+      AgentPlan,
+
+    session:
+      AgentExecutionSession,
+
+    stageId:
+      string,
+  ) {
+    if (
+      !wallet.address
+    ) {
+      return;
+    }
+
+
+    if (
+      session.run.status ===
+        "completed"
+    ) {
+      clearActiveAgentRecoveryPointer({
+        kind:
+          "swap",
+
+        account:
+          wallet.address,
+      });
+
+      return;
+    }
+
+
+    const stage =
+      session.run.stages.find(
+        (candidate) =>
+          candidate.stageId ===
+            stageId,
+      );
+
+
+    if (
+      stage?.status !==
+        "submitted" ||
+      !stage.txHash
+    ) {
+      return;
+    }
+
+
+    saveActiveAgentRecoveryPointer({
+      version:
+        1,
+
+      kind:
+        "swap",
+
+      account:
+        wallet.address,
+
+      chainId:
+        wallet.chainId,
+
+      runId:
+        session.runId,
+
+      stageId,
+
+      goal:
+        plan.objective.goal,
+
+      mode,
+    });
   }
 
 
@@ -712,6 +1017,14 @@ export function useSwapController({
         result.session,
       );
 
+
+      rememberSwapRecovery(
+        plan,
+        result.session,
+        first.stageId,
+      );
+
+
       setSuccess(
         stageAction(
           first.stageId,
@@ -781,6 +1094,14 @@ export function useSwapController({
       setSwapAgentSession(
         result.session,
       );
+
+
+      rememberSwapRecovery(
+        plan,
+        result.session,
+        reviewStage.stageId,
+      );
+
 
       if (
         result.session
@@ -882,6 +1203,15 @@ export function useSwapController({
         next.run.status ===
           "completed"
       ) {
+        clearActiveAgentRecoveryPointer({
+          kind:
+            "swap",
+
+          account:
+            wallet.address,
+        });
+
+
         const output =
           next.outputs[
             submittedStage

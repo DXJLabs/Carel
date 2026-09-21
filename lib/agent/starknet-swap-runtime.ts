@@ -10,6 +10,15 @@ import type {
   AgentPlan,
 } from "@/lib/agent/plan";
 
+import type {
+  AgentRecoveryBoundPayload,
+  AgentRecoveryData,
+} from "@/lib/agent/recovery-types";
+
+import type {
+  AgentRuntimeRecovery,
+} from "@/lib/agent/runtime-recovery";
+
 import {
   getAgentRuntimeStage,
 } from "@/lib/agent/state-machine";
@@ -150,6 +159,9 @@ export type StarknetSwapRuntimeDependencies =
         WaitAgentTransactionInput,
     ):
       Promise<void>;
+
+    recovery?:
+      AgentRuntimeRecovery;
   }>;
 
 
@@ -380,6 +392,163 @@ function requireSwapInput(
 }
 
 
+function recoveryBigInt(
+  data:
+    AgentRecoveryData,
+
+  key:
+    string,
+
+  positive =
+    false,
+): bigint {
+  const raw =
+    data[key];
+
+
+  if (
+    typeof raw !==
+      "string" ||
+    !/^\d+$/.test(
+      raw,
+    )
+  ) {
+    throw new Error(
+      `Recovered Swap snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  const value =
+    BigInt(
+      raw,
+    );
+
+
+  if (
+    positive &&
+    value <= 0n
+  ) {
+    throw new Error(
+      `Recovered Swap snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  return value;
+}
+
+
+function recoveredPublicOutputSnapshot(
+  payload:
+    AgentRecoveryBoundPayload,
+
+  expectedAction:
+    "swap" |
+    "unshield",
+): PublicOutputSnapshot {
+  const data =
+    payload.data;
+
+
+  if (
+    data.action !==
+      expectedAction ||
+    !data.assetId ||
+    !data.assetSymbol
+  ) {
+    throw new Error(
+      "Recovered Swap snapshot does not match the submitted Agent stage.",
+    );
+  }
+
+
+  const decimals =
+    Number(
+      data.decimals,
+    );
+
+
+  if (
+    !Number.isInteger(
+      decimals,
+    ) ||
+    decimals < 0 ||
+    decimals > 255
+  ) {
+    throw new Error(
+      "Recovered Swap snapshot contains invalid asset decimals.",
+    );
+  }
+
+
+  const minimumIncreaseUnits =
+    recoveryBigInt(
+      data,
+      "minimumIncreaseUnits",
+      true,
+    );
+
+
+  const publicBefore =
+    recoveryBigInt(
+      data,
+      "publicBefore",
+    );
+
+
+  const exactOutputUnits =
+    expectedAction ===
+      "unshield"
+      ? recoveryBigInt(
+          data,
+          "exactOutputUnits",
+          true,
+        )
+      : undefined;
+
+
+  return {
+    executionKey:
+      payload.executionKey,
+
+    transactionId:
+      payload.transactionId,
+
+    chainId:
+      payload.chainId,
+
+    account:
+      payload.account,
+
+    assetId:
+      data.assetId,
+
+    assetSymbol:
+      data.assetSymbol,
+
+    decimals,
+
+    publicBefore,
+
+    minimumIncreaseUnits,
+
+    ...(exactOutputUnits !==
+      undefined
+      ? {
+          exactOutputUnits,
+        }
+      : {}),
+
+    actionLabel:
+      expectedAction ===
+        "swap"
+        ? "Swap"
+        : "Unshield",
+  };
+}
+
+
 export function createStarknetSwapRuntime(
   dependencies:
     StarknetSwapRuntimeDependencies,
@@ -389,6 +558,90 @@ export function createStarknetSwapRuntime(
       string,
       PublicOutputSnapshot
     >();
+
+
+  async function sealRecovery(
+    input:
+      AgentStageExecutionInput,
+
+    data:
+      AgentRecoveryData,
+  ) {
+    if (
+      !dependencies.recovery
+    ) {
+      return null;
+    }
+
+
+    try {
+      return await dependencies
+        .recovery
+        .seal({
+          runId:
+            input.context.runId,
+
+          stageId:
+            input.stage.id,
+
+          executionKey:
+            input.executionKey,
+
+          chainId:
+            input.context.chainId,
+
+          account:
+            input.context.account,
+
+          data,
+        });
+    } catch {
+      /*
+       * Recovery availability must never prevent the protocol transaction.
+       */
+      return null;
+    }
+  }
+
+
+  async function bindRecovery(
+    draft:
+      Awaited<
+        ReturnType<
+          NonNullable<
+            StarknetSwapRuntimeDependencies[
+              "recovery"
+            ]
+          >["seal"]
+        >
+      >,
+
+    transactionId:
+      string,
+  ) {
+    if (
+      !draft ||
+      !dependencies.recovery
+    ) {
+      return;
+    }
+
+
+    try {
+      await dependencies
+        .recovery
+        .bind(
+          draft,
+          transactionId,
+        );
+    } catch {
+      /*
+       * Transaction already exists. A persistence failure must never invite
+       * the user to submit the Swap again.
+       */
+    }
+  }
+
 
 
   async function verifyPublicOutput(
@@ -592,6 +845,35 @@ export function createStarknetSwapRuntime(
               : {}),
           });
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "swap",
+
+            assetId:
+              toAsset.id,
+
+            assetSymbol:
+              toAsset.symbol,
+
+            decimals:
+              toAsset.decimals
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+
+            minimumIncreaseUnits:
+              prepared
+                .minimumOutputUnits
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await prepared
           .execute();
@@ -637,6 +919,13 @@ export function createStarknetSwapRuntime(
             "Swap",
         },
       );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
 
       /*
        * Always record the transaction before output verification.
@@ -754,6 +1043,38 @@ export function createStarknetSwapRuntime(
               : {}),
           });
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "unshield",
+
+            assetId:
+              asset.id,
+
+            assetSymbol:
+              asset.symbol,
+
+            decimals:
+              asset.decimals
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+
+            minimumIncreaseUnits:
+              amountUnits
+                .toString(),
+
+            exactOutputUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await dependencies
           .executeUnshieldAsset(
@@ -807,6 +1128,13 @@ export function createStarknetSwapRuntime(
             "Unshield",
         },
       );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
 
       return {
         transactionId,
@@ -897,6 +1225,26 @@ export function createStarknetSwapRuntime(
         );
       }
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "shield",
+
+            assetId:
+              asset.id,
+
+            assetSymbol:
+              asset.symbol,
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const result =
         await dependencies
           .executeShieldAsset(
@@ -907,11 +1255,20 @@ export function createStarknetSwapRuntime(
             `Shield Swap output ${amountText} ${asset.symbol}`,
           );
 
+      const transactionId =
+        requireTransactionHash(
+          result.hash,
+        );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
+
       return {
-        transactionId:
-          requireTransactionHash(
-            result.hash,
-          ),
+        transactionId,
 
         status:
           result.status,
@@ -1022,16 +1379,64 @@ export function createStarknetSwapRuntime(
         runtimeStage.txHash,
       );
 
-    const snapshot =
+    let snapshot =
       snapshots.get(
         key,
       );
+
+
+    if (
+      !snapshot &&
+      dependencies.recovery
+    ) {
+      const recovered =
+        await dependencies
+          .recovery
+          .load({
+            runId:
+              session.runId,
+
+            stageId,
+
+            executionKey:
+              stageExecutionKey(
+                session.runId,
+                stageId,
+              ),
+
+            chainId:
+              context.chainId,
+
+            account:
+              context.account,
+
+            transactionId:
+              runtimeStage.txHash,
+          });
+
+
+      if (recovered) {
+        snapshot =
+          recoveredPublicOutputSnapshot(
+            recovered,
+            planStage.action,
+          );
+
+
+        snapshots.set(
+          key,
+          snapshot,
+        );
+      }
+    }
+
 
     if (!snapshot) {
       throw new Error(
         `CAREL cannot verify this ${planStage.action} stage because its execution snapshot is unavailable.`,
       );
     }
+
 
     const output =
       await verifyPublicOutput(

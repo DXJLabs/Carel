@@ -13,6 +13,7 @@ import {
   confirmAgentStage,
   createAgentRun,
   getAgentRuntimeStage,
+  restoreSubmittedAgentRun,
   submitAgentStage,
   type AgentExecutionReference,
   type AgentRun,
@@ -431,13 +432,13 @@ export function createAgentExecutionSession(
 /**
  * Reconstructs an already-submitted Agent stage after local UI state was lost.
  *
- * This function NEVER executes the stage and never issues fee authorization.
- * In a browser, executeAgentStage() will still reject this recovered session
- * because it intentionally has no execution authorization.
+ * This function NEVER executes the stage and never creates fee
+ * authorization. A caller may attach an authorization that was independently
+ * restored and verified by the fee coordinator.
  *
- * It is therefore safe for provider-order recovery such as Garden:
- * CAREL can continue observing/confirming the existing order, but cannot
- * accidentally create a second order from this recovered session.
+ * Without an authorization (for example Garden observation recovery), the
+ * recovered session can be observed/confirmed but browser execution still
+ * cannot submit a new stage.
  */
 export function restoreSubmittedAgentExecutionSession(
   plan:
@@ -451,6 +452,9 @@ export function restoreSubmittedAgentExecutionSession(
 
   executionReference:
     AgentExecutionReference,
+
+  feeAuthorization?:
+    AgentExecutionFeeAuthorization,
 ): AgentExecutionSession {
   const normalized =
     runId.trim();
@@ -467,10 +471,15 @@ export function restoreSubmittedAgentExecutionSession(
   }
 
 
-  const initial =
-    createAgentRun(
+  if (
+    feeAuthorization
+  ) {
+    assertAgentExecutionFeeAuthorization(
+      feeAuthorization,
       plan,
+      normalized,
     );
+  }
 
 
   return {
@@ -478,12 +487,17 @@ export function restoreSubmittedAgentExecutionSession(
       normalized,
 
     run:
-      submitAgentStage(
+      restoreSubmittedAgentRun(
         plan,
-        initial,
         stageId,
         executionReference,
       ),
+
+    ...(feeAuthorization
+      ? {
+          feeAuthorization,
+        }
+      : {}),
 
     outputs: {},
   };

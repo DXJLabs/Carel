@@ -378,6 +378,224 @@ export function createAgentRun(
 }
 
 
+function transitiveStageDependencies(
+  plan:
+    AgentPlan,
+
+  stageId:
+    string,
+): Set<string> {
+  const byId =
+    new Map(
+      plan.stages.map(
+        (stage) => [
+          stage.id,
+          stage,
+        ],
+      ),
+    );
+
+
+  const target =
+    byId.get(
+      stageId,
+    );
+
+
+  if (!target) {
+    throw new Error(
+      `Unknown Agent plan stage: ${stageId}.`,
+    );
+  }
+
+
+  const result =
+    new Set<string>();
+
+
+  function visit(
+    id:
+      string,
+  ) {
+    if (
+      result.has(
+        id,
+      )
+    ) {
+      return;
+    }
+
+
+    const stage =
+      byId.get(
+        id,
+      );
+
+
+    if (!stage) {
+      throw new Error(
+        `Unknown Agent dependency stage: ${id}.`,
+      );
+    }
+
+
+    result.add(
+      id,
+    );
+
+
+    for (
+      const dependency
+      of stage.dependsOn
+    ) {
+      visit(
+        dependency,
+      );
+    }
+  }
+
+
+  for (
+    const dependency
+    of target.dependsOn
+  ) {
+    visit(
+      dependency,
+    );
+  }
+
+
+  return result;
+}
+
+
+/**
+ * Reconstruct an Agent run that already submitted one concrete stage before
+ * the browser lost its in-memory state.
+ *
+ * Every transitive dependency of that submitted stage is restored as
+ * confirmed. No future stage is fabricated as confirmed.
+ */
+export function restoreSubmittedAgentRun(
+  plan:
+    AgentPlan,
+
+  stageId:
+    string,
+
+  reference:
+    | string
+    | AgentExecutionReference,
+): AgentRun {
+  validatePlan(
+    plan,
+  );
+
+
+  const target =
+    plan.stages.find(
+      (stage) =>
+        stage.id ===
+          stageId,
+    );
+
+
+  if (!target) {
+    throw new Error(
+      `Unknown Agent recovery stage: ${stageId}.`,
+    );
+  }
+
+
+  const dependencies =
+    transitiveStageDependencies(
+      plan,
+      stageId,
+    );
+
+
+  const executionReference =
+    normalizeExecutionReference(
+      reference,
+    );
+
+
+  const base =
+    createAgentRun(
+      plan,
+    );
+
+
+  let stages:
+    readonly AgentRuntimeStage[] =
+    base.stages.map(
+      (runtime) => {
+        if (
+          dependencies.has(
+            runtime.stageId,
+          )
+        ) {
+          return {
+            ...runtime,
+
+            status:
+              "confirmed",
+          };
+        }
+
+
+        if (
+          runtime.stageId ===
+            stageId
+        ) {
+          return {
+            ...runtime,
+
+            status:
+              "submitted",
+
+            executionReference,
+
+            ...(executionReference
+              .kind ===
+                "transaction"
+              ? {
+                  txHash:
+                    executionReference.id,
+                }
+              : {}),
+          };
+        }
+
+
+        return runtime;
+      },
+    );
+
+
+  /*
+   * Dependencies restored above may unlock other legitimate review stages.
+   * The submitted target itself remains submitted.
+   */
+  stages =
+    unlockStages(
+      plan,
+      stages,
+    );
+
+
+  return {
+    status:
+      deriveRunStatus(
+        plan,
+        stages,
+      ),
+
+    stages,
+  };
+}
+
+
 export function getAgentRuntimeStage(
   run: AgentRun,
   stageId: string,

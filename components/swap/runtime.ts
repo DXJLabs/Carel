@@ -20,6 +20,10 @@ import {
 } from "@/lib/agent/starknet-swap-runtime";
 
 import {
+  createAgentRuntimeRecovery,
+} from "@/lib/agent/client-recovery";
+
+import {
   getAvnuSwapQuote,
   requireAvnuTokenAddress,
 } from "@/lib/carel/ecosystems/starknet/protocols/avnu/swap";
@@ -70,6 +74,11 @@ export function createAvnuSwapRuntime({
     SwapRuntimeWallet;
 }>): StarknetSwapRuntime {
   return createStarknetSwapRuntime({
+    recovery:
+      createAgentRuntimeRecovery(
+        "swap",
+      ),
+
     async prepareSwap(input) {
       const network =
         getCarelNetwork(
