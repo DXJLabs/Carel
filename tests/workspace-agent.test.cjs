@@ -873,6 +873,13 @@ test(
         /\.markProtocolStarted\(/,
         relative,
       );
+
+
+      assert.match(
+        source,
+        /feeGate\.authorization/,
+        relative,
+      );
     }
   },
 );

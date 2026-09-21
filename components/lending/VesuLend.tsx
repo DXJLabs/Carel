@@ -669,6 +669,7 @@ export function VesuLend({
         createAgentExecutionSession(
           plan,
           feeGate.runId,
+          feeGate.authorization,
         );
 
 

@@ -659,6 +659,7 @@ export function useSwapController({
         createAgentExecutionSession(
           plan,
           feeGate.runId,
+          feeGate.authorization,
         );
 
       const runtime =

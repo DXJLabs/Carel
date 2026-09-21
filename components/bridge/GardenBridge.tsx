@@ -765,6 +765,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
         createAgentExecutionSession(
           plan,
           feeGate.runId,
+          feeGate.authorization,
         );
 
 

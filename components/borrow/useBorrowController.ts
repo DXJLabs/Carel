@@ -663,6 +663,7 @@ export function useBorrowController({
         createAgentExecutionSession(
           plan,
           feeGate.runId,
+          feeGate.authorization,
         );
 
       const runtime =
@@ -1554,6 +1555,7 @@ export function useBorrowController({
           createAgentExecutionSession(
             plan,
             feeGate.runId,
+            feeGate.authorization,
           );
 
         const runtime =
@@ -1676,6 +1678,7 @@ export function useBorrowController({
           createAgentExecutionSession(
             plan,
             feeGate.runId,
+            feeGate.authorization,
           );
 
         const runtime =

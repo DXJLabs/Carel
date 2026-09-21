@@ -778,6 +778,7 @@ export function useStakingController({
         createAgentExecutionSession(
           plan,
           feeGate.runId,
+          feeGate.authorization,
         );
 
 

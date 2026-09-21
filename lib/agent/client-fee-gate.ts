@@ -18,6 +18,30 @@ export type AgentFeeGateStatus =
   | "settled";
 
 
+/**
+ * Opaque in-memory execution authorization.
+ *
+ * Controllers cannot manufacture a valid token by constructing a lookalike
+ * object because Agent Core checks object identity against this module's
+ * private WeakSet.
+ */
+export type AgentExecutionFeeAuthorization =
+  Readonly<{
+    runId:
+      string;
+
+    status:
+      AgentFeeGateStatus;
+
+    planFingerprint:
+      string;
+  }>;
+
+
+const issuedAuthorizations =
+  new WeakSet<object>();
+
+
 export type AgentFeeGateResult =
   Readonly<{
     runId:
@@ -25,6 +49,9 @@ export type AgentFeeGateResult =
 
     status:
       AgentFeeGateStatus;
+
+    authorization:
+      AgentExecutionFeeAuthorization;
   }>;
 
 
@@ -63,6 +90,99 @@ function planFingerprint(
     agentFee:
       plan.agentFee,
   });
+}
+
+
+function issueAuthorization(
+  plan:
+    AgentPlan,
+
+  runId:
+    string,
+
+  status:
+    AgentFeeGateStatus,
+): AgentExecutionFeeAuthorization {
+  const authorization =
+    Object.freeze({
+      runId,
+
+      status,
+
+      planFingerprint:
+        planFingerprint(
+          plan,
+        ),
+    });
+
+
+  issuedAuthorizations.add(
+    authorization,
+  );
+
+
+  return authorization;
+}
+
+
+/**
+ * Agent Core calls this before a browser execution session is accepted and
+ * again immediately before stage execution.
+ */
+export function assertAgentExecutionFeeAuthorization(
+  authorization:
+    AgentExecutionFeeAuthorization | undefined,
+
+  plan:
+    AgentPlan,
+
+  runId:
+    string,
+): void {
+  if (
+    !authorization ||
+    !issuedAuthorizations.has(
+      authorization,
+    )
+  ) {
+    throw new Error(
+      "Agent execution requires a valid fee-policy authorization.",
+    );
+  }
+
+
+  if (
+    authorization.runId !==
+      runId
+  ) {
+    throw new Error(
+      "Agent fee authorization belongs to another execution run.",
+    );
+  }
+
+
+  if (
+    authorization.planFingerprint !==
+      planFingerprint(
+        plan,
+      )
+  ) {
+    throw new Error(
+      "Agent fee authorization belongs to another Agent plan.",
+    );
+  }
+
+
+  if (
+    authorization.status !==
+      "disabled" &&
+    authorization.status !==
+      "settled"
+  ) {
+    throw new Error(
+      "Agent fee authorization is not executable.",
+    );
+  }
 }
 
 
@@ -317,6 +437,13 @@ export function createAgentFeeGateCoordinator({
 
         status:
           "disabled",
+
+        authorization:
+          issueAuthorization(
+            plan,
+            current.runId,
+            "disabled",
+          ),
       };
     }
 
@@ -420,6 +547,13 @@ export function createAgentFeeGateCoordinator({
 
       status:
         "settled",
+
+      authorization:
+        issueAuthorization(
+          plan,
+          current.runId,
+          "settled",
+        ),
     };
   }
 

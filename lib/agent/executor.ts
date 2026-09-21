@@ -5,6 +5,11 @@ import type {
 } from "@/lib/agent/plan";
 
 import {
+  assertAgentExecutionFeeAuthorization,
+  type AgentExecutionFeeAuthorization,
+} from "@/lib/agent/client-fee-gate";
+
+import {
   confirmAgentStage,
   createAgentRun,
   getAgentRuntimeStage,
@@ -39,6 +44,16 @@ export type AgentExecutionSession =
 
     run:
       AgentRun;
+
+    /**
+     * Browser execution requires an opaque authorization issued by the
+     * shared Agent fee coordinator.
+     *
+     * Node-only unit tests may omit it so protocol runtimes remain easy to
+     * test without HTTP/wallet infrastructure.
+     */
+    feeAuthorization?:
+      AgentExecutionFeeAuthorization;
 
     outputs:
       Readonly<
@@ -354,6 +369,8 @@ function validateOutput(
 export function createAgentExecutionSession(
   plan: AgentPlan,
   runId: string,
+  feeAuthorization?:
+    AgentExecutionFeeAuthorization,
 ): AgentExecutionSession {
   const normalized =
     runId.trim();
@@ -364,6 +381,33 @@ export function createAgentExecutionSession(
     );
   }
 
+  /*
+   * Production execution happens in browser client components.
+   *
+   * Fail closed there if a controller ever forgets the shared fee gate.
+   * Node-only unit tests intentionally remain unmetered unless they
+   * explicitly simulate a browser.
+   */
+  if (
+    typeof window !==
+      "undefined"
+  ) {
+    assertAgentExecutionFeeAuthorization(
+      feeAuthorization,
+      plan,
+      normalized,
+    );
+  } else if (
+    feeAuthorization
+  ) {
+    assertAgentExecutionFeeAuthorization(
+      feeAuthorization,
+      plan,
+      normalized,
+    );
+  }
+
+
   return {
     runId:
       normalized,
@@ -372,6 +416,12 @@ export function createAgentExecutionSession(
       createAgentRun(
         plan,
       ),
+
+    ...(feeAuthorization
+      ? {
+          feeAuthorization,
+        }
+      : {}),
 
     outputs: {},
   };
@@ -667,6 +717,33 @@ export async function executeAgentStage(
   registry:
     AgentStageExecutorRegistry,
 ): Promise<ExecuteAgentStageResult> {
+  /*
+   * Defense in depth:
+   *
+   * session creation checks authorization, then stage execution checks it
+   * again. A stale/mutated/copied session therefore cannot bypass the
+   * plan-level fee boundary in the browser.
+   */
+  if (
+    typeof window !==
+      "undefined"
+  ) {
+    assertAgentExecutionFeeAuthorization(
+      session.feeAuthorization,
+      plan,
+      session.runId,
+    );
+  } else if (
+    session.feeAuthorization
+  ) {
+    assertAgentExecutionFeeAuthorization(
+      session.feeAuthorization,
+      plan,
+      session.runId,
+    );
+  }
+
+
   const runtime =
     getAgentRuntimeStage(
       session.run,

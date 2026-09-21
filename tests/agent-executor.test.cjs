@@ -901,3 +901,166 @@ test(
     );
   },
 );
+
+
+test(
+  "browser Agent execution fails closed without fee-policy authorization",
+  () => {
+    const previousWindow =
+      global.window;
+
+
+    global.window = {};
+
+
+    try {
+      assert.throws(
+        () =>
+          executor
+            .createAgentExecutionSession(
+              shieldBorrowPlan(),
+              "browser-run",
+            ),
+        /fee-policy authorization/i,
+      );
+    } finally {
+      if (
+        previousWindow ===
+          undefined
+      ) {
+        delete global.window;
+      } else {
+        global.window =
+          previousWindow;
+      }
+    }
+  },
+);
+
+
+test(
+  "opaque fee authorization is bound to the exact Agent run and plan",
+  async () => {
+    const feeGate =
+      require(
+        "../lib/agent/client-fee-gate.ts",
+      );
+
+
+    const firstPlan =
+      shieldBorrowPlan();
+
+
+    const coordinator =
+      feeGate
+        .createAgentFeeGateCoordinator({
+          async httpClient() {
+            return {
+              ok:
+                true,
+
+              status:
+                200,
+
+              async json() {
+                return {
+                  enabled:
+                    false,
+                };
+              },
+            };
+          },
+        });
+
+
+    const gate =
+      await coordinator
+        .prepare(
+          firstPlan,
+          {
+            prefix:
+              "borrow",
+
+            chainId:
+              MAINNET,
+
+            payer:
+              "0x123",
+
+            async executeAgentFee() {
+              throw new Error(
+                "disabled fee policy must not call wallet",
+              );
+            },
+          },
+        );
+
+
+    const previousWindow =
+      global.window;
+
+
+    global.window = {};
+
+
+    try {
+      const session =
+        executor
+          .createAgentExecutionSession(
+            firstPlan,
+            gate.runId,
+            gate.authorization,
+          );
+
+
+      assert.equal(
+        session.runId,
+        gate.runId,
+      );
+
+
+      assert.throws(
+        () =>
+          executor
+            .createAgentExecutionSession(
+              {
+                ...firstPlan,
+
+                objective: {
+                  ...firstPlan
+                    .objective,
+
+                  goal:
+                    "tampered goal",
+                },
+              },
+              gate.runId,
+              gate.authorization,
+            ),
+        /another Agent plan/i,
+      );
+
+
+      assert.throws(
+        () =>
+          executor
+            .createAgentExecutionSession(
+              firstPlan,
+              "another-run",
+              gate.authorization,
+            ),
+        /another execution run/i,
+      );
+    } finally {
+      if (
+        previousWindow ===
+          undefined
+      ) {
+        delete global.window;
+      } else {
+        global.window =
+          previousWindow;
+      }
+    }
+  },
+);
