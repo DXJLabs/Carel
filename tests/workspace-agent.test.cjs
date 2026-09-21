@@ -488,14 +488,36 @@ test(
         "utf8",
       );
 
+    /*
+     * Borrow execution is Agent-native:
+     * - borrow-1 is submitted through the generic Agent executor;
+     * - the Starknet Borrow runtime delegates the reviewed Vesu payload
+     *   to the guarded wallet boundary;
+     * - shield-2 remains a separate STRK20 transaction.
+     */
     assert.match(
       source,
-      /await wallet\.executeBorrow\(/,
+      /createStarknetBorrowRuntime\(/,
     );
 
     assert.match(
       source,
-      /await wallet[\s\S]*\.executeShieldAsset\(/,
+      /executeAgentStage\([\s\S]*"borrow-1"/,
+    );
+
+    assert.match(
+      source,
+      /executeAgentStage\([\s\S]*"shield-2"/,
+    );
+
+    assert.match(
+      source,
+      /async executeBorrow[\s\S]*await wallet[\s\S]*\.executeBorrow\(/,
+    );
+
+    assert.match(
+      source,
+      /async executeShieldAsset[\s\S]*return wallet[\s\S]*\.executeShieldAsset\(/,
     );
 
     assert.match(

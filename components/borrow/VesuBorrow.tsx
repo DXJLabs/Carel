@@ -371,8 +371,8 @@ export function VesuBorrow({
   ] = useState(false);
 
   const [
-    checkingShieldBorrow,
-    setCheckingShieldBorrow,
+    checkingBorrowAgent,
+    setCheckingBorrowAgent,
   ] = useState(false);
 
   const [
@@ -389,22 +389,22 @@ export function VesuBorrow({
    * The runtime must survive React re-renders because it owns the
    * verified Borrow execution snapshot used by the Shield stage.
    */
-  const shieldAgentPlanRef =
+  const borrowAgentPlanRef =
     useRef<AgentPlan | null>(
       null,
     );
 
-  const shieldAgentSessionRef =
+  const borrowAgentSessionRef =
     useRef<AgentExecutionSession | null>(
       null,
     );
 
-  const shieldAgentRuntimeRef =
+  const borrowAgentRuntimeRef =
     useRef<StarknetBorrowRuntime | null>(
       null,
     );
 
-  const shieldAgentAccountRef =
+  const borrowAgentAccountRef =
     useRef("");
 
   const [
@@ -433,13 +433,75 @@ export function VesuBorrow({
       ],
     );
 
+  function clearBorrowAgentRefs() {
+    borrowAgentPlanRef.current =
+      null;
+
+    borrowAgentSessionRef.current =
+      null;
+
+    borrowAgentRuntimeRef.current =
+      null;
+
+    borrowAgentAccountRef.current =
+      "";
+  }
+
+  const normalAgentSession =
+    mode === "normal"
+      ? borrowAgentSessionRef
+          .current
+      : null;
+
+  const normalAgentBorrowStage =
+    normalAgentSession
+      ?.run.stages.find(
+        (stage) =>
+          stage.stageId ===
+            "borrow-1",
+      ) ??
+    null;
+
+  const normalAgentBorrowOutput =
+    normalAgentSession
+      ?.outputs[
+        "borrow-1"
+      ] ??
+    null;
+
+  const unshieldAgentSession =
+    mode === "unshield"
+      ? borrowAgentSessionRef.current
+      : null;
+
+  const unshieldBorrowStage =
+    unshieldAgentSession
+      ?.run.stages.find(
+        (stage) =>
+          stage.stageId ===
+            "borrow-2",
+      ) ??
+    null;
+
+  const unshieldBorrowOutput =
+    unshieldAgentSession
+      ?.outputs["borrow-2"] ??
+    null;
+
+  const normalAgentFlowLocked =
+    normalAgentSession !==
+      null &&
+    normalAgentSession
+      .run.status !==
+      "completed";
+
   const busy =
     loading ||
     executing ||
     unshielding ||
     checkingUnshield ||
     shieldingBorrow ||
-    checkingShieldBorrow ||
+    checkingBorrowAgent ||
     wallet.busy;
 
   /**
@@ -550,16 +612,16 @@ export function VesuBorrow({
       kind: "idle",
     });
 
-    shieldAgentPlanRef.current =
+    borrowAgentPlanRef.current =
       null;
 
-    shieldAgentSessionRef.current =
+    borrowAgentSessionRef.current =
       null;
 
-    shieldAgentRuntimeRef.current =
+    borrowAgentRuntimeRef.current =
       null;
 
-    shieldAgentAccountRef.current =
+    borrowAgentAccountRef.current =
       "";
   }, [
     wallet.address,
@@ -748,10 +810,9 @@ export function VesuBorrow({
   ]);
 
   /**
-   * Stage 1 of Unshield Borrow:
-   * private STRK -> public STRK.
+   * Stage 1 of Unshield Borrow through Agent Core.
    *
-   * This does not execute Vesu. Borrow remains a separate transaction.
+   * private STRK -> confirmed + verified public STRK.
    */
   async function startUnshieldBorrow() {
     if (
@@ -764,18 +825,32 @@ export function VesuBorrow({
       return;
     }
 
-    setError("");
-    setSuccess("");
+    if (
+      borrowAgentSessionRef.current
+    ) {
+      setError(
+        "Finish the current Unshield Borrow flow first.",
+      );
+      return;
+    }
 
-    let collateral:
-      bigint;
+    if (
+      !selectedMarket ||
+      !wallet.address
+    ) {
+      setError(
+        "Connect Ready and load a verified Vesu market first.",
+      );
+      return;
+    }
+
+    let collateral: bigint;
 
     try {
       collateral =
         parseUnits(
           collateralAmount,
-          network.assets.strk
-            .decimals,
+          network.assets.strk.decimals,
         );
     } catch {
       setError(
@@ -784,9 +859,7 @@ export function VesuBorrow({
       return;
     }
 
-    if (
-      collateral <= 0n
-    ) {
+    if (collateral <= 0n) {
       setError(
         "Collateral amount must be greater than zero.",
       );
@@ -795,56 +868,102 @@ export function VesuBorrow({
 
     if (
       !wallet.privateRevealed ||
-      wallet.privateStrk === null
+      wallet.privateStrk === null ||
+      wallet.privateStrk < collateral
     ) {
       setError(
-        "Reveal private STRK before starting Unshield Borrow.",
-      );
-      return;
-    }
-
-    if (
-      wallet.privateStrk <
-      collateral
-    ) {
-      setError(
-        "Private STRK balance is below this collateral amount.",
+        "Reveal enough private STRK before starting Unshield Borrow.",
       );
       return;
     }
 
     setUnshielding(true);
+    setError("");
+    setSuccess("");
 
     try {
+      const plan =
+        buildStarknetAgentPlan({
+          goal:
+            "Borrow " +
+            borrowAmount +
+            " " +
+            selectedDebtAsset.symbol +
+            " against " +
+            collateralAmount +
+            " STRK",
+
+          chainId:
+            wallet.chainId,
+
+          mode:
+            "unshield",
+        });
+
+      if (plan.status !== "ready") {
+        throw new Error(
+          plan.message ??
+          "CAREL could not build the Unshield Borrow Agent plan.",
+        );
+      }
+
+      const session =
+        createAgentExecutionSession(
+          plan,
+          "borrow-" +
+            Date.now().toString(36) +
+            "-" +
+            Math.random().toString(36).slice(2),
+        );
+
+      const runtime =
+        createLiveBorrowRuntime();
+
+      borrowAgentPlanRef.current =
+        plan;
+
+      borrowAgentSessionRef.current =
+        session;
+
+      borrowAgentRuntimeRef.current =
+        runtime;
+
+      borrowAgentAccountRef.current =
+        wallet.address;
+
       const result =
-        await wallet
-          .executeUnshieldCollateral(
-            collateralAmount,
-            `Unshield ${collateralAmount} STRK for Borrow`,
-          );
+        await executeAgentStage(
+          plan,
+          session,
+          "unshield-1",
+          {
+            runId:
+              session.runId,
+            chainId:
+              wallet.chainId,
+            account:
+              wallet.address,
+          },
+          runtime.registry,
+        );
+
+      borrowAgentSessionRef.current =
+        result.session;
 
       setUnshieldProgress({
-        kind:
-          result.status ===
-            "confirmed"
-            ? "ready"
-            : "waiting",
-
+        kind: "waiting",
         hash:
-          result.hash,
-
+          result.receipt.transactionId,
         amount:
           collateralAmount,
       });
 
-      if (
-        result.status ===
-          "confirmed"
-      ) {
-        await wallet
-          .refreshPublicBalance();
-      }
+      setSuccess(
+        "Unshield submitted through Agent Core. Confirm it before Vesu Borrow.",
+      );
     } catch (cause) {
+      clearBorrowAgentRefs();
+
       setUnshieldProgress({
         kind: "idle",
       });
@@ -860,18 +979,46 @@ export function VesuBorrow({
   }
 
   /**
-   * If the initial wallet wait timed out, explicitly check the submitted
-   * Unshield transaction before unlocking Vesu.
+   * Confirms unshield-1 and verifies that the exact collateral appeared
+   * publicly before Agent Core unlocks borrow-2.
    */
   async function refreshUnshieldConfirmation() {
     if (
       mode !== "unshield" ||
-      unshieldProgress.kind !==
-        "waiting" ||
-      !network ||
-      network.id !==
-        "mainnet"
+      unshieldProgress.kind !== "waiting"
     ) {
+      return;
+    }
+
+    const plan =
+      borrowAgentPlanRef.current;
+
+    const session =
+      borrowAgentSessionRef.current;
+
+    const runtime =
+      borrowAgentRuntimeRef.current;
+
+    if (
+      !plan ||
+      !session ||
+      !runtime
+    ) {
+      setError(
+        "The Unshield Borrow Agent session is unavailable.",
+      );
+      return;
+    }
+
+    if (
+      borrowAgentAccountRef.current !==
+        wallet.address ||
+      plan.objective.chainId !==
+        wallet.chainId
+    ) {
+      setError(
+        "Wallet account or network changed. Restart Unshield Borrow.",
+      );
       return;
     }
 
@@ -879,63 +1026,71 @@ export function VesuBorrow({
     setError("");
 
     try {
-      const receipt:
-        unknown =
-        await network.provider
-          .waitForTransaction(
-            unshieldProgress.hash,
-            {
-              retries: 2,
-              retryInterval:
-                1500,
-            },
-          );
+      const next =
+        await runtime.confirmSubmittedStage(
+          plan,
+          session,
+          "unshield-1",
+          {
+            runId:
+              session.runId,
+            chainId:
+              wallet.chainId,
+            account:
+              wallet.address,
+          },
+        );
+
+      const output =
+        next.outputs["unshield-1"];
 
       if (
-        receipt &&
-        typeof receipt ===
-          "object"
+        !output ||
+        output.assetSymbol !== "STRK"
       ) {
-        const executionStatus =
-          (
-            receipt as Record<
-              string,
-              unknown
-            >
-          ).execution_status;
-
-        if (
-          executionStatus ===
-            "REVERTED"
-        ) {
-          throw new Error(
-            "The Unshield transaction reverted. Vesu Borrow remains locked.",
-          );
-        }
+        throw new Error(
+          "Unshield confirmed without verified public STRK collateral.",
+        );
       }
 
-      await wallet
-        .refreshPublicBalance();
+      borrowAgentSessionRef.current =
+        next;
 
       setUnshieldProgress({
-        ...unshieldProgress,
         kind: "ready",
+        hash:
+          unshieldProgress.hash,
+        amount:
+          output.amountText,
       });
+
+      try {
+        await wallet.refreshPublicBalance();
+      } catch {
+        // Runtime already verified the public output directly.
+      }
+
+      setReviewed(false);
+
+      setSuccess(
+        "Unshield confirmed and " +
+        output.amountText +
+        " STRK verified. Run a fresh Vesu risk review.",
+      );
     } catch (cause) {
       setError(
-        cause instanceof Error &&
-        /revert/i.test(
-          cause.message,
-        )
+        cause instanceof Error
           ? cause.message
-          : "Unshield is not confirmed yet. Vesu Borrow remains locked.",
+          : "Unshield is not confirmed and verified yet.",
       );
     } finally {
       setCheckingUnshield(false);
     }
   }
 
+
   /**
+   * Creates the client-side dependency bridge  /**
    * Creates the client-side dependency bridge between the deterministic
    * Agent Core and CAREL's already-guarded live Vesu/STRK20 execution.
    *
@@ -944,7 +1099,7 @@ export function VesuBorrow({
    * - wallet.executeBorrow still rebuilds and validates Vesu calls.
    * - executeShieldAsset still owns the STRK20 Wallet API boundary.
    */
-  function createLiveShieldBorrowRuntime():
+  function createLiveBorrowRuntime():
     StarknetBorrowRuntime {
     if (
       !selectedMarket ||
@@ -1220,33 +1375,26 @@ export function VesuBorrow({
 
 
   /**
-   * Confirms Borrow through the generic Agent runtime.
-   *
-   * Shield remains locked until the runtime:
-   * 1. observes Starknet confirmation,
-   * 2. verifies the actual public Borrow output,
-   * 3. records that output in AgentExecutionSession.
+   * Confirms and verifies a Normal Borrow submitted through Agent Core.
    */
-  async function refreshShieldBorrowConfirmation() {
+  async function refreshNormalBorrowConfirmation() {
     if (
-      mode !== "shield" ||
-      shieldBorrowProgress.kind !==
-        "waiting" ||
-      !network ||
-      network.id !==
-        "mainnet"
+      mode !== "normal" ||
+      normalAgentBorrowStage
+        ?.status !==
+        "submitted"
     ) {
       return;
     }
 
     const plan =
-      shieldAgentPlanRef.current;
+      borrowAgentPlanRef.current;
 
     const session =
-      shieldAgentSessionRef.current;
+      borrowAgentSessionRef.current;
 
     const runtime =
-      shieldAgentRuntimeRef.current;
+      borrowAgentRuntimeRef.current;
 
     if (
       !plan ||
@@ -1254,26 +1402,28 @@ export function VesuBorrow({
       !runtime
     ) {
       setError(
-        "The Shield Borrow Agent session is unavailable. Review the Borrow again.",
+        "The Normal Borrow Agent session is unavailable.",
       );
 
       return;
     }
 
     if (
-      shieldAgentAccountRef.current !==
+      borrowAgentAccountRef
+        .current !==
         wallet.address ||
-      plan.objective.chainId !==
+      plan.objective
+        .chainId !==
         wallet.chainId
     ) {
       setError(
-        "Wallet account or network changed. Restart Shield Borrow.",
+        "Wallet account or network changed. Restart Borrow.",
       );
 
       return;
     }
 
-    setCheckingShieldBorrow(
+    setCheckingBorrowAgent(
       true,
     );
 
@@ -1298,7 +1448,241 @@ export function VesuBorrow({
             },
           );
 
-      shieldAgentSessionRef.current =
+      borrowAgentSessionRef.current =
+        next;
+
+      const output =
+        next.outputs[
+          "borrow-1"
+        ];
+
+      if (!output) {
+        throw new Error(
+          "Borrow confirmed without a verified Agent output.",
+        );
+      }
+
+      try {
+        await wallet
+          .refreshAssetBalances();
+      } catch {
+        // Agent verification already observed the output directly.
+      }
+
+      setSuccess(
+        "Borrow confirmed and " +
+        output.amountText +
+        " " +
+        output.assetSymbol +
+        " verified.",
+      );
+
+      try {
+        await loadMarkets(
+          false,
+        );
+      } catch {
+        // Confirmed execution remains visible even if market refresh fails.
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Borrow is not confirmed and verified yet.",
+      );
+    } finally {
+      setCheckingBorrowAgent(
+        false,
+      );
+    }
+  }
+
+
+  /**
+   * Confirms and verifies borrow-2 after a verified Unshield.
+   */
+  async function refreshUnshieldBorrowConfirmation() {
+    if (
+      mode !== "unshield"
+    ) {
+      return;
+    }
+
+    const plan =
+      borrowAgentPlanRef.current;
+
+    const session =
+      borrowAgentSessionRef.current;
+
+    const runtime =
+      borrowAgentRuntimeRef.current;
+
+    const stage =
+      session
+        ?.run.stages.find(
+          (candidate) =>
+            candidate.stageId ===
+              "borrow-2",
+        );
+
+    if (
+      !plan ||
+      !session ||
+      !runtime ||
+      stage?.status !==
+        "submitted"
+    ) {
+      return;
+    }
+
+    if (
+      borrowAgentAccountRef.current !==
+        wallet.address ||
+      plan.objective.chainId !==
+        wallet.chainId
+    ) {
+      setError(
+        "Wallet account or network changed. Restart Unshield Borrow.",
+      );
+      return;
+    }
+
+    setCheckingBorrowAgent(true);
+    setError("");
+
+    try {
+      const next =
+        await runtime.confirmSubmittedStage(
+          plan,
+          session,
+          "borrow-2",
+          {
+            runId:
+              session.runId,
+            chainId:
+              wallet.chainId,
+            account:
+              wallet.address,
+          },
+        );
+
+      const output =
+        next.outputs["borrow-2"];
+
+      if (!output) {
+        throw new Error(
+          "Borrow confirmed without a verified Agent output.",
+        );
+      }
+
+      borrowAgentSessionRef.current =
+        next;
+
+      try {
+        await wallet.refreshAssetBalances();
+      } catch {
+        // Agent verification already observed the output.
+      }
+
+      setSuccess(
+        "Borrow confirmed and " +
+        output.amountText +
+        " " +
+        output.assetSymbol +
+        " verified. Unshield Borrow plan completed.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Borrow is not confirmed and verified yet.",
+      );
+    } finally {
+      setCheckingBorrowAgent(false);
+    }
+  }
+
+
+  /**
+   * Confirms Borrow through the generic Agent runtime.
+   *
+   * Shield remains locked until the runtime:
+   * 1. observes Starknet confirmation,
+   * 2. verifies the actual public Borrow output,
+   * 3. records that output in AgentExecutionSession.
+   */
+  async function refreshShieldBorrowConfirmation() {
+    if (
+      mode !== "shield" ||
+      shieldBorrowProgress.kind !==
+        "waiting" ||
+      !network ||
+      network.id !==
+        "mainnet"
+    ) {
+      return;
+    }
+
+    const plan =
+      borrowAgentPlanRef.current;
+
+    const session =
+      borrowAgentSessionRef.current;
+
+    const runtime =
+      borrowAgentRuntimeRef.current;
+
+    if (
+      !plan ||
+      !session ||
+      !runtime
+    ) {
+      setError(
+        "The Shield Borrow Agent session is unavailable. Review the Borrow again.",
+      );
+
+      return;
+    }
+
+    if (
+      borrowAgentAccountRef.current !==
+        wallet.address ||
+      plan.objective.chainId !==
+        wallet.chainId
+    ) {
+      setError(
+        "Wallet account or network changed. Restart Shield Borrow.",
+      );
+
+      return;
+    }
+
+    setCheckingBorrowAgent(
+      true,
+    );
+
+    setError("");
+
+    try {
+      const next =
+        await runtime
+          .confirmSubmittedStage(
+            plan,
+            session,
+            "borrow-1",
+            {
+              runId:
+                session.runId,
+
+              chainId:
+                wallet.chainId,
+
+              account:
+                wallet.address,
+            },
+          );
+
+      borrowAgentSessionRef.current =
         next;
 
       const output =
@@ -1351,7 +1735,7 @@ export function VesuBorrow({
           : "Borrow is not confirmed and verified yet. Shield remains locked.",
       );
     } finally {
-      setCheckingShieldBorrow(
+      setCheckingBorrowAgent(
         false,
       );
     }
@@ -1433,13 +1817,13 @@ export function VesuBorrow({
     }
 
     const plan =
-      shieldAgentPlanRef.current;
+      borrowAgentPlanRef.current;
 
     const session =
-      shieldAgentSessionRef.current;
+      borrowAgentSessionRef.current;
 
     const runtime =
-      shieldAgentRuntimeRef.current;
+      borrowAgentRuntimeRef.current;
 
     if (
       !plan ||
@@ -1454,7 +1838,7 @@ export function VesuBorrow({
     }
 
     if (
-      shieldAgentAccountRef.current !==
+      borrowAgentAccountRef.current !==
         wallet.address ||
       plan.objective.chainId !==
         wallet.chainId
@@ -1492,7 +1876,7 @@ export function VesuBorrow({
           runtime.registry,
         );
 
-      shieldAgentSessionRef.current =
+      borrowAgentSessionRef.current =
         result.session;
 
       const status =
@@ -1569,13 +1953,13 @@ export function VesuBorrow({
     }
 
     const plan =
-      shieldAgentPlanRef.current;
+      borrowAgentPlanRef.current;
 
     const session =
-      shieldAgentSessionRef.current;
+      borrowAgentSessionRef.current;
 
     const runtime =
-      shieldAgentRuntimeRef.current;
+      borrowAgentRuntimeRef.current;
 
     if (
       !plan ||
@@ -1590,7 +1974,7 @@ export function VesuBorrow({
     }
 
     if (
-      shieldAgentAccountRef.current !==
+      borrowAgentAccountRef.current !==
         wallet.address ||
       plan.objective.chainId !==
         wallet.chainId
@@ -1602,7 +1986,7 @@ export function VesuBorrow({
       return;
     }
 
-    setCheckingShieldBorrow(
+    setCheckingBorrowAgent(
       true,
     );
 
@@ -1627,7 +2011,7 @@ export function VesuBorrow({
             },
           );
 
-      shieldAgentSessionRef.current =
+      borrowAgentSessionRef.current =
         next;
 
       setShieldBorrowProgress({
@@ -1647,7 +2031,7 @@ export function VesuBorrow({
           : "Shield is not confirmed yet.",
       );
     } finally {
-      setCheckingShieldBorrow(
+      setCheckingBorrowAgent(
         false,
       );
     }
@@ -1658,6 +2042,19 @@ export function VesuBorrow({
    * Requests a fresh risk evaluation for the exact user-entered amounts.
    */
   async function reviewBorrow() {
+    if (
+      mode === "normal" &&
+      normalAgentFlowLocked
+    ) {
+      setReviewed(false);
+
+      setError(
+        "Confirm the current Agent Borrow before reviewing another position.",
+      );
+
+      return;
+    }
+
     if (
       mode === "shield" &&
       shieldBorrowProgress.kind !==
@@ -1807,18 +2204,18 @@ export function VesuBorrow({
           );
 
         const runtime =
-          createLiveShieldBorrowRuntime();
+          createLiveBorrowRuntime();
 
-        shieldAgentPlanRef.current =
+        borrowAgentPlanRef.current =
           plan;
 
-        shieldAgentSessionRef.current =
+        borrowAgentSessionRef.current =
           session;
 
-        shieldAgentRuntimeRef.current =
+        borrowAgentRuntimeRef.current =
           runtime;
 
-        shieldAgentAccountRef.current =
+        borrowAgentAccountRef.current =
           wallet.address;
 
         /*
@@ -1859,7 +2256,7 @@ export function VesuBorrow({
             runtime.registry,
           );
 
-        shieldAgentSessionRef.current =
+        borrowAgentSessionRef.current =
           result.session;
 
         const verified =
@@ -1916,140 +2313,219 @@ export function VesuBorrow({
         return;
       }
 
-      const response =
-        await fetch(
-          "/api/vesu/borrow/prepare",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
+      if (
+        mode === "normal"
+      ) {
+        if (
+          borrowAgentSessionRef
+            .current
+            ?.run.status ===
+            "completed"
+        ) {
+          clearBorrowAgentRefs();
+        }
+
+        const plan =
+          buildStarknetAgentPlan({
+            goal:
+              "Borrow " +
+              borrowAmount +
+              " " +
+              selectedDebtAsset
+                .symbol +
+              " against " +
+              collateralAmount +
+              " STRK",
+
+            chainId:
+              wallet.chainId,
+
+            mode:
+              "normal",
+          });
+
+        if (
+          plan.status !==
+            "ready"
+        ) {
+          throw new Error(
+            plan.message ??
+            "CAREL could not build the Normal Borrow Agent plan.",
+          );
+        }
+
+        const session =
+          createAgentExecutionSession(
+            plan,
+
+            "borrow-" +
+              Date.now()
+                .toString(36) +
+              "-" +
+              Math.random()
+                .toString(36)
+                .slice(2),
+          );
+
+        const runtime =
+          createLiveBorrowRuntime();
+
+        borrowAgentPlanRef.current =
+          plan;
+
+        borrowAgentSessionRef.current =
+          session;
+
+        borrowAgentRuntimeRef.current =
+          runtime;
+
+        borrowAgentAccountRef.current =
+          wallet.address;
+
+        const result =
+          await executeAgentStage(
+            plan,
+            session,
+            "borrow-1",
+            {
+              runId:
+                session.runId,
+
+              chainId:
+                wallet.chainId,
+
+              account:
+                wallet.address,
             },
-            body:
-              JSON.stringify({
-                poolId:
-                  selectedMarket
-                    .pool.id,
+            runtime.registry,
+          );
 
-                owner:
-                  wallet.address,
+        borrowAgentSessionRef.current =
+          result.session;
 
-                collateralAmount,
-
-                borrowAmount,
-
-                collateralAssetId:
-                  network?.assets
-                    .strk.id,
-
-                debtAssetId:
-                  selectedDebtAsset.id,
-              }),
-          },
+        setSuccess(
+          "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
         );
 
-      const raw: unknown =
-        await response.json();
-
-      const payload =
-        responseObject(
-          raw,
+        setReviewed(
+          false,
         );
 
-      if (!response.ok) {
-        const blockers =
-          Array.isArray(
-            payload.blockers,
-          )
-            ? payload.blockers
-                .filter(
-                  (
-                    value,
-                  ): value is string =>
-                    typeof value ===
-                    "string",
-                )
-            : [];
-
-        throw new Error(
-          blockers.length
-            ? blockers.join(
-                " ",
-              )
-            : typeof payload.error ===
-                "string"
-              ? payload.error
-              : "Vesu Borrow preparation failed.",
-        );
+        return;
       }
-
-      const prepared =
-        payload as unknown as
-          PrepareResponse;
 
       if (
-        !prepared.execution ||
-        prepared.provider !==
-          "Vesu" ||
-        prepared.pool.id !==
-          selectedMarket
-            .pool.id
+        mode !== "unshield"
       ) {
         throw new Error(
-          "CAREL received a mismatched Borrow preparation.",
+          "Unexpected Borrow execution mode.",
         );
       }
 
-      const publicDebtBefore =
-        findAssetBalance(
-          wallet.balances,
-          selectedDebtAsset.id,
-          "public",
-        )?.amount ?? 0n;
+      const plan =
+        borrowAgentPlanRef.current;
 
-      const expectedShieldAmount =
-        parseUnits(
-          borrowAmount,
-          selectedDebtAsset
-            .decimals,
+      const session =
+        borrowAgentSessionRef.current;
+
+      if (
+        !plan ||
+        !session
+      ) {
+        throw new Error(
+          "The Unshield Borrow Agent session is unavailable.",
+        );
+      }
+
+      const borrowStage =
+        session.run.stages.find(
+          (stage) =>
+            stage.stageId ===
+              "borrow-2",
         );
 
-      const hash =
-        await wallet.executeBorrow(
-          prepared.execution,
-          `Borrow ${borrowAmount} ${selectedDebtAsset.symbol} against ${collateralAmount} STRK · Vesu ${prepared.pool.name}`,
+      if (
+        borrowStage?.status !==
+          "review"
+      ) {
+        throw new Error(
+          "Borrow-2 is not unlocked. Confirm and verify Unshield first.",
         );
+      }
+
+      /*
+       * Fresh runtime after the mandatory post-Unshield Vesu risk review.
+       */
+      const runtime =
+        createLiveBorrowRuntime();
+
+      borrowAgentRuntimeRef.current =
+        runtime;
+
+      const result =
+        await executeAgentStage(
+          plan,
+          session,
+          "borrow-2",
+          {
+            runId:
+              session.runId,
+            chainId:
+              wallet.chainId,
+            account:
+              wallet.address,
+          },
+          runtime.registry,
+        );
+
+      borrowAgentSessionRef.current =
+        result.session;
 
       setSuccess(
-        `Borrow submitted: ${hash.slice(
-          0,
-          10,
-        )}…${hash.slice(-6)}`,
+        "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
       );
 
       setReviewed(false);
 
-      try {
-        await loadMarkets(
-          false,
-        );
-      } catch {
-        // Execution result remains visible even if market refresh fails.
-      }
+      return;
     } catch (cause) {
+      if (
+        mode === "normal"
+      ) {
+        const current =
+          borrowAgentSessionRef
+            .current;
+
+        const stage =
+          current
+            ?.run.stages.find(
+              (candidate) =>
+                candidate.stageId ===
+                  "borrow-1",
+            );
+
+        if (
+          !stage ||
+          stage.status ===
+            "review"
+        ) {
+          clearBorrowAgentRefs();
+        }
+      }
+
       if (
         mode === "shield"
       ) {
-        shieldAgentPlanRef.current =
+        borrowAgentPlanRef.current =
           null;
 
-        shieldAgentSessionRef.current =
+        borrowAgentSessionRef.current =
           null;
 
-        shieldAgentRuntimeRef.current =
+        borrowAgentRuntimeRef.current =
           null;
 
-        shieldAgentAccountRef.current =
+        borrowAgentAccountRef.current =
           "";
 
         setShieldBorrowProgress({
@@ -2193,10 +2669,21 @@ export function VesuBorrow({
       shieldPublicBefore +
         shieldExpected;
 
-  const shieldFlowLocked =
-    mode === "shield" &&
-    shieldBorrowProgress.kind !==
-      "idle";
+  const borrowFlowLocked =
+    (
+      mode === "shield" &&
+      shieldBorrowProgress.kind !==
+        "idle"
+    ) ||
+    (
+      mode === "normal" &&
+      normalAgentFlowLocked
+    ) ||
+    (
+      mode === "unshield" &&
+      unshieldProgress.kind !==
+        "idle"
+    );
 
 
   let parsedCollateral:
@@ -2394,7 +2881,7 @@ export function VesuBorrow({
                   size={16}
                 />
 
-                {checkingShieldBorrow
+                {checkingBorrowAgent
                   ? "Checking confirmation…"
                   : "Check Borrow confirmation"}
               </button>
@@ -2554,7 +3041,7 @@ export function VesuBorrow({
                     size={16}
                   />
 
-                  {checkingShieldBorrow
+                  {checkingBorrowAgent
                     ? "Checking Shield confirmation…"
                     : "Check Shield confirmation"}
                 </button>
@@ -2894,6 +3381,94 @@ export function VesuBorrow({
         </div>
       )}
 
+      {mode === "unshield" &&
+        unshieldBorrowStage
+          ?.status ===
+          "submitted" && (
+          <div
+            className={
+              styles.borrowRisk
+            }
+          >
+            <div
+              className={
+                styles.notice
+              }
+              role="status"
+            >
+              <p>
+                Vesu Borrow submitted
+                as borrow-2. Agent Core
+                completes the plan only
+                after confirmation and
+                output verification.
+              </p>
+            </div>
+
+            {unshieldBorrowStage
+              .txHash && (
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Borrow tx
+                </span>
+
+                <strong
+                  className={
+                    styles.borrowAddress
+                  }
+                >
+                  {shortAddress(
+                    unshieldBorrowStage
+                      .txHash,
+                  )}
+                </strong>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={
+                styles.secondary
+              }
+              disabled={busy}
+              onClick={() =>
+                void refreshUnshieldBorrowConfirmation()
+              }
+            >
+              <RefreshCw size={16} />
+
+              {checkingBorrowAgent
+                ? "Checking Borrow confirmation…"
+                : "Check Borrow confirmation"}
+            </button>
+          </div>
+        )}
+
+      {mode === "unshield" &&
+        unshieldBorrowStage
+          ?.status ===
+          "confirmed" &&
+        unshieldBorrowOutput && (
+          <p
+            className={
+              styles.inlineStatus
+            }
+          >
+            <Check size={16} />
+            Borrow verified: {
+              unshieldBorrowOutput
+                .amountText
+            } {
+              unshieldBorrowOutput
+                .assetSymbol
+            }.
+          </p>
+        )}
+
       <div
         className={
           styles.borrowPair
@@ -2920,7 +3495,7 @@ export function VesuBorrow({
               }
               disabled={
                 busy ||
-                shieldFlowLocked ||
+                borrowFlowLocked ||
                 (
                   mode ===
                     "unshield" &&
@@ -2978,7 +3553,7 @@ export function VesuBorrow({
               }
               disabled={
                 busy ||
-                shieldFlowLocked
+                borrowFlowLocked
               }
               onChange={(
                 event,
@@ -3016,7 +3591,7 @@ export function VesuBorrow({
           }
           disabled={
             busy ||
-            shieldFlowLocked
+            borrowFlowLocked
           }
           onChange={(
             event,
@@ -3032,13 +3607,6 @@ export function VesuBorrow({
             setError("");
             setSuccess("");
 
-            if (
-              mode === "shield"
-            ) {
-              setShieldBorrowProgress({
-                kind: "idle",
-              });
-            }
           }}
         >
           {VESU_BORROW_DEBT_ASSETS.map(
@@ -3090,7 +3658,7 @@ export function VesuBorrow({
             }
             disabled={
               busy ||
-              shieldFlowLocked
+              borrowFlowLocked
             }
             onChange={(
               event,
@@ -3194,6 +3762,99 @@ export function VesuBorrow({
         </>
       )}
 
+      {mode === "normal" &&
+        normalAgentBorrowStage
+          ?.status ===
+          "submitted" && (
+          <div
+            className={
+              styles.borrowRisk
+            }
+          >
+            <div
+              className={
+                styles.notice
+              }
+              role="status"
+            >
+              <p>
+                Borrow submitted through
+                Agent Core. CAREL will
+                unlock completion only
+                after Starknet
+                confirmation and public
+                output verification.
+              </p>
+            </div>
+
+            {normalAgentBorrowStage
+              .txHash && (
+              <div
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  Borrow tx
+                </span>
+
+                <strong
+                  className={
+                    styles.borrowAddress
+                  }
+                >
+                  {shortAddress(
+                    normalAgentBorrowStage
+                      .txHash,
+                  )}
+                </strong>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={
+                styles.secondary
+              }
+              disabled={busy}
+              onClick={() =>
+                void refreshNormalBorrowConfirmation()
+              }
+            >
+              <RefreshCw
+                size={16}
+              />
+
+              {checkingBorrowAgent
+                ? "Checking Borrow confirmation…"
+                : "Check Borrow confirmation"}
+            </button>
+          </div>
+        )}
+
+      {mode === "normal" &&
+        normalAgentBorrowStage
+          ?.status ===
+          "confirmed" &&
+        normalAgentBorrowOutput && (
+          <p
+            className={
+              styles.inlineStatus
+            }
+          >
+            <Check
+              size={16}
+            />
+            Borrow verified: {
+              normalAgentBorrowOutput
+                .amountText
+            } {
+              normalAgentBorrowOutput
+                .assetSymbol
+            }.
+          </p>
+        )}
+
       <button
         type="button"
         className={
@@ -3202,7 +3863,10 @@ export function VesuBorrow({
         disabled={
           busy ||
           !unshieldBorrowReady ||
-          shieldFlowLocked
+          (
+            mode !== "unshield" &&
+            borrowFlowLocked
+          )
         }
         onClick={() =>
           void reviewBorrow()
