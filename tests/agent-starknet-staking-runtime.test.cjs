@@ -163,6 +163,9 @@ function context(
 function createRuntime({
   exposeStake =
     true,
+
+  recovery =
+    undefined,
 } = {}) {
   const STRK =
     strk();
@@ -191,6 +194,12 @@ function createRuntime({
   const runtime =
     staking
       .createStarknetStakingRuntime({
+        ...(recovery
+          ? {
+              recovery,
+            }
+          : {}),
+
         async preparePublicStake(
           input,
         ) {
@@ -295,6 +304,19 @@ function createRuntime({
               "confirmed",
           };
         },
+
+        async readPublicStakePosition(
+          input,
+        ) {
+          assert.equal(
+            input.assetId,
+            STRK.id,
+          );
+
+
+          return position;
+        },
+
 
         async readPublicBalance(
           input,
@@ -701,6 +723,317 @@ test(
         )
         .status,
       "submitted",
+    );
+  },
+);
+
+
+test(
+  "public Stake restores signed position baseline after reload",
+  async () => {
+    const runId =
+      "stake-recovered";
+
+    const stageId =
+      "stake-1";
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {},
+
+
+      async load() {
+        return {
+          version:
+            1,
+
+          kind:
+            "staking",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId:
+            MAINNET,
+
+          account:
+            "0x123",
+
+          data: {
+            action:
+              "stake",
+
+            kind:
+              "public-stake",
+
+            assetId:
+              strk().id,
+
+            amountUnits:
+              (
+                10n *
+                10n ** 18n
+              ).toString(),
+
+            /*
+             * createRuntime() current position = 25 STRK.
+             * Baseline 15 + exact 10 increase must verify.
+             */
+            positionBefore:
+              (
+                15n *
+                10n ** 18n
+              ).toString(),
+          },
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0xabc",
+        };
+      },
+    };
+
+
+    const {
+      runtime,
+    } =
+      createRuntime({
+        recovery,
+      });
+
+
+    const plan =
+      planner
+        .buildStarknetAgentPlan({
+          goal:
+            "Stake 10 STRK.",
+
+          chainId:
+            MAINNET,
+
+          mode:
+            "normal",
+        });
+
+
+    let session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0xabc",
+          },
+        );
+
+
+    session =
+      await runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          context(
+            runId,
+          ),
+        );
+
+
+    assert.equal(
+      session.run.status,
+      "completed",
+    );
+  },
+);
+
+
+test(
+  "Unshield Staking restores signed public balance baseline after reload",
+  async () => {
+    const STRK =
+      strk();
+
+
+    const runId =
+      "stake-unshield-recovered";
+
+    const stageId =
+      "unshield-1";
+
+    const amountUnits =
+      10n *
+      10n ** 18n;
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {},
+
+
+      async load() {
+        return {
+          version:
+            1,
+
+          kind:
+            "staking",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId:
+            MAINNET,
+
+          account:
+            "0x123",
+
+          data: {
+            action:
+              "unshield",
+
+            assetId:
+              STRK.id,
+
+            assetSymbol:
+              STRK.symbol,
+
+            decimals:
+              STRK.decimals
+                .toString(),
+
+            /*
+             * createRuntime() current public balance = 100 STRK.
+             */
+            publicBefore:
+              (
+                90n *
+                10n ** 18n
+              ).toString(),
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0xdef",
+        };
+      },
+    };
+
+
+    const {
+      runtime,
+    } =
+      createRuntime({
+        recovery,
+      });
+
+
+    const plan =
+      planner
+        .buildStarknetAgentPlan({
+          goal:
+            "Stake 10 STRK.",
+
+          chainId:
+            MAINNET,
+
+          mode:
+            "unshield",
+        });
+
+
+    let session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0xdef",
+          },
+        );
+
+
+    session =
+      await runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          context(
+            runId,
+          ),
+        );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "unshield-1",
+        ).status,
+      "confirmed",
+    );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "stake-2",
+        ).status,
+      "review",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        "unshield-1"
+      ].amountText,
+      "10",
     );
   },
 );

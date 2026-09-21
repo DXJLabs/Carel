@@ -16,6 +16,10 @@ import {
 } from "@/lib/agent/starknet-staking-runtime";
 
 import {
+  createAgentRuntimeRecovery,
+} from "@/lib/agent/client-recovery";
+
+import {
   AVNU_STAKING_ADAPTER_ID,
 } from "@/lib/carel/ecosystems/starknet/protocols/avnu/staking-adapter";
 
@@ -107,6 +111,11 @@ export function createLiveStakingRuntime({
     StakingRuntimeWallet;
 }>): StarknetStakingRuntime {
   return createStarknetStakingRuntime({
+    recovery:
+      createAgentRuntimeRecovery(
+        "staking",
+      ),
+
     async preparePublicStake(
       input,
     ) {
@@ -337,6 +346,66 @@ export function createLiveStakingRuntime({
           amountText,
           label,
         );
+    },
+
+
+    async readPublicStakePosition(
+      input,
+    ) {
+      const network =
+        getCarelNetwork(
+          input.chainId,
+        );
+
+
+      if (!network) {
+        throw new Error(
+          "Staking position verification received an unsupported Starknet network.",
+        );
+      }
+
+
+      const option =
+        getStarknetStakingAssetOptions(
+          input.chainId,
+          input.account,
+          "normal",
+        ).find(
+          (candidate) =>
+            candidate.asset.id ===
+              input.assetId &&
+            candidate.providerId ===
+              AVNU_STAKING_ADAPTER_ID,
+        );
+
+
+      if (!option) {
+        throw new Error(
+          "Recovered Staking position references an unsupported public staking asset.",
+        );
+      }
+
+
+      const pool =
+        await loadStakingPool(
+          network.avnuBaseUrl,
+          option.asset,
+        );
+
+
+      const position =
+        await loadStakingPosition(
+          network.avnuBaseUrl,
+          pool,
+          input.account,
+          option.asset,
+        );
+
+
+      return (
+        position?.amount ??
+        0n
+      );
     },
 
 

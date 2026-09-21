@@ -10,6 +10,16 @@ import type {
   AgentPlan,
 } from "@/lib/agent/plan";
 
+import type {
+  AgentRecoveryBoundPayload,
+  AgentRecoveryData,
+  SignedAgentRecoveryDraft,
+} from "@/lib/agent/recovery-types";
+
+import type {
+  AgentRuntimeRecovery,
+} from "@/lib/agent/runtime-recovery";
+
 import {
   getAgentRuntimeStage,
 } from "@/lib/agent/state-machine";
@@ -148,6 +158,22 @@ export type ReadStakingPublicBalanceInput =
   }>;
 
 
+export type ReadPublicStakePositionInput =
+  Readonly<{
+    chainId:
+      string;
+
+    account:
+      string;
+
+    assetId:
+      string;
+
+    signal?:
+      AbortSignal;
+  }>;
+
+
 export type WaitStakingTransactionInput =
   Readonly<{
     chainId:
@@ -199,11 +225,20 @@ export type StarknetStakingRuntimeDependencies =
     ):
       Promise<bigint>;
 
+    readPublicStakePosition(
+      input:
+        ReadPublicStakePositionInput,
+    ):
+      Promise<bigint>;
+
     waitForTransaction(
       input:
         WaitStakingTransactionInput,
     ):
       Promise<void>;
+
+    recovery?:
+      AgentRuntimeRecovery;
   }>;
 
 
@@ -224,11 +259,14 @@ type PublicStakeSnapshot =
     positionBefore:
       bigint;
 
-    readPosition(
-      signal?:
-        AbortSignal,
-    ):
-      Promise<bigint>;
+    chainId:
+      string;
+
+    account:
+      string;
+
+    assetId:
+      string;
   }>;
 
 
@@ -450,6 +488,194 @@ function requireStakeInput(
 }
 
 
+function recoveryBigInt(
+  data:
+    AgentRecoveryData,
+
+  key:
+    string,
+
+  positive =
+    false,
+): bigint {
+  const raw =
+    data[key];
+
+
+  if (
+    typeof raw !==
+      "string" ||
+    !/^\d+$/.test(
+      raw,
+    )
+  ) {
+    throw new Error(
+      `Recovered Staking snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  const value =
+    BigInt(
+      raw,
+    );
+
+
+  if (
+    positive &&
+    value <= 0n
+  ) {
+    throw new Error(
+      `Recovered Staking snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  return value;
+}
+
+
+function recoveredStakingSnapshot(
+  payload:
+    AgentRecoveryBoundPayload,
+
+  action:
+    "stake" |
+    "unshield",
+): StakingSnapshot {
+  const data =
+    payload.data;
+
+
+  if (
+    data.action !==
+      action
+  ) {
+    throw new Error(
+      "Recovered Staking snapshot does not match the submitted Agent stage.",
+    );
+  }
+
+
+  if (
+    action ===
+      "stake"
+  ) {
+    if (
+      data.kind !==
+        "public-stake" ||
+      !data.assetId
+    ) {
+      throw new Error(
+        "Recovered public Staking snapshot is incomplete.",
+      );
+    }
+
+
+    return {
+      kind:
+        "public-stake",
+
+      executionKey:
+        payload.executionKey,
+
+      transactionId:
+        payload.transactionId,
+
+      amountUnits:
+        recoveryBigInt(
+          data,
+          "amountUnits",
+          true,
+        ),
+
+      positionBefore:
+        recoveryBigInt(
+          data,
+          "positionBefore",
+        ),
+
+      chainId:
+        payload.chainId,
+
+      account:
+        payload.account,
+
+      assetId:
+        data.assetId,
+    };
+  }
+
+
+  if (
+    !data.assetId ||
+    !data.assetSymbol
+  ) {
+    throw new Error(
+      "Recovered Unshield Staking snapshot is incomplete.",
+    );
+  }
+
+
+  const decimals =
+    Number(
+      data.decimals,
+    );
+
+
+  if (
+    !Number.isInteger(
+      decimals,
+    ) ||
+    decimals < 0 ||
+    decimals > 255
+  ) {
+    throw new Error(
+      "Recovered Unshield Staking snapshot has invalid decimals.",
+    );
+  }
+
+
+  return {
+    kind:
+      "unshield",
+
+    executionKey:
+      payload.executionKey,
+
+    transactionId:
+      payload.transactionId,
+
+    chainId:
+      payload.chainId,
+
+    account:
+      payload.account,
+
+    assetId:
+      data.assetId,
+
+    assetSymbol:
+      data.assetSymbol,
+
+    decimals,
+
+    publicBefore:
+      recoveryBigInt(
+        data,
+        "publicBefore",
+      ),
+
+    amountUnits:
+      recoveryBigInt(
+        data,
+        "amountUnits",
+        true,
+      ),
+  };
+}
+
+
 export function createStarknetStakingRuntime(
   dependencies:
     StarknetStakingRuntimeDependencies,
@@ -459,6 +685,83 @@ export function createStarknetStakingRuntime(
       string,
       StakingSnapshot
     >();
+
+
+  async function sealRecovery(
+    input:
+      AgentStageExecutionInput,
+
+    data:
+      AgentRecoveryData,
+  ): Promise<
+    SignedAgentRecoveryDraft | null
+  > {
+    if (
+      !dependencies.recovery
+    ) {
+      return null;
+    }
+
+
+    try {
+      return await dependencies
+        .recovery
+        .seal({
+          runId:
+            input.context.runId,
+
+          stageId:
+            input.stage.id,
+
+          executionKey:
+            input.executionKey,
+
+          chainId:
+            input.context.chainId,
+
+          account:
+            input.context.account,
+
+          data,
+        });
+    } catch {
+      /*
+       * Recovery availability must not block a reviewed Staking transaction.
+       */
+      return null;
+    }
+  }
+
+
+  async function bindRecovery(
+    draft:
+      SignedAgentRecoveryDraft | null,
+
+    transactionId:
+      string,
+  ): Promise<void> {
+    if (
+      !draft ||
+      !dependencies.recovery
+    ) {
+      return;
+    }
+
+
+    try {
+      await dependencies
+        .recovery
+        .bind(
+          draft,
+          transactionId,
+        );
+    } catch {
+      /*
+       * The wallet already returned a tx hash. Never convert a persistence
+       * error into an execution failure or invite a duplicate Stake.
+       */
+    }
+  }
 
 
   const stakeExecutor:
@@ -583,6 +886,30 @@ export function createStarknetStakingRuntime(
             );
 
 
+        const recoveryDraft =
+          await sealRecovery(
+            input,
+            {
+              action:
+                "stake",
+
+              kind:
+                "public-stake",
+
+              assetId:
+                asset.id,
+
+              amountUnits:
+                amountUnits
+                  .toString(),
+
+              positionBefore:
+                positionBefore
+                  .toString(),
+            },
+          );
+
+
         const transaction =
           await prepared
             .execute();
@@ -611,10 +938,23 @@ export function createStarknetStakingRuntime(
 
             positionBefore,
 
-            readPosition:
-              prepared
-                .readPosition,
+            chainId:
+              input.context
+                .chainId,
+
+            account:
+              input.context
+                .account,
+
+            assetId:
+              asset.id,
           },
+        );
+
+
+        await bindRecovery(
+          recoveryDraft,
+          transactionId,
         );
 
 
@@ -675,16 +1015,45 @@ export function createStarknetStakingRuntime(
           });
 
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "stake",
+
+            kind:
+              "private-stake",
+
+            assetId:
+              asset.id,
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await prepared
           .execute();
 
 
+      const transactionId =
+        requireHash(
+          transaction.hash,
+        );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
+
       return {
-        transactionId:
-          requireHash(
-            transaction.hash,
-          ),
+        transactionId,
 
         /*
          * Confirm explicitly through the Agent lifecycle.
@@ -801,6 +1170,34 @@ export function createStarknetStakingRuntime(
           });
 
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "unshield",
+
+            assetId:
+              asset.id,
+
+            assetSymbol:
+              asset.symbol,
+
+            decimals:
+              asset.decimals
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await dependencies
           .executeUnshieldAsset(
@@ -853,6 +1250,12 @@ export function createStarknetStakingRuntime(
 
           amountUnits,
         },
+      );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
       );
 
 
@@ -946,10 +1349,23 @@ export function createStarknetStakingRuntime(
       AbortSignal,
   ) {
     const positionAfter =
-      await snapshot
-        .readPosition(
-          signal,
-        );
+      await dependencies
+        .readPublicStakePosition({
+          chainId:
+            snapshot.chainId,
+
+          account:
+            snapshot.account,
+
+          assetId:
+            snapshot.assetId,
+
+          ...(signal
+            ? {
+                signal,
+              }
+            : {}),
+        });
 
 
     const increase =
@@ -1072,10 +1488,72 @@ export function createStarknetStakingRuntime(
       );
 
 
-    const snapshot =
+    let snapshot =
       snapshots.get(
         key,
       );
+
+
+    if (
+      !snapshot &&
+      dependencies.recovery
+    ) {
+      const recovered =
+        await dependencies
+          .recovery
+          .load({
+            runId:
+              session.runId,
+
+            stageId,
+
+            executionKey:
+              executionKey(
+                session.runId,
+                stageId,
+              ),
+
+            chainId:
+              context.chainId,
+
+            account:
+              context.account,
+
+            transactionId:
+              runtimeStage.txHash,
+          });
+
+
+      if (recovered) {
+        const recoverableAction =
+          stage.action;
+
+
+        if (
+          recoverableAction !==
+            "stake" &&
+          recoverableAction !==
+            "unshield"
+        ) {
+          throw new Error(
+            "Recovered Staking capsule belongs to an unsupported Agent stage.",
+          );
+        }
+
+
+        snapshot =
+          recoveredStakingSnapshot(
+            recovered,
+            recoverableAction,
+          );
+
+
+        snapshots.set(
+          key,
+          snapshot,
+        );
+      }
+    }
 
 
     if (!snapshot) {
