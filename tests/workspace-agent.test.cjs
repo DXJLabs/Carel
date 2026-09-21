@@ -739,3 +739,90 @@ test(
     );
   },
 );
+
+
+test(
+  "Vesu Lend UI routes multi-asset execution through Agent Core",
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/lending/VesuLend.tsx",
+        ),
+        "utf8",
+      );
+
+    const runtime =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/lending/runtime.ts",
+        ),
+        "utf8",
+      );
+
+
+    assert.match(
+      source,
+      /buildStarknetAgentPlan\(/,
+    );
+
+    assert.match(
+      source,
+      /createLiveVesuLendRuntime\(/,
+    );
+
+    assert.match(
+      source,
+      /executeAgentStage\(/,
+    );
+
+    assert.match(
+      source,
+      /confirmSubmittedStage\(/,
+    );
+
+
+    assert.doesNotMatch(
+      source,
+      /wallet\.executeLend\(/,
+    );
+
+    assert.doesNotMatch(
+      source,
+      /wallet\.executeShieldLend\(/,
+    );
+
+    assert.doesNotMatch(
+      source,
+      /wallet\.executeUnshieldAsset\(/,
+    );
+
+
+    assert.match(
+      runtime,
+      /createStarknetLendRuntime\(/,
+    );
+
+    assert.match(
+      runtime,
+      /\.executeLend\(/,
+    );
+
+    assert.match(
+      runtime,
+      /\.executeShieldLend\(/,
+    );
+
+    assert.match(
+      runtime,
+      /\.executeUnshieldAsset\(/,
+    );
+
+    assert.match(
+      runtime,
+      /readVesuLendingPosition\(/,
+    );
+  },
+);

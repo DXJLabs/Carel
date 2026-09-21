@@ -3,15 +3,14 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import {
   ArrowRight,
-  Check,
   LoaderCircle,
   RefreshCw,
-  ShieldAlert,
   WalletCards,
 } from "lucide-react";
 
@@ -37,14 +36,31 @@ import {
 } from "@/lib/agent/lending";
 
 import {
-  VESU_LEND_ASSETS,
-  getVesuLendAssetBySymbol,
-  type VesuLendExecutionPayload,
-} from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
+  buildStarknetAgentPlan,
+} from "@/lib/agent/starknet-planner";
 
 import type {
-  VesuShieldLendExecutionPayload,
-} from "@/lib/carel/ecosystems/starknet/protocols/vesu/private-lending";
+  AgentPlan,
+} from "@/lib/agent/plan";
+
+import {
+  createAgentExecutionSession,
+  executeAgentStage,
+  type AgentExecutionSession,
+} from "@/lib/agent/executor";
+
+import type {
+  StarknetLendRuntime,
+} from "@/lib/agent/starknet-lend-runtime";
+
+import {
+  createLiveVesuLendRuntime,
+} from "./runtime";
+
+import {
+  VESU_LEND_ASSETS,
+  getVesuLendAssetBySymbol,
+} from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
 
 import styles from "../CarelWorkspace.module.css";
 
@@ -53,22 +69,6 @@ type LendMode =
   | "normal"
   | "shield"
   | "unshield";
-
-
-type UnshieldLendProgress =
-  | Readonly<{
-      kind: "idle";
-    }>
-  | Readonly<{
-      kind: "waiting";
-      hash: string;
-      amount: string;
-    }>
-  | Readonly<{
-      kind: "ready";
-      hash: string;
-      amount: string;
-    }>;
 
 
 type LendMarket =
@@ -205,21 +205,30 @@ export function VesuLend({
   ] = useState(false);
 
   const [
-    unshielding,
-    setUnshielding,
+    confirming,
+    setConfirming,
   ] = useState(false);
 
-  const [
-    checkingUnshield,
-    setCheckingUnshield,
-  ] = useState(false);
+  const planRef =
+    useRef<
+      AgentPlan | null
+    >(null);
+
+  const runtimeRef =
+    useRef<
+      StarknetLendRuntime | null
+    >(null);
+
+  const accountRef =
+    useRef("");
 
   const [
-    unshieldProgress,
-    setUnshieldProgress,
-  ] = useState<UnshieldLendProgress>({
-    kind: "idle",
-  });
+    lendAgentSession,
+    setLendAgentSession,
+  ] =
+    useState<
+      AgentExecutionSession | null
+    >(null);
 
   const [
     error,
@@ -264,12 +273,75 @@ export function VesuLend({
     );
 
 
+  const flowLocked =
+    lendAgentSession !==
+      null &&
+    lendAgentSession
+      .run.status !==
+      "completed" &&
+    lendAgentSession
+      .run.status !==
+      "failed";
+
+
+  const submittedStage =
+    lendAgentSession
+      ?.run.stages.find(
+        (stage) =>
+          stage.status ===
+            "submitted",
+      ) ??
+    null;
+
+
+  const reviewStage =
+    lendAgentSession
+      ?.run.stages.find(
+        (stage) =>
+          stage.status ===
+            "review",
+      ) ??
+    null;
+
+
   const busy =
     loading ||
     executing ||
-    unshielding ||
-    checkingUnshield ||
+    confirming ||
     wallet.busy;
+
+
+  function stageAction(
+    stageId:
+      string,
+  ) {
+    return (
+      planRef.current
+        ?.stages.find(
+          (stage) =>
+            stage.id ===
+              stageId,
+        )
+        ?.action ??
+      null
+    );
+  }
+
+
+  function clearAgentFlow() {
+    planRef.current =
+      null;
+
+    runtimeRef.current =
+      null;
+
+    accountRef.current =
+      "";
+
+    setLendAgentSession(
+      null,
+    );
+  }
 
 
   useEffect(() => {
@@ -293,9 +365,6 @@ export function VesuLend({
           parsed.amountText,
         );
 
-        setUnshieldProgress({
-          kind: "idle",
-        });
       }
     } catch {
       // Manual form remains available.
@@ -422,398 +491,266 @@ export function VesuLend({
 
 
   useEffect(() => {
-    setUnshieldProgress({
-      kind: "idle",
-    });
+    clearAgentFlow();
+
+    setError("");
+    setSuccess("");
   }, [
     wallet.address,
     wallet.chainId,
     mode,
     selectedAssetId,
+    selectedPoolId,
   ]);
 
 
-  async function startUnshieldLend() {
+  function executionContext(
+    session:
+      AgentExecutionSession,
+  ) {
+    return {
+      runId:
+        session.runId,
+
+      chainId:
+        wallet.chainId,
+
+      account:
+        wallet.address,
+    };
+  }
+
+
+  async function startAgentLend() {
     if (
-      mode !== "unshield" ||
+      busy ||
+      flowLocked ||
+      !selectedMarket ||
+      !wallet.address ||
       !network ||
-      network.id !== "mainnet" ||
-      unshielding ||
-      checkingUnshield
+      network.id !==
+        "mainnet"
     ) {
       return;
     }
 
+
+    setExecuting(true);
     setError("");
     setSuccess("");
 
-    let units: bigint;
 
     try {
-      units =
+      const units =
         parseUnits(
           amount,
           selectedAsset.decimals,
         );
-    } catch {
-      setError(
-        `Enter a valid ${selectedAsset.symbol} amount.`,
-      );
-      return;
-    }
 
-    if (units <= 0n) {
-      setError(
-        "Lend amount must be greater than zero.",
-      );
-      return;
-    }
-
-    if (!wallet.privateRevealed) {
-      setError(
-        `Reveal private ${selectedAsset.symbol} before Unshield Lend.`,
-      );
-      return;
-    }
-
-    const privateBalance =
-      findAssetBalance(
-        wallet.balances,
-        selectedAsset.id,
-        "private",
-      )?.amount ?? 0n;
-
-    if (
-      privateBalance <
-      units
-    ) {
-      setError(
-        `Private ${selectedAsset.symbol} balance is below this Lend amount.`,
-      );
-      return;
-    }
-
-    setUnshielding(true);
-
-    try {
-      const result =
-        await wallet.executeUnshieldAsset(
-          selectedAsset.id,
-          amount,
-          `Unshield ${amount} ${selectedAsset.symbol} for Lend`,
-        );
-
-      setUnshieldProgress({
-        kind:
-          result.status === "confirmed"
-            ? "ready"
-            : "waiting",
-
-        hash:
-          result.hash,
-
-        amount,
-      });
 
       if (
-        result.status ===
-        "confirmed"
-      ) {
-        await wallet
-          .refreshAssetBalances();
-      }
-    } catch (cause) {
-      setUnshieldProgress({
-        kind: "idle",
-      });
-
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unshield Lend failed.",
-      );
-    } finally {
-      setUnshielding(false);
-    }
-  }
-
-
-  async function refreshUnshieldLendConfirmation() {
-    if (
-      mode !== "unshield" ||
-      unshieldProgress.kind !==
-        "waiting" ||
-      !network ||
-      network.id !== "mainnet"
-    ) {
-      return;
-    }
-
-    setCheckingUnshield(true);
-    setError("");
-
-    try {
-      const receipt: unknown =
-        await network.provider
-          .waitForTransaction(
-            unshieldProgress.hash,
-            {
-              retries: 2,
-              retryInterval: 1500,
-            },
-          );
-
-      if (
-        receipt &&
-        typeof receipt === "object"
-      ) {
-        const executionStatus =
-          (
-            receipt as Record<
-              string,
-              unknown
-            >
-          ).execution_status;
-
-        if (
-          executionStatus ===
-          "REVERTED"
-        ) {
-          throw new Error(
-            "The Unshield transaction reverted. Vesu Lend remains locked.",
-          );
-        }
-      }
-
-      await wallet
-        .refreshAssetBalances();
-
-      setUnshieldProgress({
-        ...unshieldProgress,
-        kind: "ready",
-      });
-    } catch (cause) {
-      setError(
-        cause instanceof Error &&
-        /revert/i.test(
-          cause.message,
-        )
-          ? cause.message
-          : "Unshield is not confirmed yet. Vesu Lend remains locked.",
-      );
-    } finally {
-      setCheckingUnshield(false);
-    }
-  }
-
-
-  async function executeLend() {
-    if (
-      mode === "unshield"
-    ) {
-      let units: bigint;
-
-      try {
-        units =
-          parseUnits(
-            amount,
-            selectedAsset.decimals,
-          );
-      } catch {
-        setError(
-          `Enter a valid ${selectedAsset.symbol} amount.`,
-        );
-        return;
-      }
-
-      const publicBalance =
-        findAssetBalance(
-          wallet.balances,
-          selectedAsset.id,
-          "public",
-        )?.amount;
-
-      if (
-        unshieldProgress.kind !==
-          "ready" ||
-        publicBalance === null ||
-        publicBalance === undefined ||
-        publicBalance < units
-      ) {
-        setError(
-          "Complete and confirm Unshield before Vesu Lend.",
-        );
-        return;
-      }
-    }
-
-    if (
-      !selectedMarket ||
-      !wallet.address ||
-      executing
-    ) {
-      return;
-    }
-
-    try {
-      if (
-        parseUnits(
-          amount,
-          selectedAsset
-            .decimals,
-        ) <= 0n
+        units <= 0n
       ) {
         throw new Error(
           "Lend amount must be greater than zero.",
         );
       }
-    } catch {
-      setError(
-        `Enter a valid ${selectedAsset.symbol} amount.`,
+
+
+      if (
+        mode !==
+          "normal" &&
+        (
+          !wallet.strk20Capable ||
+          !network.privacyEnabled
+        )
+      ) {
+        throw new Error(
+          "Ready STRK20 privacy support is required for this Lend mode.",
+        );
+      }
+
+
+      if (
+        mode ===
+          "unshield"
+      ) {
+        if (
+          !wallet.privateRevealed
+        ) {
+          throw new Error(
+            `Reveal private ${selectedAsset.symbol} before Unshield Lend.`,
+          );
+        }
+
+
+        const privateBalance =
+          findAssetBalance(
+            wallet.balances,
+            selectedAsset.id,
+            "private",
+          )?.amount ??
+          0n;
+
+
+        if (
+          privateBalance <
+            units
+        ) {
+          throw new Error(
+            `Private ${selectedAsset.symbol} balance is below this Lend amount.`,
+          );
+        }
+      }
+
+
+      const plan =
+        buildStarknetAgentPlan({
+          goal:
+            `Lend ${amount} ${selectedAsset.symbol}.`,
+
+          chainId:
+            wallet.chainId,
+
+          mode,
+        });
+
+
+      if (
+        plan.status !==
+          "ready"
+      ) {
+        throw new Error(
+          plan.message ??
+          "CAREL could not build the Vesu Lend Agent plan.",
+        );
+      }
+
+
+      const runtime =
+        createLiveVesuLendRuntime({
+          wallet,
+
+          market:
+            selectedMarket,
+        });
+
+
+      const random =
+        crypto
+          .getRandomValues(
+            new Uint32Array(
+              1,
+            ),
+          )[0]
+          .toString(36);
+
+
+      const session =
+        createAgentExecutionSession(
+          plan,
+          `lend-${Date.now().toString(36)}-${random}`,
+        );
+
+
+      planRef.current =
+        plan;
+
+      runtimeRef.current =
+        runtime;
+
+      accountRef.current =
+        wallet.address;
+
+      setLendAgentSession(
+        session,
       );
 
+
+      const first =
+        session
+          .run.stages.find(
+            (stage) =>
+              stage.status ===
+                "review",
+          );
+
+
+      if (!first) {
+        throw new Error(
+          "Vesu Lend Agent plan has no executable stage.",
+        );
+      }
+
+
+      const result =
+        await executeAgentStage(
+          plan,
+          session,
+          first.stageId,
+          executionContext(
+            session,
+          ),
+          runtime.registry,
+        );
+
+
+      setLendAgentSession(
+        result.session,
+      );
+
+
+      setSuccess(
+        stageAction(
+          first.stageId,
+        ) ===
+          "unshield"
+          ? "Unshield submitted through Agent Core. Vesu Lend stays locked until the exact public output is verified."
+          : mode ===
+              "shield"
+            ? "Shield Lend submitted through Agent Core. Verify confirmation to complete the private-receipt stage."
+            : "Vesu Lend submitted through Agent Core. Verify the public vToken position to complete the plan.",
+      );
+    } catch (cause) {
+      clearAgentFlow();
+
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Vesu Lend Agent execution failed.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+
+  async function executeNextStage() {
+    if (
+      busy ||
+      !lendAgentSession ||
+      !reviewStage
+    ) {
       return;
     }
 
+
+    const plan =
+      planRef.current;
+
+    const runtime =
+      runtimeRef.current;
+
+
     if (
-      mode === "shield"
+      !plan ||
+      !runtime ||
+      accountRef.current !==
+        wallet.address
     ) {
-      if (
-        !wallet.strk20Capable
-      ) {
-        setError(
-          "Ready does not report the STRK20 Wallet API required for Shield Lend.",
-        );
-
-        return;
-      }
-
-      let shieldAmount: bigint;
-
-      try {
-        shieldAmount =
-          parseUnits(
-            amount,
-            selectedAsset.decimals,
-          );
-      } catch {
-        setError(
-          `Enter a valid ${selectedAsset.symbol} amount.`,
-        );
-
-        return;
-      }
-
-      const publicBalance =
-        findAssetBalance(
-          wallet.balances,
-          selectedAsset.id,
-          "public",
-        )?.amount;
-
-      if (
-        publicBalance !== null &&
-        publicBalance !== undefined &&
-        publicBalance <
-          shieldAmount
-      ) {
-        setError(
-          `Public ${selectedAsset.symbol} balance is below this Shield Lend amount.`,
-        );
-
-        return;
-      }
-
-      setExecuting(true);
-      setError("");
-      setSuccess("");
-
-      try {
-        const response =
-          await fetch(
-            "/api/vesu/lend/private/prepare",
-            {
-              method:
-                "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body:
-                JSON.stringify({
-                  poolId:
-                    selectedMarket
-                      .pool.id,
-
-                  owner:
-                    wallet.address,
-
-                  assetId:
-                    selectedAsset.id,
-
-                  counterpartAssetId:
-                    selectedMarket
-                      .counterpart.id,
-
-                  amount,
-                }),
-            },
-          );
-
-        const raw: unknown =
-          await response.json();
-
-        const prepared =
-          responseObject(
-            raw,
-          );
-
-        if (
-          !response.ok
-        ) {
-          throw new Error(
-            typeof prepared.error ===
-              "string"
-              ? prepared.error
-              : "Shield Lend preparation failed.",
-          );
-        }
-
-        const execution =
-          prepared.execution as
-            VesuShieldLendExecutionPayload;
-
-        if (!execution) {
-          throw new Error(
-            "CAREL received an invalid Shield Lend preparation.",
-          );
-        }
-
-        const result =
-          await wallet
-            .executeShieldLend(
-              execution,
-
-              `Shield Lend ${amount} ${selectedAsset.symbol} · Vesu ${selectedMarket.pool.name}`,
-            );
-
-        setSuccess(
-          `Shield Lend ${result.status}: ${result.hash.slice(
-            0,
-            10,
-          )}…${result.hash.slice(-6)}`,
-        );
-      } catch (cause) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : "Shield Lend failed.",
-        );
-      } finally {
-        setExecuting(false);
-      }
+      setError(
+        "Wallet account changed. Restart Vesu Lend.",
+      );
 
       return;
     }
@@ -823,100 +760,163 @@ export function VesuLend({
     setError("");
     setSuccess("");
 
+
     try {
-      const response =
-        await fetch(
-          "/api/vesu/lend/prepare",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                poolId:
-                  selectedMarket
-                    .pool.id,
-
-                owner:
-                  wallet.address,
-
-                assetId:
-                  selectedAsset.id,
-
-                counterpartAssetId:
-                  selectedMarket
-                    .counterpart.id,
-
-                amount,
-              }),
-          },
+      const result =
+        await executeAgentStage(
+          plan,
+          lendAgentSession,
+          reviewStage.stageId,
+          executionContext(
+            lendAgentSession,
+          ),
+          runtime.registry,
         );
 
-      const raw:
-        unknown =
-        await response.json();
 
-      const payload =
-        responseObject(
-          raw,
-        );
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          typeof payload.error ===
-            "string"
-            ? payload.error
-            : "Vesu Lend preparation failed.",
-        );
-      }
-
-      const execution =
-        payload.execution as
-          VesuLendExecutionPayload;
-
-      if (!execution) {
-        throw new Error(
-          "CAREL received an invalid Vesu Lend preparation.",
-        );
-      }
-
-      const hash =
-        await wallet.executeLend(
-          execution,
-
-          `Lend ${amount} ${selectedAsset.symbol} · Vesu ${selectedMarket.pool.name}`,
-        );
-
-      setSuccess(
-        `Lend submitted: ${hash.slice(
-          0,
-          10,
-        )}…${hash.slice(-6)}`,
+      setLendAgentSession(
+        result.session,
       );
 
+
+      setSuccess(
+        "Fresh Vesu Lend preparation was executed. Verify the public vToken position to finish.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not execute the next Vesu Lend stage.",
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+
+  async function confirmSubmitted() {
+    if (
+      busy ||
+      !lendAgentSession ||
+      !submittedStage
+    ) {
+      return;
+    }
+
+
+    const plan =
+      planRef.current;
+
+    const runtime =
+      runtimeRef.current;
+
+
+    if (
+      !plan ||
+      !runtime ||
+      accountRef.current !==
+        wallet.address
+    ) {
+      setError(
+        "Wallet account changed. Restart Vesu Lend.",
+      );
+
+      return;
+    }
+
+
+    setConfirming(true);
+    setError("");
+    setSuccess("");
+
+
+    try {
+      const next =
+        await runtime
+          .confirmSubmittedStage(
+            plan,
+            lendAgentSession,
+            submittedStage.stageId,
+            executionContext(
+              lendAgentSession,
+            ),
+          );
+
+
+      setLendAgentSession(
+        next,
+      );
+
+
       try {
-        await loadMarkets(
-          selectedAsset.id,
-        );
+        await wallet
+          .refreshAssetBalances();
       } catch {
-        // Keep transaction result visible.
+        // Agent runtime already performed required execution verification.
+      }
+
+
+      if (
+        next.run.status ===
+          "completed"
+      ) {
+        setSuccess(
+          mode ===
+            "shield"
+            ? "Shield Lend Agent plan completed. The Vesu receipt remains private."
+            : "Vesu Lend Agent plan completed and the resulting position was verified.",
+        );
+
+
+        try {
+          await loadMarkets(
+            selectedAsset.id,
+          );
+        } catch {
+          // Keep verified Agent result visible.
+        }
+
+        return;
+      }
+
+
+      const nextReview =
+        next
+          .run.stages.find(
+            (stage) =>
+              stage.status ===
+                "review",
+          );
+
+
+      if (
+        nextReview &&
+        stageAction(
+          nextReview.stageId,
+        ) ===
+          "lend"
+      ) {
+        setSuccess(
+          `Unshielded ${selectedAsset.symbol} is verified publicly. Fresh Vesu Lend execution is now unlocked.`,
+        );
       }
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Vesu Lend failed.",
+          : "The submitted Vesu Lend stage is not verified yet.",
       );
     } finally {
-      setExecuting(false);
+      setConfirming(false);
     }
+  }
+
+
+  function resetAgentLend() {
+    clearAgentFlow();
+
+    setError("");
+    setSuccess("");
   }
 
 
@@ -1031,21 +1031,6 @@ export function VesuLend({
     privateBalance >=
       parsedAmount;
 
-  const publicEnough =
-    parsedAmount !== null &&
-    publicBalance !== null &&
-    publicBalance >=
-      parsedAmount;
-
-  const unshieldLendReady =
-    mode !== "unshield" ||
-    (
-      unshieldProgress.kind ===
-        "ready" &&
-      publicEnough
-    );
-
-
   return (
     <section
       className={
@@ -1148,9 +1133,13 @@ export function VesuLend({
             </span>
 
             <strong>
-              Private {selectedAsset.symbol}
+              Private {
+                selectedAsset.symbol
+              }
               {" → "}
-              Public {selectedAsset.symbol}
+              Public {
+                selectedAsset.symbol
+              }
               {" → "}
               Vesu
             </strong>
@@ -1162,7 +1151,9 @@ export function VesuLend({
             }
           >
             <span>
-              Private {selectedAsset.symbol}
+              Private {
+                selectedAsset.symbol
+              }
             </span>
 
             <strong>
@@ -1184,7 +1175,9 @@ export function VesuLend({
             }
           >
             <span>
-              Public {selectedAsset.symbol}
+              Public {
+                selectedAsset.symbol
+              }
             </span>
 
             <strong>
@@ -1198,9 +1191,41 @@ export function VesuLend({
             </strong>
           </div>
 
-          {unshieldProgress.kind ===
-            "idle" ? (
-            !wallet.strk20Capable ? (
+          {!wallet.strk20Capable ? (
+            <div
+              className={
+                styles.notice
+              }
+              role="alert"
+            >
+              <p>
+                Ready does not report
+                the STRK20 Wallet API
+                required for Unshield
+                Lend.
+              </p>
+            </div>
+          ) : !wallet.privateRevealed ? (
+            <button
+              type="button"
+              className={
+                styles.secondary
+              }
+              disabled={busy}
+              onClick={() =>
+                void wallet
+                  .revealPrivateBalance()
+              }
+            >
+              <RefreshCw
+                size={16}
+              />
+              Reveal private balance
+            </button>
+          ) : (
+            !privateEnough &&
+            parsedAmount !==
+              null && (
               <div
                 className={
                   styles.notice
@@ -1208,182 +1233,13 @@ export function VesuLend({
                 role="alert"
               >
                 <p>
-                  Ready does not report
-                  the STRK20 Wallet API
-                  required for Unshield
-                  Lend.
+                  Private {
+                    selectedAsset.symbol
+                  } balance is below
+                  this Lend amount.
                 </p>
               </div>
-            ) : !wallet.privateRevealed ? (
-              <button
-                type="button"
-                className={
-                  styles.secondary
-                }
-                disabled={busy}
-                onClick={() =>
-                  void wallet
-                    .revealPrivateBalance()
-                }
-              >
-                <RefreshCw
-                  size={16}
-                />
-                Reveal private balance
-              </button>
-            ) : (
-              <>
-                {!privateEnough &&
-                  parsedAmount !==
-                    null && (
-                    <div
-                      className={
-                        styles.notice
-                      }
-                      role="alert"
-                    >
-                      <p>
-                        Private {
-                          selectedAsset
-                            .symbol
-                        } balance is
-                        below this Lend
-                        amount.
-                      </p>
-                    </div>
-                  )}
-
-                <button
-                  type="button"
-                  className={
-                    styles.primary
-                  }
-                  disabled={
-                    busy ||
-                    parsedAmount ===
-                      null ||
-                    !privateEnough
-                  }
-                  onClick={() =>
-                    void startUnshieldLend()
-                  }
-                >
-                  {unshielding ? (
-                    <LoaderCircle
-                      size={16}
-                    />
-                  ) : (
-                    <ShieldAlert
-                      size={16}
-                    />
-                  )}
-
-                  {unshielding
-                    ? "Unshielding…"
-                    : `Review & Unshield ${selectedAsset.symbol}`}
-                </button>
-              </>
             )
-          ) : unshieldProgress.kind ===
-              "waiting" ? (
-            <>
-              <div
-                className={
-                  styles.notice
-                }
-                role="status"
-              >
-                <p>
-                  Unshield submitted.
-                  Vesu Lend remains
-                  locked until
-                  confirmation.
-                </p>
-              </div>
-
-              <div
-                className={
-                  styles.rule
-                }
-              >
-                <span>
-                  Unshield tx
-                </span>
-
-                <strong
-                  className={
-                    styles.borrowAddress
-                  }
-                >
-                  {shortAddress(
-                    unshieldProgress.hash,
-                  )}
-                </strong>
-              </div>
-
-              <button
-                type="button"
-                className={
-                  styles.secondary
-                }
-                disabled={busy}
-                onClick={() =>
-                  void refreshUnshieldLendConfirmation()
-                }
-              >
-                <RefreshCw
-                  size={16}
-                />
-
-                {checkingUnshield
-                  ? "Checking confirmation…"
-                  : "Check confirmation"}
-              </button>
-            </>
-          ) : !publicEnough ? (
-            <>
-              <p
-                className={
-                  styles.inlineStatus
-                }
-              >
-                <Check
-                  size={16}
-                />
-                Unshield confirmed.
-              </p>
-
-              <button
-                type="button"
-                className={
-                  styles.secondary
-                }
-                disabled={busy}
-                onClick={() =>
-                  void wallet
-                    .refreshAssetBalances()
-                }
-              >
-                <RefreshCw
-                  size={16}
-                />
-                Refresh public balance
-              </button>
-            </>
-          ) : (
-            <p
-              className={
-                styles.inlineStatus
-              }
-            >
-              <Check
-                size={16}
-              />
-              Public {
-                selectedAsset.symbol
-              } ready. Vesu Lend
-              unlocked.
-            </p>
           )}
 
           <p
@@ -1391,13 +1247,47 @@ export function VesuLend({
               styles.privacyNote
             }
           >
-            Unshield and Vesu Lend
-            are separate transactions.
-            The Vesu lending position
-            is public.
+            Agent Core keeps the Vesu
+            stage locked until the
+            exact Unshield amount is
+            confirmed in the public
+            balance. Vesu is freshly
+            prepared only after that
+            verification succeeds.
           </p>
         </div>
       )}
+
+      {lendAgentSession &&
+        lendAgentSession
+          .run.stages.map(
+            (stage) => (
+              <div
+                key={
+                  stage.stageId
+                }
+                className={
+                  styles.rule
+                }
+              >
+                <span>
+                  {stageAction(
+                    stage.stageId,
+                  ) ??
+                    "stage"}
+                </span>
+
+                <strong>
+                  {stage.status}
+                  {stage.txHash
+                    ? ` · ${shortAddress(
+                        stage.txHash,
+                      )}`
+                    : ""}
+                </strong>
+              </div>
+            ),
+          )}
 
       <div
         className={
@@ -1420,10 +1310,15 @@ export function VesuLend({
             value={
               selectedAssetId
             }
-            disabled={busy}
+            disabled={
+              busy ||
+              flowLocked
+            }
             onChange={(
               event,
             ) => {
+              clearAgentFlow();
+
               setSelectedAssetId(
                 event.target.value,
               );
@@ -1470,7 +1365,10 @@ export function VesuLend({
             <input
               inputMode="decimal"
               value={amount}
-              disabled={busy}
+              disabled={
+                busy ||
+                flowLocked
+              }
               onChange={(
                 event,
               ) => {
@@ -1528,15 +1426,20 @@ export function VesuLend({
                 ?.pool.id ??
               ""
             }
-            disabled={busy}
+            disabled={
+              busy ||
+              flowLocked
+            }
             onChange={(
               event,
-            ) =>
+            ) => {
+              clearAgentFlow();
+
               setSelectedPoolId(
                 event.target
                   .value,
-              )
-            }
+              );
+            }}
           >
             {markets.map(
               (market) => (
@@ -1648,7 +1551,10 @@ export function VesuLend({
         className={
           styles.secondary
         }
-        disabled={busy}
+        disabled={
+          busy ||
+          flowLocked
+        }
         onClick={() =>
           void loadMarkets()
             .catch(
@@ -1670,40 +1576,152 @@ export function VesuLend({
           : "Refresh markets"}
       </button>
 
-      <button
-        type="button"
-        className={
-          styles.primary
-        }
-        disabled={
-          busy ||
-          !selectedMarket ||
-          !unshieldLendReady ||
+      {!flowLocked &&
+        (
+          !lendAgentSession ||
           (
-            mode === "shield" &&
-            !wallet.strk20Capable
+            lendAgentSession
+              .run.status !==
+              "completed" &&
+            lendAgentSession
+              .run.status !==
+              "failed"
           )
-        }
-        onClick={() =>
-          void executeLend()
-        }
-      >
-        {executing ? (
-          <LoaderCircle
-            size={16}
-          />
-        ) : (
-          <ArrowRight
-            size={16}
-          />
-        )}
+        ) && (
+        <button
+          type="button"
+          className={
+            styles.primary
+          }
+          disabled={
+            busy ||
+            !selectedMarket ||
+            (
+              mode ===
+                "shield" &&
+              !wallet.strk20Capable
+            ) ||
+            (
+              mode ===
+                "unshield" &&
+              (
+                !wallet.strk20Capable ||
+                !wallet.privateRevealed ||
+                !privateEnough
+              )
+            )
+          }
+          onClick={() =>
+            void startAgentLend()
+          }
+        >
+          {executing ? (
+            <LoaderCircle
+              size={16}
+            />
+          ) : (
+            <ArrowRight
+              size={16}
+            />
+          )}
 
-        {executing
-          ? "Waiting for wallet…"
-          : mode === "shield"
-            ? `Review & Shield Lend ${selectedAsset.symbol}`
-            : `Review & Lend ${selectedAsset.symbol}`}
-      </button>
+          {executing
+            ? "Waiting for wallet…"
+            : mode === "shield"
+              ? `Review & Shield Lend ${selectedAsset.symbol}`
+              : mode === "unshield"
+                ? `Start Unshield Lend ${selectedAsset.symbol}`
+                : `Review & Lend ${selectedAsset.symbol}`}
+        </button>
+      )}
+
+
+      {flowLocked &&
+        submittedStage && (
+        <button
+          type="button"
+          className={
+            styles.primary
+          }
+          disabled={busy}
+          onClick={() =>
+            void confirmSubmitted()
+          }
+        >
+          {confirming ? (
+            <LoaderCircle
+              size={16}
+            />
+          ) : (
+            <RefreshCw
+              size={16}
+            />
+          )}
+
+          {confirming
+            ? "Checking confirmation…"
+            : "Check Agent confirmation"}
+        </button>
+      )}
+
+
+      {flowLocked &&
+        !submittedStage &&
+        reviewStage && (
+        <button
+          type="button"
+          className={
+            styles.primary
+          }
+          disabled={busy}
+          onClick={() =>
+            void executeNextStage()
+          }
+        >
+          {executing ? (
+            <LoaderCircle
+              size={16}
+            />
+          ) : (
+            <ArrowRight
+              size={16}
+            />
+          )}
+
+          {executing
+            ? "Waiting for wallet…"
+            : `Execute Vesu Lend ${selectedAsset.symbol}`}
+        </button>
+      )}
+
+
+      {lendAgentSession &&
+        (
+          lendAgentSession
+            .run.status ===
+            "completed" ||
+          lendAgentSession
+            .run.status ===
+            "failed"
+        ) && (
+        <button
+          type="button"
+          className={
+            styles.secondary
+          }
+          disabled={busy}
+          onClick={
+            resetAgentLend
+          }
+        >
+          <RefreshCw
+            size={16}
+          />
+
+          New Lend
+        </button>
+      )}
+
 
       {error && (
         <div
