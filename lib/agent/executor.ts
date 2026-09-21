@@ -512,10 +512,24 @@ function executionInput(
     );
   }
 
-  if (
-    context.chainId !==
-      stage.sourceChainId
-  ) {
+  /*
+   * Single-chain stages execute on their source chain.
+   *
+   * Cross-chain Bridge is different: the connected wallet may belong to
+   * either side of the route. Example: BTC Testnet4 → Starknet Sepolia uses
+   * the Starknet recipient wallet while Bitcoin remains the source chain.
+   */
+  const connectedToStage =
+    context.chainId ===
+      stage.sourceChainId ||
+    (
+      stage.action ===
+        "bridge" &&
+      stage.destinationChainId ===
+        context.chainId
+    );
+
+  if (!connectedToStage) {
     throw new Error(
       `Agent stage ${stage.id} is not for the connected chain.`,
     );
