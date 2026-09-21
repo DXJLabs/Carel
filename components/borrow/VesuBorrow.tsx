@@ -76,21 +76,6 @@ type BorrowMode =
   | "shield"
   | "unshield";
 
-type UnshieldBorrowProgress =
-  | Readonly<{
-      kind: "idle";
-    }>
-  | Readonly<{
-      kind: "waiting";
-      hash: string;
-      amount: string;
-    }>
-  | Readonly<{
-      kind: "ready";
-      hash: string;
-      amount: string;
-    }>;
-
 type ShieldBorrowProgress =
   | Readonly<{
       kind: "idle";
@@ -359,13 +344,6 @@ export function VesuBorrow({
   ] = useState(false);
 
   const [
-    unshieldProgress,
-    setUnshieldProgress,
-  ] = useState<UnshieldBorrowProgress>({
-    kind: "idle",
-  });
-
-  const [
     shieldingBorrow,
     setShieldingBorrow,
   ] = useState(false);
@@ -474,6 +452,20 @@ export function VesuBorrow({
       ? borrowAgentSession
       : null;
 
+  const unshieldAgentStage =
+    unshieldAgentSession
+      ?.run.stages.find(
+        (stage) =>
+          stage.stageId ===
+            "unshield-1",
+      ) ??
+    null;
+
+  const unshieldAgentOutput =
+    unshieldAgentSession
+      ?.outputs["unshield-1"] ??
+    null;
+
   const unshieldBorrowStage =
     unshieldAgentSession
       ?.run.stages.find(
@@ -487,6 +479,36 @@ export function VesuBorrow({
     unshieldAgentSession
       ?.outputs["borrow-2"] ??
     null;
+
+  const unshieldProgress =
+    !unshieldAgentSession
+      ? ({
+          kind: "idle",
+        } as const)
+      : unshieldAgentStage?.status ===
+          "submitted"
+        ? ({
+            kind: "waiting",
+            hash:
+              unshieldAgentStage.txHash ??
+              "",
+            amount:
+              collateralAmount,
+          } as const)
+        : unshieldAgentStage?.status ===
+              "confirmed" &&
+            unshieldAgentOutput
+          ? ({
+              kind: "ready",
+              hash:
+                unshieldAgentStage.txHash ??
+                "",
+              amount:
+                unshieldAgentOutput.amountText,
+            } as const)
+          : ({
+              kind: "idle",
+            } as const);
 
   const normalAgentFlowLocked =
     normalAgentSession !==
@@ -520,9 +542,6 @@ export function VesuBorrow({
     if (
       mode === "unshield"
     ) {
-      setUnshieldProgress({
-        kind: "idle",
-      });
     }
 
     if (
@@ -580,10 +599,6 @@ export function VesuBorrow({
           parsed.collateralAmountText,
         );
 
-        setUnshieldProgress({
-          kind: "idle",
-        });
-
         setShieldBorrowProgress({
           kind: "idle",
         });
@@ -604,9 +619,6 @@ export function VesuBorrow({
   }, [goal]);
 
   useEffect(() => {
-    setUnshieldProgress({
-      kind: "idle",
-    });
 
     setShieldBorrowProgress({
       kind: "idle",
@@ -947,23 +959,11 @@ export function VesuBorrow({
 
       setBorrowAgentSession(result.session);
 
-      setUnshieldProgress({
-        kind: "waiting",
-        hash:
-          result.receipt.transactionId,
-        amount:
-          collateralAmount,
-      });
-
       setSuccess(
         "Unshield submitted through Agent Core. Confirm it before Vesu Borrow.",
       );
     } catch (cause) {
       clearBorrowAgentRefs();
-
-      setUnshieldProgress({
-        kind: "idle",
-      });
 
       setError(
         cause instanceof Error
@@ -1051,14 +1051,6 @@ export function VesuBorrow({
       }
 
       setBorrowAgentSession(next);
-
-      setUnshieldProgress({
-        kind: "ready",
-        hash:
-          unshieldProgress.hash,
-        amount:
-          output.amountText,
-      });
 
       try {
         await wallet.refreshPublicBalance();
@@ -2664,8 +2656,11 @@ export function VesuBorrow({
     ) ||
     (
       mode === "unshield" &&
-      unshieldProgress.kind !==
-        "idle"
+      unshieldAgentSession !==
+        null &&
+      unshieldAgentSession
+        .run.status !==
+        "completed"
     );
 
 
@@ -2711,9 +2706,14 @@ export function VesuBorrow({
   const unshieldBorrowReady =
     mode !== "unshield" ||
     (
-      unshieldProgress.kind ===
-        "ready" &&
-      publicEnough
+      unshieldAgentStage
+        ?.status ===
+        "confirmed" &&
+      unshieldAgentOutput !==
+        null &&
+      unshieldBorrowStage
+        ?.status ===
+        "review"
     );
 
   const evaluation =
@@ -3478,14 +3478,7 @@ export function VesuBorrow({
               }
               disabled={
                 busy ||
-                borrowFlowLocked ||
-                (
-                  mode ===
-                    "unshield" &&
-                  unshieldProgress
-                    .kind !==
-                    "idle"
-                )
+                borrowFlowLocked
               }
               onChange={(
                 event,
