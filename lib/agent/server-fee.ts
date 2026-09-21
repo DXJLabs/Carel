@@ -1289,11 +1289,23 @@ export function agentFeePolicyConfigured():
       .CAREL_AGENT_FEE_RECIPIENT
       ?.trim();
 
+  const redisUrl =
+    process.env
+      .KV_REST_API_URL
+      ?.trim();
+
+  const redisToken =
+    process.env
+      .KV_REST_API_TOKEN
+      ?.trim();
+
 
   return Boolean(
     secret &&
     secret.length >= 32 &&
     amount &&
-    recipient,
+    recipient &&
+    redisUrl &&
+    redisToken,
   );
 }

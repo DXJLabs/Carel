@@ -129,6 +129,14 @@ const OLD_ENV = {
   recipient:
     process.env
       .CAREL_AGENT_FEE_RECIPIENT,
+
+  redisUrl:
+    process.env
+      .KV_REST_API_URL,
+
+  redisToken:
+    process.env
+      .KV_REST_API_TOKEN,
 };
 
 
@@ -144,6 +152,14 @@ function configure() {
   process.env
     .CAREL_AGENT_FEE_RECIPIENT =
       "0x123";
+
+  process.env
+    .KV_REST_API_URL =
+      "https://example.upstash.io";
+
+  process.env
+    .KV_REST_API_TOKEN =
+      "test-only-upstash-token";
 }
 
 
@@ -165,6 +181,14 @@ function restore() {
       [
         "CAREL_AGENT_FEE_RECIPIENT",
         OLD_ENV.recipient,
+      ],
+      [
+        "KV_REST_API_URL",
+        OLD_ENV.redisUrl,
+      ],
+      [
+        "KV_REST_API_TOKEN",
+        OLD_ENV.redisToken,
       ],
     ]
   ) {
@@ -775,6 +799,32 @@ test(
             },
           }),
       /signature/i,
+    );
+  },
+);
+
+
+test(
+  "Agent fee policy requires durable Redis storage",
+  () => {
+    configure();
+
+
+    assert.equal(
+      fees
+        .agentFeePolicyConfigured(),
+      true,
+    );
+
+
+    delete process.env
+      .KV_REST_API_TOKEN;
+
+
+    assert.equal(
+      fees
+        .agentFeePolicyConfigured(),
+      false,
     );
   },
 );
