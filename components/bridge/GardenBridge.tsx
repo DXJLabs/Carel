@@ -12,6 +12,7 @@ import type { AgentPlan } from "@/lib/agent/plan";
 import {
   createAgentExecutionSession,
   executeAgentStage,
+  restoreSubmittedAgentExecutionSession,
   type AgentExecutionSession,
 } from "@/lib/agent/executor";
 import { buildBridgeAgentPlan } from "@/lib/agent/bridge-planner";
@@ -23,7 +24,16 @@ import { BITCOIN_TESTNET4 } from "@/lib/carel/ecosystems/bitcoin/chains";
 import { STARKNET_SEPOLIA } from "@/lib/carel/ecosystems/starknet/chains";
 import { sepoliaProvider } from "@/lib/strk20/config";
 import { bitcoinAddress, felt, formatBitcoinAmount, parseBitcoinAmount, validateFundingCalls } from "@/lib/garden/protocol";
-import type { BridgeCall, BridgeDirection, BridgeIntent, BridgeOrder, BridgeQuote, GardenCatalog, SavedBridge } from "@/lib/garden/types";
+import type {
+  BridgeCall,
+  BridgeDirection,
+  BridgeIntent,
+  BridgeOrder,
+  BridgeQuote,
+  GardenCatalog,
+  SavedBridge,
+  SavedBridgeAgent,
+} from "@/lib/garden/types";
 import styles from "./GardenBridge.module.css";
 
 const STATUS = { "awaiting-deposit": "Awaiting deposit", confirming: "Confirming deposit", exchanging: "Bridge in progress", settling: "Delivering funds", completed: "Received", expired: "Expired", refunding: "Refund submitted", refunded: "Refunded" } as const;
@@ -54,6 +64,78 @@ function savedOrders(owner: string): SavedBridge[] {
     return Array.isArray(value) ? value.filter((item): item is SavedBridge => Boolean(item && typeof item.id === "string" && /^[0-9a-f]{64}$/i.test(item.id) && item.owner === owner && Number.isFinite(item.createdAt))).slice(0, 30) : [];
   } catch { return []; }
 }
+function validSavedBridgeAgent(
+  value:
+    SavedBridge["agent"],
+):
+  value is SavedBridgeAgent {
+  if (!value) {
+    return false;
+  }
+
+
+  if (
+    !/^[a-z0-9-]{1,128}$/i.test(
+      value.runId,
+    )
+  ) {
+    return false;
+  }
+
+
+  const chains =
+    new Set([
+      BITCOIN_TESTNET4.chainId,
+      STARKNET_SEPOLIA.chainId,
+    ]);
+
+
+  if (
+    !chains.has(
+      value.sourceChainId,
+    ) ||
+    !chains.has(
+      value.destinationChainId,
+    ) ||
+    value.sourceChainId ===
+      value.destinationChainId
+  ) {
+    return false;
+  }
+
+
+  const symbols =
+    new Set([
+      "BTC",
+      "WBTC",
+      "strkBTC",
+    ]);
+
+
+  if (
+    !symbols.has(
+      value.sourceAssetSymbol,
+    ) ||
+    !symbols.has(
+      value.destinationAssetSymbol,
+    )
+  ) {
+    return false;
+  }
+
+
+  try {
+    parseBitcoinAmount(
+      value.amountText,
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
 function remember(owner: string, item: SavedBridge) {
   try { localStorage.setItem(keyFor(owner), JSON.stringify([item, ...savedOrders(owner).filter(row => row.id !== item.id)].slice(0, 30))); } catch { /* Orders can still be recovered from Garden history. */ }
   window.dispatchEvent(new Event(EVENT));
@@ -198,6 +280,177 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     }).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); });
     return () => controller.abort();
   }, [owner, historyOnly, refresh]);
+  function restoreBridgeAgent(
+    record:
+      SavedBridge,
+  ): boolean {
+    const metadata =
+      record.agent;
+
+
+    if (
+      !validSavedBridgeAgent(
+        metadata,
+      )
+    ) {
+      return false;
+    }
+
+
+    const existing =
+      bridgeSessionRef.current
+        ?.run.stages.find(
+          (item) =>
+            item.stageId ===
+              "bridge-1",
+        );
+
+
+    if (
+      existing
+        ?.executionReference
+        ?.kind ===
+        "provider-order" &&
+      existing
+        .executionReference
+        .id ===
+        record.id
+    ) {
+      return true;
+    }
+
+
+    const plan =
+      buildBridgeAgentPlan({
+        goal:
+          `Bridge ${metadata.amountText} ${metadata.sourceAssetSymbol}.`,
+
+        connectedChainId:
+          wallet.chainId,
+
+        sourceChainId:
+          metadata.sourceChainId,
+
+        destinationChainId:
+          metadata.destinationChainId,
+
+        sourceAssetSymbol:
+          metadata.sourceAssetSymbol,
+
+        destinationAssetSymbol:
+          metadata.destinationAssetSymbol,
+
+        amountText:
+          metadata.amountText,
+
+        mode:
+          "normal",
+      });
+
+
+    if (
+      plan.status !==
+        "ready"
+    ) {
+      return false;
+    }
+
+
+    const runtime =
+      createGardenBridgeAgentRuntime({
+        async createOrder() {
+          throw new Error(
+            "Recovered Garden Agent sessions cannot create another bridge order.",
+          );
+        },
+
+
+        async readOrder(
+          input,
+        ) {
+          const cached =
+            orderRef.current;
+
+
+          const value =
+            cached?.id ===
+              input.orderId
+              ? cached
+              : await api<
+                  BridgeOrder
+                >(
+                  {
+                    action:
+                      "order",
+
+                    id:
+                      input.orderId,
+
+                    owner:
+                      input.account,
+                  },
+
+                  input.signal,
+                );
+
+
+          return {
+            state:
+              value.state,
+
+            ...(value.state ===
+              "completed"
+              ? {
+                  destinationAssetSymbol:
+                    value.direction ===
+                      "to-starknet"
+                      ? value.asset.symbol
+                      : "BTC",
+
+                  destinationAmountText:
+                    formatBitcoinAmount(
+                      value.destinationAmount,
+                    ),
+                }
+              : {}),
+          };
+        },
+      });
+
+
+    const session =
+      restoreSubmittedAgentExecutionSession(
+        plan,
+        metadata.runId,
+        "bridge-1",
+        {
+          kind:
+            "provider-order",
+
+          id:
+            record.id,
+        },
+      );
+
+
+    bridgePlanRef.current =
+      plan;
+
+    bridgeRuntimeRef.current =
+      runtime;
+
+    bridgeSessionRef.current =
+      session;
+
+    setBridgeAgentSession(
+      session,
+    );
+
+
+    return true;
+  }
+
+
   async function syncBridgeAgent(
     orderId: string,
   ) {
@@ -331,16 +584,30 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
         orderRef.current = value;
         setOrderError("");
 
+        /*
+         * `expired` is NOT terminal for order monitoring.
+         *
+         * A funded expired order may later become refunding/refunded.
+         * Stop polling only after destination delivery or completed refund.
+         */
         terminal =
           [
             "completed",
             "refunded",
-            "expired",
           ].includes(
             value.state,
           );
 
-        if (terminal) {
+
+        if (
+          [
+            "completed",
+            "expired",
+            "refunded",
+          ].includes(
+            value.state,
+          )
+        ) {
           void syncBridgeAgent(
             value.id,
           );
@@ -818,6 +1085,65 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
       }
 
 
+      const saved =
+        savedOrders(
+          capturedOwner,
+        ).find(
+          (item) =>
+            item.id ===
+              reference.id,
+        );
+
+
+      remember(
+        capturedOwner,
+        {
+          id:
+            reference.id,
+
+          owner:
+            capturedOwner,
+
+          createdAt:
+            saved?.createdAt ??
+            Date.now(),
+
+          ...(saved?.fundingTx
+            ? {
+                fundingTx:
+                  saved.fundingTx,
+              }
+            : {}),
+
+          ...(saved
+            ?.fundingAttempted !==
+            undefined
+            ? {
+                fundingAttempted:
+                  saved
+                    .fundingAttempted,
+              }
+            : {}),
+
+          agent: {
+            runId:
+              session.runId,
+
+            sourceChainId,
+
+            destinationChainId,
+
+            sourceAssetSymbol,
+
+            destinationAssetSymbol,
+
+            amountText:
+              reviewedAmount,
+          },
+        },
+      );
+
+
       bridgePlanRef.current =
         plan;
 
@@ -926,7 +1252,36 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     } catch (cause) { if (current(capturedOwner)) setError(message(cause)); }
     finally { locked.current = false; if (mounted.current) setBusy(false); }
   }
-  function openOrder(id: string) { setError(""); setNotice(""); setActiveId(id); setOrder(null); }
+  function openOrder(
+    id:
+      string,
+  ) {
+    setError("");
+    setNotice("");
+    setActiveId(
+      id,
+    );
+    setOrder(
+      null,
+    );
+
+
+    const record =
+      savedOrders(
+        owner,
+      ).find(
+        (item) =>
+          item.id ===
+            id,
+      );
+
+
+    if (record) {
+      restoreBridgeAgent(
+        record,
+      );
+    }
+  }
   async function copyDeposit() {
     try {
       if (!order?.depositAddress || !navigator.clipboard) throw new Error("Clipboard unavailable");

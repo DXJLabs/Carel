@@ -428,6 +428,68 @@ export function createAgentExecutionSession(
 }
 
 
+/**
+ * Reconstructs an already-submitted Agent stage after local UI state was lost.
+ *
+ * This function NEVER executes the stage and never issues fee authorization.
+ * In a browser, executeAgentStage() will still reject this recovered session
+ * because it intentionally has no execution authorization.
+ *
+ * It is therefore safe for provider-order recovery such as Garden:
+ * CAREL can continue observing/confirming the existing order, but cannot
+ * accidentally create a second order from this recovered session.
+ */
+export function restoreSubmittedAgentExecutionSession(
+  plan:
+    AgentPlan,
+
+  runId:
+    string,
+
+  stageId:
+    string,
+
+  executionReference:
+    AgentExecutionReference,
+): AgentExecutionSession {
+  const normalized =
+    runId.trim();
+
+
+  if (
+    !normalized ||
+    normalized.length >
+      128
+  ) {
+    throw new Error(
+      "Recovered Agent execution requires a valid run id.",
+    );
+  }
+
+
+  const initial =
+    createAgentRun(
+      plan,
+    );
+
+
+  return {
+    runId:
+      normalized,
+
+    run:
+      submitAgentStage(
+        plan,
+        initial,
+        stageId,
+        executionReference,
+      ),
+
+    outputs: {},
+  };
+}
+
+
 export function createAgentStageExecutorRegistry(
   executors:
     readonly AgentStageExecutor[],

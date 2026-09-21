@@ -883,3 +883,60 @@ test(
     }
   },
 );
+
+
+test(
+  "Garden recovery keeps expired orders observable until refund completion",
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/bridge/GardenBridge.tsx",
+        ),
+        "utf8",
+      );
+
+
+    assert.match(
+      source,
+      /restoreSubmittedAgentExecutionSession\(/,
+    );
+
+
+    assert.match(
+      source,
+      /restoreBridgeAgent\(/,
+    );
+
+
+    assert.match(
+      source,
+      /agent:\s*\{[\s\S]*runId:[\s\S]*sourceChainId[\s\S]*destinationChainId/,
+    );
+
+
+    /*
+     * completed/refunded are true provider-terminal states for polling.
+     * expired remains observable because it may transition to refunding /
+     * refunded.
+     */
+    assert.match(
+      source,
+      /terminal\s*=\s*\[[\s\S]*"completed"[\s\S]*"refunded"[\s\S]*\]\.includes/,
+    );
+
+
+    const terminalBlock =
+      source.match(
+        /terminal\s*=\s*\[[\s\S]*?\]\.includes\([\s\S]*?value\.state[\s\S]*?\);/,
+      )?.[0] ??
+      "";
+
+
+    assert.doesNotMatch(
+      terminalBlock,
+      /"expired"/,
+    );
+  },
+);

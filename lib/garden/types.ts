@@ -45,10 +45,38 @@ export type BridgeOrder = {
   requiredConfirmations: number;
   refundAfterBlocks: number;
 };
+export type SavedBridgeAgent = {
+  runId:
+    string;
+
+  sourceChainId:
+    string;
+
+  destinationChainId:
+    string;
+
+  sourceAssetSymbol:
+    "BTC" | "WBTC" | "strkBTC";
+
+  destinationAssetSymbol:
+    "BTC" | "WBTC" | "strkBTC";
+
+  amountText:
+    string;
+};
+
+
 export type SavedBridge = {
   id: string;
   owner: string;
   createdAt: number;
   fundingTx?: string;
   fundingAttempted?: boolean;
+
+  /**
+   * Optional because orders created by older CAREL builds did not persist
+   * Agent recovery metadata.
+   */
+  agent?:
+    SavedBridgeAgent;
 };

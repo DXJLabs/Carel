@@ -1064,3 +1064,120 @@ test(
     }
   },
 );
+
+
+test(
+  "submitted Agent recovery reconstructs provider order without re-executing it",
+  () => {
+    const base =
+      shieldBorrowPlan();
+
+
+    const plan = {
+      ...base,
+
+      objective: {
+        ...base.objective,
+
+        tool:
+          "Bridge",
+
+        goal:
+          "Bridge BTC to Starknet.",
+      },
+
+      stages: [
+        {
+          id:
+            "bridge-1",
+
+          action:
+            "bridge",
+
+          sourceChainId:
+            "bitcoin:testnet4",
+
+          destinationChainId:
+            MAINNET,
+
+          inputAssetSymbol:
+            "BTC",
+
+          outputAssetSymbol:
+            "WBTC",
+
+          amount: {
+            kind:
+              "exact",
+
+            amountText:
+              "0.0005",
+          },
+
+          privacyBefore:
+            "public",
+
+          privacyAfter:
+            "public",
+
+          dependsOn: [],
+
+          status:
+            "planned",
+        },
+      ],
+    };
+
+
+    const session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          "garden-recovered",
+          "bridge-1",
+          {
+            kind:
+              "provider-order",
+
+            id:
+              "a".repeat(
+                64,
+              ),
+          },
+        );
+
+
+    const stage =
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "bridge-1",
+        );
+
+
+    assert.equal(
+      stage.status,
+      "submitted",
+    );
+
+
+    assert.deepEqual(
+      stage.executionReference,
+      {
+        kind:
+          "provider-order",
+
+        id:
+          "a".repeat(
+            64,
+          ),
+      },
+    );
+
+
+    assert.equal(
+      session.feeAuthorization,
+      undefined,
+    );
+  },
+);
