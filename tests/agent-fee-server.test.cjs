@@ -117,6 +117,12 @@ const MAINNET =
     .chainId;
 
 
+const SEPOLIA =
+  chains
+    .STARKNET_SEPOLIA
+    .chainId;
+
+
 const OLD_ENV = {
   secret:
     process.env
@@ -129,6 +135,22 @@ const OLD_ENV = {
   recipient:
     process.env
       .CAREL_AGENT_FEE_RECIPIENT,
+
+  mainnetAmount:
+    process.env
+      .CAREL_AGENT_FEE_AMOUNT_STRK_MAINNET,
+
+  mainnetRecipient:
+    process.env
+      .CAREL_AGENT_FEE_RECIPIENT_MAINNET,
+
+  sepoliaAmount:
+    process.env
+      .CAREL_AGENT_FEE_AMOUNT_STRK_SEPOLIA,
+
+  sepoliaRecipient:
+    process.env
+      .CAREL_AGENT_FEE_RECIPIENT_SEPOLIA,
 
   redisUrl:
     process.env
@@ -152,6 +174,22 @@ function configure() {
   process.env
     .CAREL_AGENT_FEE_RECIPIENT =
       "0x123";
+
+  process.env
+    .CAREL_AGENT_FEE_AMOUNT_STRK_MAINNET =
+      "0.01";
+
+  process.env
+    .CAREL_AGENT_FEE_RECIPIENT_MAINNET =
+      "0x123";
+
+  process.env
+    .CAREL_AGENT_FEE_AMOUNT_STRK_SEPOLIA =
+      "0.001";
+
+  process.env
+    .CAREL_AGENT_FEE_RECIPIENT_SEPOLIA =
+      "0x789";
 
   process.env
     .KV_REST_API_URL =
@@ -181,6 +219,22 @@ function restore() {
       [
         "CAREL_AGENT_FEE_RECIPIENT",
         OLD_ENV.recipient,
+      ],
+      [
+        "CAREL_AGENT_FEE_AMOUNT_STRK_MAINNET",
+        OLD_ENV.mainnetAmount,
+      ],
+      [
+        "CAREL_AGENT_FEE_RECIPIENT_MAINNET",
+        OLD_ENV.mainnetRecipient,
+      ],
+      [
+        "CAREL_AGENT_FEE_AMOUNT_STRK_SEPOLIA",
+        OLD_ENV.sepoliaAmount,
+      ],
+      [
+        "CAREL_AGENT_FEE_RECIPIENT_SEPOLIA",
+        OLD_ENV.sepoliaRecipient,
       ],
       [
         "KV_REST_API_URL",
@@ -825,6 +879,121 @@ test(
       fees
         .agentFeePolicyConfigured(),
       false,
+    );
+  },
+);
+
+
+test(
+  "Agent fee policy uses separate Mainnet and Sepolia configuration",
+  () => {
+    configure();
+
+
+    const mainnet =
+      fees
+        .createSignedAgentFeeQuote({
+          runId:
+            "network-mainnet",
+
+          planDigest:
+            "a".repeat(
+              64,
+            ),
+
+          chainId:
+            MAINNET,
+
+          payer:
+            "0x456",
+
+          now:
+            1_800_000,
+        });
+
+
+    const sepolia =
+      fees
+        .createSignedAgentFeeQuote({
+          runId:
+            "network-sepolia",
+
+          planDigest:
+            "b".repeat(
+              64,
+            ),
+
+          chainId:
+            SEPOLIA,
+
+          payer:
+            "0x456",
+
+          now:
+            1_800_000,
+        });
+
+
+    assert.equal(
+      mainnet.quote
+        .amountText,
+      "0.01",
+    );
+
+    assert.equal(
+      BigInt(
+        mainnet.quote
+          .recipient,
+      ),
+      BigInt(
+        "0x123",
+      ),
+    );
+
+
+    assert.equal(
+      sepolia.quote
+        .amountText,
+      "0.001",
+    );
+
+    assert.equal(
+      BigInt(
+        sepolia.quote
+          .recipient,
+      ),
+      BigInt(
+        "0x789",
+      ),
+    );
+
+
+    delete process.env
+      .CAREL_AGENT_FEE_RECIPIENT_SEPOLIA;
+
+
+    assert.throws(
+      () =>
+        fees
+          .createSignedAgentFeeQuote({
+            runId:
+              "network-sepolia-no-fallback",
+
+            planDigest:
+              "c".repeat(
+                64,
+              ),
+
+            chainId:
+              SEPOLIA,
+
+            payer:
+              "0x456",
+
+            now:
+              1_800_000,
+          }),
+      /sepolia/i,
     );
   },
 );

@@ -119,17 +119,40 @@ function feeSecret():
 }
 
 
-function feeAmountText():
-  string {
+type AgentFeeNetworkId =
+  "mainnet" |
+  "sepolia";
+
+
+function feeAmountText(
+  networkId:
+    AgentFeeNetworkId,
+): string {
+  /*
+   * Legacy global amount remains a Mainnet-only migration fallback.
+   *
+   * Sepolia deliberately has no fallback so testnet can never inherit
+   * Mainnet fee policy by accident.
+   */
   const value =
-    process.env
-      .CAREL_AGENT_FEE_AMOUNT_STRK
-      ?.trim();
+    networkId ===
+      "sepolia"
+      ? process.env
+          .CAREL_AGENT_FEE_AMOUNT_STRK_SEPOLIA
+          ?.trim()
+      : (
+          process.env
+            .CAREL_AGENT_FEE_AMOUNT_STRK_MAINNET
+            ?.trim() ||
+          process.env
+            .CAREL_AGENT_FEE_AMOUNT_STRK
+            ?.trim()
+        );
 
 
   if (!value) {
     throw new Error(
-      "CAREL Agent fee amount is not configured.",
+      `CAREL Agent fee amount is not configured for ${networkId}.`,
     );
   }
 
@@ -138,17 +161,34 @@ function feeAmountText():
 }
 
 
-function feeRecipient():
-  string {
+function feeRecipient(
+  networkId:
+    AgentFeeNetworkId,
+): string {
+  /*
+   * Legacy global recipient remains a Mainnet-only migration fallback.
+   *
+   * Never allow Sepolia to silently inherit the Mainnet recipient.
+   */
   const value =
-    process.env
-      .CAREL_AGENT_FEE_RECIPIENT
-      ?.trim();
+    networkId ===
+      "sepolia"
+      ? process.env
+          .CAREL_AGENT_FEE_RECIPIENT_SEPOLIA
+          ?.trim()
+      : (
+          process.env
+            .CAREL_AGENT_FEE_RECIPIENT_MAINNET
+            ?.trim() ||
+          process.env
+            .CAREL_AGENT_FEE_RECIPIENT
+            ?.trim()
+        );
 
 
   if (!value) {
     throw new Error(
-      "CAREL Agent fee recipient is not configured.",
+      `CAREL Agent fee recipient is not configured for ${networkId}.`,
     );
   }
 
@@ -418,7 +458,9 @@ export function createSignedAgentFeeQuote({
 
 
   const recipient =
-    feeRecipient();
+    feeRecipient(
+      network.id,
+    );
 
 
   if (
@@ -438,7 +480,9 @@ export function createSignedAgentFeeQuote({
 
 
   const amountText =
-    feeAmountText();
+    feeAmountText(
+      network.id,
+    );
 
 
   const amountUnits =
@@ -1279,14 +1323,30 @@ export function agentFeePolicyConfigured():
       .CAREL_AGENT_FEE_SIGNING_SECRET
       ?.trim();
 
-  const amount =
+  const mainnetAmount =
+    process.env
+      .CAREL_AGENT_FEE_AMOUNT_STRK_MAINNET
+      ?.trim() ||
     process.env
       .CAREL_AGENT_FEE_AMOUNT_STRK
       ?.trim();
 
-  const recipient =
+  const mainnetRecipient =
+    process.env
+      .CAREL_AGENT_FEE_RECIPIENT_MAINNET
+      ?.trim() ||
     process.env
       .CAREL_AGENT_FEE_RECIPIENT
+      ?.trim();
+
+  const sepoliaAmount =
+    process.env
+      .CAREL_AGENT_FEE_AMOUNT_STRK_SEPOLIA
+      ?.trim();
+
+  const sepoliaRecipient =
+    process.env
+      .CAREL_AGENT_FEE_RECIPIENT_SEPOLIA
       ?.trim();
 
   const redisUrl =
@@ -1303,8 +1363,10 @@ export function agentFeePolicyConfigured():
   return Boolean(
     secret &&
     secret.length >= 32 &&
-    amount &&
-    recipient &&
+    mainnetAmount &&
+    mainnetRecipient &&
+    sepoliaAmount &&
+    sepoliaRecipient &&
     redisUrl &&
     redisToken,
   );
