@@ -24,6 +24,10 @@ import {
   buildStarknetAgentPlan,
 } from "@/lib/agent/starknet-planner";
 
+import {
+  createAgentFeeGateCoordinator,
+} from "@/lib/agent/client-fee-gate";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -83,6 +87,11 @@ export function useStakingController({
 }>) {
   const wallet =
     useCarelTestnet();
+
+  const feeGateRef =
+    useRef(
+      createAgentFeeGateCoordinator(),
+    );
 
   const network =
     getCarelNetwork(
@@ -745,10 +754,30 @@ export function useStakingController({
         });
 
 
+      const feeGate =
+        await feeGateRef.current
+          .prepare(
+            plan,
+            {
+              prefix:
+                "stake",
+
+              chainId:
+                wallet.chainId,
+
+              payer:
+                wallet.address,
+
+              executeAgentFee:
+                wallet.executeAgentFee,
+            },
+          );
+
+
       const session =
         createAgentExecutionSession(
           plan,
-          `stake-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+          feeGate.runId,
         );
 
 
@@ -790,6 +819,12 @@ export function useStakingController({
             session,
           ),
           runtime.registry,
+        );
+
+
+      feeGateRef.current
+        .markProtocolStarted(
+          session.runId,
         );
 
 

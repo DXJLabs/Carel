@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowDownUp, ArrowUpRight, Check, Copy, RefreshCw } from "lucide-react";
 import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
+import {
+  createAgentFeeGateCoordinator,
+} from "@/lib/agent/client-fee-gate";
+
 import type { AgentPlan } from "@/lib/agent/plan";
 import {
   createAgentExecutionSession,
@@ -68,6 +72,11 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
   const ownerRef = useRef(owner); ownerRef.current = owner;
   const modeRef = useRef(mode); modeRef.current = mode;
   const mounted = useRef(true), locked = useRef(false), inputVersion = useRef(0);
+
+  const feeGateRef =
+    useRef(
+      createAgentFeeGateCoordinator(),
+    );
 
   const bridgePlanRef =
     useRef<AgentPlan | null>(
@@ -732,10 +741,30 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
         });
 
 
+      const feeGate =
+        await feeGateRef.current
+          .prepare(
+            plan,
+            {
+              prefix:
+                "garden",
+
+              chainId:
+                wallet.chainId,
+
+              payer:
+                capturedOwner,
+
+              executeAgentFee:
+                wallet.executeAgentFee,
+            },
+          );
+
+
       const session =
         createAgentExecutionSession(
           plan,
-          `garden-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`,
+          feeGate.runId,
         );
 
 
@@ -755,6 +784,12 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
               capturedOwner,
           },
           runtime.registry,
+        );
+
+
+      feeGateRef.current
+        .markProtocolStarted(
+          session.runId,
         );
 
 

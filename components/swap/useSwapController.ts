@@ -27,6 +27,10 @@ import {
   parseSwapGoal,
 } from "@/lib/agent/swap";
 
+import {
+  createAgentFeeGateCoordinator,
+} from "@/lib/agent/client-fee-gate";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -67,6 +71,11 @@ export function useSwapController({
 }>) {
   const wallet =
     useCarelTestnet();
+
+  const feeGateRef =
+    useRef(
+      createAgentFeeGateCoordinator(),
+    );
 
   const network =
     getCarelNetwork(
@@ -626,16 +635,30 @@ export function useSwapController({
         );
       }
 
+      const feeGate =
+        await feeGateRef.current
+          .prepare(
+            plan,
+            {
+              prefix:
+                "swap",
+
+              chainId:
+                wallet.chainId,
+
+              payer:
+                wallet.address,
+
+              executeAgentFee:
+                wallet.executeAgentFee,
+            },
+          );
+
+
       const session =
         createAgentExecutionSession(
           plan,
-          "swap-" +
-            Date.now()
-              .toString(36) +
-            "-" +
-            Math.random()
-              .toString(36)
-              .slice(2),
+          feeGate.runId,
         );
 
       const runtime =
@@ -676,6 +699,13 @@ export function useSwapController({
           runtime,
           first.stageId,
         );
+
+
+      feeGateRef.current
+        .markProtocolStarted(
+          session.runId,
+        );
+
 
       setSwapAgentSession(
         result.session,

@@ -39,6 +39,10 @@ import {
   buildStarknetAgentPlan,
 } from "@/lib/agent/starknet-planner";
 
+import {
+  createAgentFeeGateCoordinator,
+} from "@/lib/agent/client-fee-gate";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -164,6 +168,11 @@ export function VesuLend({
 }) {
   const wallet =
     useCarelTestnet();
+
+  const feeGateRef =
+    useRef(
+      createAgentFeeGateCoordinator(),
+    );
 
   const network =
     getCarelNetwork(
@@ -636,20 +645,30 @@ export function VesuLend({
         });
 
 
-      const random =
-        crypto
-          .getRandomValues(
-            new Uint32Array(
-              1,
-            ),
-          )[0]
-          .toString(36);
+      const feeGate =
+        await feeGateRef.current
+          .prepare(
+            plan,
+            {
+              prefix:
+                "lend",
+
+              chainId:
+                wallet.chainId,
+
+              payer:
+                wallet.address,
+
+              executeAgentFee:
+                wallet.executeAgentFee,
+            },
+          );
 
 
       const session =
         createAgentExecutionSession(
           plan,
-          `lend-${Date.now().toString(36)}-${random}`,
+          feeGate.runId,
         );
 
 
@@ -692,6 +711,12 @@ export function VesuLend({
             session,
           ),
           runtime.registry,
+        );
+
+
+      feeGateRef.current
+        .markProtocolStarted(
+          session.runId,
         );
 
 

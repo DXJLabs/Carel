@@ -913,3 +913,36 @@ export async function verifyAgentFeeSettlement({
     events,
   });
 }
+
+
+/**
+ * Deployment-safe activation probe.
+ *
+ * CAREL only enables fee enforcement when every required server-side policy
+ * value exists. No client-side default amount or recipient is ever invented.
+ */
+export function agentFeePolicyConfigured():
+  boolean {
+  const secret =
+    process.env
+      .CAREL_AGENT_FEE_SIGNING_SECRET
+      ?.trim();
+
+  const amount =
+    process.env
+      .CAREL_AGENT_FEE_AMOUNT_STRK
+      ?.trim();
+
+  const recipient =
+    process.env
+      .CAREL_AGENT_FEE_RECIPIENT
+      ?.trim();
+
+
+  return Boolean(
+    secret &&
+    secret.length >= 32 &&
+    amount &&
+    recipient,
+  );
+}

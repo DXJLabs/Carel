@@ -23,6 +23,10 @@ import {
   parseBorrowGoal,
 } from "@/lib/agent/borrow";
 
+import {
+  createAgentFeeGateCoordinator,
+} from "@/lib/agent/client-fee-gate";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -68,6 +72,11 @@ export function useBorrowController({
 }>) {
   const wallet =
     useCarelTestnet();
+
+  const feeGateRef =
+    useRef(
+      createAgentFeeGateCoordinator(),
+    );
 
   const network =
     getCarelNetwork(
@@ -630,13 +639,30 @@ export function useBorrowController({
         );
       }
 
+      const feeGate =
+        await feeGateRef.current
+          .prepare(
+            plan,
+            {
+              prefix:
+                "borrow",
+
+              chainId:
+                wallet.chainId,
+
+              payer:
+                wallet.address,
+
+              executeAgentFee:
+                wallet.executeAgentFee,
+            },
+          );
+
+
       const session =
         createAgentExecutionSession(
           plan,
-          "borrow-" +
-            Date.now().toString(36) +
-            "-" +
-            Math.random().toString(36).slice(2),
+          feeGate.runId,
         );
 
       const runtime =
@@ -667,6 +693,11 @@ export function useBorrowController({
               wallet.address,
           },
           runtime.registry,
+        );
+
+      feeGateRef.current
+        .markProtocolStarted(
+          session.runId,
         );
 
       setBorrowAgentSession(result.session);
@@ -1499,19 +1530,30 @@ export function useBorrowController({
           );
         }
 
-        const runId =
-          "borrow-" +
-          Date.now()
-            .toString(36) +
-          "-" +
-          Math.random()
-            .toString(36)
-            .slice(2);
+        const feeGate =
+          await feeGateRef.current
+            .prepare(
+              plan,
+              {
+                prefix:
+                  "borrow",
+
+                chainId:
+                  wallet.chainId,
+
+                payer:
+                  wallet.address,
+
+                executeAgentFee:
+                  wallet.executeAgentFee,
+              },
+            );
+
 
         const session =
           createAgentExecutionSession(
             plan,
-            runId,
+            feeGate.runId,
           );
 
         const runtime =
@@ -1544,6 +1586,11 @@ export function useBorrowController({
                 wallet.address,
             },
             runtime.registry,
+          );
+
+        feeGateRef.current
+          .markProtocolStarted(
+            session.runId,
           );
 
         setBorrowAgentSession(result.session);
@@ -1605,17 +1652,30 @@ export function useBorrowController({
           );
         }
 
+        const feeGate =
+          await feeGateRef.current
+            .prepare(
+              plan,
+              {
+                prefix:
+                  "borrow",
+
+                chainId:
+                  wallet.chainId,
+
+                payer:
+                  wallet.address,
+
+                executeAgentFee:
+                  wallet.executeAgentFee,
+              },
+            );
+
+
         const session =
           createAgentExecutionSession(
             plan,
-
-            "borrow-" +
-              Date.now()
-                .toString(36) +
-              "-" +
-              Math.random()
-                .toString(36)
-                .slice(2),
+            feeGate.runId,
           );
 
         const runtime =
@@ -1648,6 +1708,11 @@ export function useBorrowController({
                 wallet.address,
             },
             runtime.registry,
+          );
+
+        feeGateRef.current
+          .markProtocolStarted(
+            session.runId,
           );
 
         setBorrowAgentSession(result.session);

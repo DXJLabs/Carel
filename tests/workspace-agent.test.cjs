@@ -826,3 +826,53 @@ test(
     );
   },
 );
+
+
+test(
+  "all primary Agent execution surfaces pass through the shared fee gate",
+  () => {
+    const surfaces = [
+      "components/swap/useSwapController.ts",
+      "components/borrow/useBorrowController.ts",
+      "components/staking/useStakingController.ts",
+      "components/lending/VesuLend.tsx",
+      "components/bridge/GardenBridge.tsx",
+    ];
+
+
+    for (
+      const relative
+      of surfaces
+    ) {
+      const source =
+        fs.readFileSync(
+          path.join(
+            ROOT,
+            relative,
+          ),
+          "utf8",
+        );
+
+
+      assert.match(
+        source,
+        /createAgentFeeGateCoordinator\(/,
+        relative,
+      );
+
+
+      assert.match(
+        source,
+        /\.prepare\([\s\S]*executeAgentFee/,
+        relative,
+      );
+
+
+      assert.match(
+        source,
+        /\.markProtocolStarted\(/,
+        relative,
+      );
+    }
+  },
+);
