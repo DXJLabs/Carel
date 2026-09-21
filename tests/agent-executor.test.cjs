@@ -751,3 +751,153 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Agent executor accepts asynchronous provider order references",
+  async () => {
+    const base =
+      shieldBorrowPlan();
+
+    const plan = {
+      ...base,
+
+      objective: {
+        ...base.objective,
+
+        goal:
+          "Bridge 0.0005 BTC to Starknet Sepolia.",
+
+        tool:
+          "Bridge",
+      },
+
+      stages: [
+        {
+          id:
+            "bridge-1",
+
+          action:
+            "bridge",
+
+          sourceChainId:
+            MAINNET,
+
+          destinationChainId:
+            "bitcoin:testnet4",
+
+          inputAssetSymbol:
+            "BTC",
+
+          outputAssetSymbol:
+            "WBTC",
+
+          amount: {
+            kind:
+              "exact",
+
+            amountText:
+              "0.0005",
+          },
+
+          privacyBefore:
+            "public",
+
+          privacyAfter:
+            "public",
+
+          dependsOn: [],
+
+          status:
+            "planned",
+        },
+      ],
+    };
+
+    let session =
+      executor
+        .createAgentExecutionSession(
+          plan,
+          "bridge-run",
+        );
+
+    const registry =
+      executor
+        .createAgentStageExecutorRegistry([
+          {
+            id:
+              "garden",
+
+            actions:
+              ["bridge"],
+
+            supports:
+              () => true,
+
+            execute:
+              async () => ({
+                executionReference: {
+                  kind:
+                    "provider-order",
+
+                  id:
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                },
+
+                status:
+                  "submitted",
+              }),
+          },
+        ]);
+
+    session =
+      (
+        await executor
+          .executeAgentStage(
+            plan,
+            session,
+            "bridge-1",
+            {
+              runId:
+                session.runId,
+
+              chainId:
+                MAINNET,
+
+              account:
+                "0x123",
+            },
+            registry,
+          )
+      ).session;
+
+    const stage =
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "bridge-1",
+        );
+
+    assert.deepEqual(
+      stage.executionReference,
+      {
+        kind:
+          "provider-order",
+
+        id:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      },
+    );
+
+    assert.equal(
+      stage.txHash,
+      undefined,
+    );
+
+    assert.equal(
+      stage.status,
+      "submitted",
+    );
+  },
+);

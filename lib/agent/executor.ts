@@ -9,6 +9,7 @@ import {
   createAgentRun,
   getAgentRuntimeStage,
   submitAgentStage,
+  type AgentExecutionReference,
   type AgentRun,
 } from "@/lib/agent/state-machine";
 
@@ -101,7 +102,21 @@ export type AgentStageExecutionInput =
 
 export type AgentStageExecutionReceipt =
   Readonly<{
-    transactionId: string;
+    /**
+     * Backward-compatible transaction identifier.
+     *
+     * On-chain executors may continue returning this field.
+     */
+    transactionId?: string;
+
+    /**
+     * Generic reference for provider-managed/asynchronous execution.
+     *
+     * Garden, for example, can return its order id without pretending it is
+     * a blockchain transaction hash.
+     */
+    executionReference?:
+      AgentExecutionReference;
 
     status:
       | "pending"
@@ -178,6 +193,57 @@ function transactionIdValid(
 ): boolean {
   return /^0x[0-9a-f]{1,64}$/i.test(
     value,
+  );
+}
+
+
+function receiptExecutionReference(
+  receipt:
+    AgentStageExecutionReceipt,
+
+  executorId:
+    string,
+): AgentExecutionReference {
+  if (
+    receipt.transactionId &&
+    receipt.executionReference
+  ) {
+    throw new Error(
+      `Agent executor ${executorId} returned multiple execution references.`,
+    );
+  }
+
+  if (
+    receipt.executionReference
+  ) {
+    return receipt
+      .executionReference;
+  }
+
+  if (
+    receipt.transactionId
+  ) {
+    if (
+      !transactionIdValid(
+        receipt.transactionId,
+      )
+    ) {
+      throw new Error(
+        `Agent executor ${executorId} returned an invalid transaction id.`,
+      );
+    }
+
+    return {
+      kind:
+        "transaction",
+
+      id:
+        receipt.transactionId,
+    };
+  }
+
+  throw new Error(
+    `Agent executor ${executorId} returned no execution reference.`,
   );
 }
 
@@ -641,15 +707,11 @@ export async function executeAgentStage(
       input,
     );
 
-  if (
-    !transactionIdValid(
-      receipt.transactionId,
-    )
-  ) {
-    throw new Error(
-      `Agent executor ${executor.id} returned an invalid transaction id.`,
+  const executionReference =
+    receiptExecutionReference(
+      receipt,
+      executor.id,
     );
-  }
 
   let next:
     AgentExecutionSession = {
@@ -660,7 +722,7 @@ export async function executeAgentStage(
           plan,
           session.run,
           stage.id,
-          receipt.transactionId,
+          executionReference,
         ),
     };
 

@@ -11,6 +11,16 @@ export type AgentRuntimeStageStatus =
   | "failed";
 
 
+export type AgentExecutionReference =
+  Readonly<{
+    kind:
+      | "transaction"
+      | "provider-order";
+
+    id: string;
+  }>;
+
+
 export type AgentRunStatus =
   | "blocked"
   | "review"
@@ -27,6 +37,20 @@ export type AgentRuntimeStage =
     status:
       AgentRuntimeStageStatus;
 
+    /**
+     * Generic execution identity.
+     *
+     * A normal chain transaction uses kind=transaction.
+     * Async providers such as Garden may use kind=provider-order.
+     */
+    executionReference?:
+      AgentExecutionReference;
+
+    /**
+     * Backward-compatible convenience field for on-chain transaction stages.
+     *
+     * New cross-chain/provider runtimes must read executionReference instead.
+     */
     txHash?: string;
 
     error?: string;
@@ -375,11 +399,92 @@ export function getAgentRuntimeStage(
 }
 
 
+function normalizeExecutionReference(
+  reference:
+    | string
+    | AgentExecutionReference,
+): AgentExecutionReference {
+  if (
+    typeof reference ===
+      "string"
+  ) {
+    if (
+      !/^0x[0-9a-f]+$/i.test(
+        reference,
+      )
+    ) {
+      throw new Error(
+        "Agent transaction stage requires a valid transaction hash.",
+      );
+    }
+
+    return {
+      kind:
+        "transaction",
+
+      id:
+        reference,
+    };
+  }
+
+  const id =
+    reference.id.trim();
+
+  if (!id) {
+    throw new Error(
+      "Agent execution reference cannot be empty.",
+    );
+  }
+
+  if (
+    reference.kind ===
+      "transaction"
+  ) {
+    if (
+      !/^0x[0-9a-f]+$/i.test(
+        id,
+      )
+    ) {
+      throw new Error(
+        "Agent transaction stage requires a valid transaction hash.",
+      );
+    }
+  } else if (
+    reference.kind ===
+      "provider-order"
+  ) {
+    if (
+      id.length > 256 ||
+      !/^[a-z0-9:_-]+$/i.test(
+        id,
+      )
+    ) {
+      throw new Error(
+        "Agent provider order reference is invalid.",
+      );
+    }
+  } else {
+    throw new Error(
+      "Agent execution reference kind is unsupported.",
+    );
+  }
+
+  return {
+    kind:
+      reference.kind,
+
+    id,
+  };
+}
+
+
 export function submitAgentStage(
   plan: AgentPlan,
   run: AgentRun,
   stageId: string,
-  txHash: string,
+  reference:
+    | string
+    | AgentExecutionReference,
 ): AgentRun {
   const current =
     getAgentRuntimeStage(
@@ -408,15 +513,10 @@ export function submitAgentStage(
     );
   }
 
-  if (
-    !/^0x[0-9a-f]+$/i.test(
-      txHash,
-    )
-  ) {
-    throw new Error(
-      "Agent stage requires a valid transaction hash.",
+  const executionReference =
+    normalizeExecutionReference(
+      reference,
     );
-  }
 
   const stages =
     replaceStage(
@@ -427,7 +527,16 @@ export function submitAgentStage(
         status:
           "submitted",
 
-        txHash,
+        executionReference,
+
+        ...(executionReference
+          .kind ===
+            "transaction"
+          ? {
+              txHash:
+                executionReference.id,
+            }
+          : {}),
       },
     );
 

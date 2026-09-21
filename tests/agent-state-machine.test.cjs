@@ -398,3 +398,52 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Agent runtime stores provider order references without inventing a tx hash",
+  () => {
+    const initial =
+      machine.createAgentRun(
+        plan,
+      );
+
+    const run =
+      machine.submitAgentStage(
+        plan,
+        initial,
+        "borrow-1",
+        {
+          kind:
+            "provider-order",
+
+          id:
+            "garden-order-abc123",
+        },
+      );
+
+    const stage =
+      machine
+        .getAgentRuntimeStage(
+          run,
+          "borrow-1",
+        );
+
+    assert.deepEqual(
+      stage.executionReference,
+      {
+        kind:
+          "provider-order",
+
+        id:
+          "garden-order-abc123",
+      },
+    );
+
+    assert.equal(
+      stage.txHash,
+      undefined,
+    );
+  },
+);
