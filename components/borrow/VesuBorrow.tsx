@@ -58,12 +58,13 @@ import {
 
 import {
   type BorrowMode,
-  type BorrowMarket,
-  type MarketsResponse,
   formatBps,
-  responseObject,
   shortAddress,
 } from "./model";
+
+import {
+  useVesuBorrowMarkets,
+} from "./useVesuBorrowMarkets";
 
 import {
   createVesuBorrowRuntime,
@@ -124,27 +125,26 @@ export function VesuBorrow({
       [debtAssetId],
     );
 
-  const [
+  const {
     markets,
-    setMarkets,
-  ] = useState<
-    readonly BorrowMarket[]
-  >([]);
-
-  const [
-    selectedPoolId,
-    setSelectedPoolId,
-  ] = useState("");
-
-  const [
+    selectedMarket,
     reviewed,
-    setReviewed,
-  ] = useState(false);
-
-  const [
     loading,
-    setLoading,
-  ] = useState(false);
+    discoverMarkets,
+    reviewMarkets,
+    resetMarkets,
+    invalidateReview,
+    selectPool,
+  } = useVesuBorrowMarkets({
+    chainId:
+      wallet.chainId,
+
+    debtAsset:
+      selectedDebtAsset,
+
+    collateralAmount,
+    borrowAmount,
+  });
 
   const [
     executing,
@@ -204,22 +204,6 @@ export function VesuBorrow({
     success,
     setSuccess,
   ] = useState("");
-
-  const selectedMarket =
-    useMemo(
-      () =>
-        markets.find(
-          (market) =>
-            market.pool.id ===
-            selectedPoolId,
-        ) ??
-        markets[0] ??
-        null,
-      [
-        markets,
-        selectedPoolId,
-      ],
-    );
 
   function createBorrowRuntime():
     StarknetBorrowRuntime {
@@ -450,7 +434,7 @@ export function VesuBorrow({
     setCollateralAmount(
       value,
     );
-    setReviewed(false);
+    invalidateReview();
     setSuccess("");
     setError("");
 
@@ -474,7 +458,7 @@ export function VesuBorrow({
     setBorrowAmount(
       value,
     );
-    setReviewed(false);
+    invalidateReview();
     setSuccess("");
     setError("");
 
@@ -516,7 +500,7 @@ export function VesuBorrow({
           debtAsset.id,
         );
 
-        setReviewed(false);
+        invalidateReview();
       }
     } catch {
       // Manual Borrow fields remain usable when the goal is incomplete.
@@ -541,157 +525,8 @@ export function VesuBorrow({
     mode,
   ]);
 
-  /**
-   * Loads either market discovery only or a fresh amount-specific
-   * risk evaluation from CAREL's server.
-   */
-  async function loadMarkets(
-    withEvaluation = false,
-  ) {
-    if (
-      !network ||
-      network.id !==
-        "mainnet"
-    ) {
-      setMarkets([]);
-      setReviewed(false);
-
-      throw new Error(
-        "CAREL Borrow is currently enabled on Starknet Mainnet only.",
-      );
-    }
-
-    if (withEvaluation) {
-      const collateral =
-        parseUnits(
-          collateralAmount,
-          network.assets.strk
-            .decimals,
-        );
-
-      const debt =
-        parseUnits(
-          borrowAmount,
-          selectedDebtAsset
-            .decimals,
-        );
-
-      if (
-        collateral <= 0n ||
-        debt <= 0n
-      ) {
-        throw new Error(
-          "Borrow and collateral amounts must be greater than zero.",
-        );
-      }
-    }
-
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const query =
-        new URLSearchParams();
-
-      query.set(
-        "debtAssetId",
-        selectedDebtAsset.id,
-      );
-
-      if (withEvaluation) {
-        query.set(
-          "collateralAmount",
-          collateralAmount,
-        );
-
-        query.set(
-          "borrowAmount",
-          borrowAmount,
-        );
-      }
-
-      const response =
-        await fetch(
-          `/api/vesu/borrow/markets${
-            query.size
-              ? `?${query.toString()}`
-              : ""
-          }`,
-          {
-            cache:
-              "no-store",
-          },
-        );
-
-      const raw: unknown =
-        await response.json();
-
-      const payload =
-        responseObject(
-          raw,
-        );
-
-      if (!response.ok) {
-        throw new Error(
-          typeof payload.error ===
-            "string"
-            ? payload.error
-            : "Could not load Vesu markets.",
-        );
-      }
-
-      if (
-        !Array.isArray(
-          payload.markets,
-        )
-      ) {
-        throw new Error(
-          "CAREL received malformed Vesu market data.",
-        );
-      }
-
-      const nextMarkets =
-        payload.markets as BorrowMarket[];
-
-      if (
-        !nextMarkets.length
-      ) {
-        throw new Error(
-          `No verified STRK → ${selectedDebtAsset.symbol} Vesu market is available right now.`,
-        );
-      }
-
-      setMarkets(
-        nextMarkets,
-      );
-
-      const stillAvailable =
-        nextMarkets.some(
-          (market) =>
-            market.pool.id ===
-            selectedPoolId,
-        );
-
-      if (!stillAvailable) {
-        setSelectedPoolId(
-          nextMarkets[0]
-            .pool.id,
-        );
-      }
-
-      setReviewed(
-        withEvaluation,
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    setReviewed(false);
-    setMarkets([]);
-    setSelectedPoolId("");
+    resetMarkets();
     setError("");
     setSuccess("");
 
@@ -700,9 +535,7 @@ export function VesuBorrow({
       network?.id ===
         "mainnet"
     ) {
-      void loadMarkets(
-        false,
-      ).catch(
+      void discoverMarkets().catch(
         (cause) => {
           setError(
             cause instanceof Error
@@ -959,7 +792,7 @@ export function VesuBorrow({
         // Runtime already verified the public output directly.
       }
 
-      setReviewed(false);
+      invalidateReview();
 
       setSuccess(
         "Unshield confirmed and " +
@@ -1081,9 +914,7 @@ export function VesuBorrow({
       );
 
       try {
-        await loadMarkets(
-          false,
-        );
+        await discoverMarkets();
       } catch {
         // Confirmed execution remains visible even if market refresh fails.
       }
@@ -1552,7 +1383,7 @@ export function VesuBorrow({
       mode === "normal" &&
       normalAgentFlowLocked
     ) {
-      setReviewed(false);
+      invalidateReview();
 
       setError(
         "Confirm the current Agent Borrow before reviewing another position.",
@@ -1565,7 +1396,7 @@ export function VesuBorrow({
       mode === "shield" &&
       shieldAgentFlowLocked
     ) {
-      setReviewed(false);
+      invalidateReview();
 
       setError(
         "Finish the current Shield Borrow flow before reviewing another Borrow.",
@@ -1579,7 +1410,7 @@ export function VesuBorrow({
       unshieldProgress.kind !==
         "ready"
     ) {
-      setReviewed(false);
+      invalidateReview();
 
       setError(
         "Complete and confirm the Unshield collateral step first.",
@@ -1589,11 +1420,9 @@ export function VesuBorrow({
     }
 
     try {
-      await loadMarkets(
-        true,
-      );
+      await reviewMarkets();
     } catch (cause) {
-      setReviewed(false);
+      invalidateReview();
 
       setError(
         cause instanceof Error
@@ -1753,9 +1582,7 @@ export function VesuBorrow({
             : "Borrow submitted through Agent Core. Confirm it before Shield.",
         );
 
-        setReviewed(
-          false,
-        );
+        invalidateReview();
 
         return;
       }
@@ -1851,9 +1678,7 @@ export function VesuBorrow({
           "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
         );
 
-        setReviewed(
-          false,
-        );
+        invalidateReview();
 
         return;
       }
@@ -1928,7 +1753,7 @@ export function VesuBorrow({
         "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
       );
 
-      setReviewed(false);
+      invalidateReview();
 
       return;
     } catch (cause) {
@@ -2926,9 +2751,7 @@ export function VesuBorrow({
                 .value,
             );
 
-            setMarkets([]);
-            setSelectedPoolId("");
-            setReviewed(false);
+            resetMarkets();
             setError("");
             setSuccess("");
 
@@ -2988,13 +2811,9 @@ export function VesuBorrow({
             onChange={(
               event,
             ) => {
-              setSelectedPoolId(
+              selectPool(
                 event.target
                   .value,
-              );
-
-              setReviewed(
-                false,
               );
 
               setSuccess("");
