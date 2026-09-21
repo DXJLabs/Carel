@@ -138,6 +138,11 @@ function quote(
     idempotencyKey:
       "run-1:agent-fee",
 
+    planDigest:
+      "1".repeat(
+        64,
+      ),
+
     payer:
       "0x456",
 

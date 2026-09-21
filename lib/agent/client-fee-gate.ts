@@ -3,6 +3,8 @@ import type {
 } from "@/lib/agent/plan";
 
 import {
+  agentFeePlanDigest,
+  agentFeePlanFingerprint,
   createAgentFeeClientSession,
   quoteAgentPlanFee,
   settleAgentPlanFee,
@@ -81,16 +83,9 @@ function planFingerprint(
   plan:
     AgentPlan,
 ): string {
-  return JSON.stringify({
-    objective:
-      plan.objective,
-
-    stages:
-      plan.stages,
-
-    agentFee:
-      plan.agentFee,
-  });
+  return agentFeePlanFingerprint(
+    plan,
+  );
 }
 
 
@@ -645,6 +640,11 @@ export function createAgentFeeGateCoordinator({
         await quoteAgentPlanFee(
           current.feeSession,
           {
+            planDigest:
+              await agentFeePlanDigest(
+                plan,
+              ),
+
             chainId,
             payer,
             httpClient,
@@ -827,6 +827,12 @@ export function createAgentFeeGateCoordinator({
     }
 
 
+    const expectedPlanDigest =
+      await agentFeePlanDigest(
+        plan,
+      );
+
+
     const evidence =
       loadSettlementEvidence(
         payer,
@@ -842,7 +848,13 @@ export function createAgentFeeGateCoordinator({
         chainId ||
       evidence.payer
         .toLowerCase() !==
-        payer.toLowerCase()
+        payer.toLowerCase() ||
+      evidence
+        .settlementReceipt
+        .receipt
+        .planDigest
+        .toLowerCase() !==
+        expectedPlanDigest
     ) {
       throw new Error(
         "CAREL cannot restore the settled Agent fee for this run.",
@@ -869,6 +881,9 @@ export function createAgentFeeGateCoordinator({
             JSON.stringify({
               runId:
                 normalizedRunId,
+
+              planDigest:
+                expectedPlanDigest,
 
               chainId,
 

@@ -143,6 +143,11 @@ function signedQuote() {
       idempotencyKey:
         "run-1:agent-fee",
 
+      planDigest:
+        "1".repeat(
+          64,
+        ),
+
       payer:
         "0x456",
 
@@ -327,6 +332,11 @@ test(
         .quoteAgentPlanFee(
           session,
           {
+            planDigest:
+              "1".repeat(
+                64,
+              ),
+
             chainId:
               MAINNET,
 
@@ -435,6 +445,11 @@ test(
         .quoteAgentPlanFee(
           session,
           {
+            planDigest:
+              "1".repeat(
+                64,
+              ),
+
             chainId:
               MAINNET,
 

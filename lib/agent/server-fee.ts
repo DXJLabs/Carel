@@ -54,6 +54,9 @@ export type AgentFeeSettlementReceipt =
     idempotencyKey:
       string;
 
+    planDigest:
+      string;
+
     quoteId:
       string;
 
@@ -219,6 +222,7 @@ function canonicalQuote(
     quote.quoteId,
     quote.runId,
     quote.idempotencyKey,
+    quote.planDigest,
     quote.payer,
     quote.issuedAt,
     quote.chainId,
@@ -330,12 +334,16 @@ function readU256(
 
 export function createSignedAgentFeeQuote({
   runId,
+  planDigest,
   chainId,
   payer,
   now =
     Date.now(),
 }: Readonly<{
   runId:
+    string;
+
+  planDigest:
     string;
 
   chainId:
@@ -358,6 +366,23 @@ export function createSignedAgentFeeQuote({
   ) {
     throw new Error(
       "Invalid Agent fee run id.",
+    );
+  }
+
+
+  const normalizedPlanDigest =
+    planDigest
+      .trim()
+      .toLowerCase();
+
+
+  if (
+    !/^[0-9a-f]{64}$/.test(
+      normalizedPlanDigest,
+    )
+  ) {
+    throw new Error(
+      "Invalid Agent fee plan digest.",
     );
   }
 
@@ -469,6 +494,7 @@ export function createSignedAgentFeeQuote({
     JSON.stringify([
       normalizedRunId,
       idempotencyKey,
+      normalizedPlanDigest,
       normalizedPayer,
       issuedAt,
       network.chainId,
@@ -493,6 +519,9 @@ export function createSignedAgentFeeQuote({
       normalizedRunId,
 
     idempotencyKey,
+
+    planDigest:
+      normalizedPlanDigest,
 
     payer:
       normalizedPayer,
@@ -598,6 +627,17 @@ export function verifySignedAgentFeeQuote(
   ) {
     throw new Error(
       "Agent fee quote contains an invalid idempotency key.",
+    );
+  }
+
+
+  if (
+    !/^[0-9a-f]{64}$/i.test(
+      quote.planDigest,
+    )
+  ) {
+    throw new Error(
+      "Agent fee quote contains an invalid plan digest.",
     );
   }
 
@@ -966,6 +1006,7 @@ function canonicalSettlementReceipt(
     receipt.version,
     receipt.runId,
     receipt.idempotencyKey,
+    receipt.planDigest,
     receipt.quoteId,
     receipt.payer,
     receipt.chainId,
@@ -1053,6 +1094,10 @@ export function createSignedAgentFeeSettlementReceipt({
     idempotencyKey:
       quote.idempotencyKey,
 
+    planDigest:
+      quote.planDigest
+        .toLowerCase(),
+
     quoteId:
       quote.quoteId
         .toLowerCase(),
@@ -1130,6 +1175,9 @@ export function verifySignedAgentFeeSettlementReceipt(
       128 ||
     !chainId ||
     !/^[0-9a-f]{64}$/i.test(
+      raw.planDigest,
+    ) ||
+    !/^[0-9a-f]{64}$/i.test(
       raw.quoteId,
     ) ||
     !/^0x[0-9a-f]{1,64}$/.test(
@@ -1170,6 +1218,10 @@ export function verifySignedAgentFeeSettlementReceipt(
 
     idempotencyKey:
       raw.idempotencyKey,
+
+    planDigest:
+      raw.planDigest
+        .toLowerCase(),
 
     quoteId:
       raw.quoteId

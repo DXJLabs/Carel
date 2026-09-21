@@ -33,6 +33,14 @@ export type AgentFeeExecutionQuote =
     idempotencyKey:
       string;
 
+    /**
+     * SHA-256 of the exact reviewed Agent plan representation.
+     *
+     * This binds fee payment and reload authorization to one concrete plan.
+     */
+    planDigest:
+      string;
+
     payer:
       string;
 
@@ -330,6 +338,17 @@ function validateQuote(
 
 
   if (
+    !/^[0-9a-f]{64}$/i.test(
+      quote.planDigest,
+    )
+  ) {
+    throw new Error(
+      "Agent fee quote contains an invalid plan digest.",
+    );
+  }
+
+
+  if (
     !quote.payer.trim()
   ) {
     throw new Error(
@@ -471,6 +490,11 @@ function validateQuote(
     ...quote,
 
     quoteId,
+
+    planDigest:
+      quote.planDigest
+        .toLowerCase(),
+
     chainId,
     assetId,
 

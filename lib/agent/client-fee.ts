@@ -35,6 +35,9 @@ export type SignedAgentFeeSettlementReceiptPayload =
         idempotencyKey:
           string;
 
+        planDigest:
+          string;
+
         quoteId:
           string;
 
@@ -165,6 +168,75 @@ function apiError(
 }
 
 
+export function agentFeePlanFingerprint(
+  plan:
+    AgentPlan,
+): string {
+  return JSON.stringify({
+    objective:
+      plan.objective,
+
+    stages:
+      plan.stages,
+
+    agentFee:
+      plan.agentFee,
+  });
+}
+
+
+export async function agentFeePlanDigest(
+  plan:
+    AgentPlan,
+): Promise<string> {
+  const subtle =
+    globalThis.crypto
+      ?.subtle;
+
+
+  if (!subtle) {
+    throw new Error(
+      "Secure Agent plan hashing is unavailable.",
+    );
+  }
+
+
+  const encoded =
+    new TextEncoder()
+      .encode(
+        agentFeePlanFingerprint(
+          plan,
+        ),
+      );
+
+
+  const digest =
+    await subtle.digest(
+      "SHA-256",
+      encoded,
+    );
+
+
+  return Array.from(
+    new Uint8Array(
+      digest,
+    ),
+  )
+    .map(
+      (value) =>
+        value
+          .toString(16)
+          .padStart(
+            2,
+            "0",
+          ),
+    )
+    .join(
+      "",
+    );
+}
+
+
 export function createAgentFeeClientSession(
   plan:
     AgentPlan,
@@ -187,12 +259,16 @@ export async function quoteAgentPlanFee(
     AgentFeeClientSession,
 
   {
+    planDigest,
     chainId,
     payer,
     httpClient =
       defaultHttpClient,
   }:
     Readonly<{
+      planDigest:
+        string;
+
       chainId:
         string;
 
@@ -232,6 +308,8 @@ export async function quoteAgentPlanFee(
             runId:
               session.state
                 .runId,
+
+            planDigest,
 
             chainId,
 
@@ -580,10 +658,17 @@ export async function prepareAndSubmitAgentPlanFee(
     );
 
 
+  const planDigest =
+    await agentFeePlanDigest(
+      plan,
+    );
+
+
   session =
     await quoteAgentPlanFee(
       session,
       {
+        planDigest,
         chainId,
         payer,
         httpClient,

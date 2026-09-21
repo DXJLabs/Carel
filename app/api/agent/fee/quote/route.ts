@@ -48,13 +48,15 @@ export async function POST(
     if (
       typeof body.runId !==
         "string" ||
+      typeof body.planDigest !==
+        "string" ||
       typeof body.chainId !==
         "string" ||
       typeof body.payer !==
         "string"
     ) {
       throw new Error(
-        "Agent fee quote requires runId, chainId and payer.",
+        "Agent fee quote requires runId, planDigest, chainId and payer.",
       );
     }
 
@@ -63,6 +65,9 @@ export async function POST(
       createSignedAgentFeeQuote({
         runId:
           body.runId,
+
+        planDigest:
+          body.planDigest,
 
         chainId:
           body.chainId,

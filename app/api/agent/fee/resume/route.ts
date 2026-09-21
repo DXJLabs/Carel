@@ -53,6 +53,8 @@ export async function POST(
     if (
       typeof body.runId !==
         "string" ||
+      typeof body.planDigest !==
+        "string" ||
       typeof body.chainId !==
         "string" ||
       typeof body.payer !==
@@ -62,7 +64,7 @@ export async function POST(
         "object"
     ) {
       throw new Error(
-        "Agent fee resume requires runId, chainId, payer and settlementReceipt.",
+        "Agent fee resume requires runId, planDigest, chainId, payer and settlementReceipt.",
       );
     }
 
@@ -77,6 +79,10 @@ export async function POST(
     if (
       receipt.runId !==
         body.runId.trim() ||
+      receipt.planDigest !==
+        body.planDigest
+          .trim()
+          .toLowerCase() ||
       receipt.chainId !==
         body.chainId.trim() ||
       receipt.payer !==

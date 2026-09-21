@@ -210,6 +210,11 @@ test(
             runId:
               "run-1",
 
+          planDigest:
+            "1".repeat(
+              64,
+            ),
+
             chainId:
               MAINNET,
 
@@ -236,6 +241,11 @@ test(
         .createSignedAgentFeeQuote({
           runId:
             "run-1",
+
+          planDigest:
+            "1".repeat(
+              64,
+            ),
 
           chainId:
             MAINNET,
@@ -294,6 +304,11 @@ test(
           runId:
             "run-1",
 
+          planDigest:
+            "1".repeat(
+              64,
+            ),
+
           chainId:
             MAINNET,
 
@@ -345,6 +360,11 @@ test(
           runId:
             "run-1",
 
+          planDigest:
+            "1".repeat(
+              64,
+            ),
+
           chainId:
             MAINNET,
 
@@ -361,6 +381,11 @@ test(
         .createSignedAgentFeeQuote({
           runId:
             "run-1",
+
+          planDigest:
+            "1".repeat(
+              64,
+            ),
 
           chainId:
             MAINNET,
@@ -400,6 +425,11 @@ test(
         .createSignedAgentFeeQuote({
           runId:
             "run-1",
+
+          planDigest:
+            "1".repeat(
+              64,
+            ),
 
           chainId:
             MAINNET,
@@ -487,6 +517,11 @@ test(
           runId:
             "run-1",
 
+          planDigest:
+            "1".repeat(
+              64,
+            ),
+
           chainId:
             MAINNET,
 
@@ -556,6 +591,11 @@ test(
         .createSignedAgentFeeQuote({
           runId:
             "run-1",
+
+          planDigest:
+            "1".repeat(
+              64,
+            ),
 
           chainId:
             MAINNET,
@@ -628,6 +668,11 @@ test(
           runId:
             "resume-run",
 
+          planDigest:
+            "1".repeat(
+              64,
+            ),
+
           chainId:
             MAINNET,
 
@@ -685,6 +730,11 @@ test(
         .createSignedAgentFeeQuote({
           runId:
             "resume-run",
+
+          planDigest:
+            "1".repeat(
+              64,
+            ),
 
           chainId:
             MAINNET,
