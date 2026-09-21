@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -33,8 +34,31 @@ import {
 } from "@/lib/carel/core/balances";
 
 import {
+  readStarknetPublicBalances,
+} from "@/lib/carel/ecosystems/starknet/balances";
+
+import {
   parseBorrowGoal,
 } from "@/lib/agent/borrow";
+
+import type {
+  AgentPlan,
+} from "@/lib/agent/plan";
+
+import {
+  buildStarknetAgentPlan,
+} from "@/lib/agent/starknet-planner";
+
+import {
+  createAgentExecutionSession,
+  executeAgentStage,
+  type AgentExecutionSession,
+} from "@/lib/agent/executor";
+
+import {
+  createStarknetBorrowShieldRuntime,
+  type StarknetBorrowShieldRuntime,
+} from "@/lib/agent/starknet-borrow-shield";
 
 import type {
   VesuBorrowExecutionPayload,
@@ -358,6 +382,31 @@ export function VesuBorrow({
     kind: "idle",
   });
 
+  /*
+   * During migration, shieldBorrowProgress remains UI-only state.
+   *
+   * These refs are the execution source of truth for Shield Borrow.
+   * The runtime must survive React re-renders because it owns the
+   * verified Borrow execution snapshot used by the Shield stage.
+   */
+  const shieldAgentPlanRef =
+    useRef<AgentPlan | null>(
+      null,
+    );
+
+  const shieldAgentSessionRef =
+    useRef<AgentExecutionSession | null>(
+      null,
+    );
+
+  const shieldAgentRuntimeRef =
+    useRef<StarknetBorrowShieldRuntime | null>(
+      null,
+    );
+
+  const shieldAgentAccountRef =
+    useRef("");
+
   const [
     error,
     setError,
@@ -500,6 +549,18 @@ export function VesuBorrow({
     setShieldBorrowProgress({
       kind: "idle",
     });
+
+    shieldAgentPlanRef.current =
+      null;
+
+    shieldAgentSessionRef.current =
+      null;
+
+    shieldAgentRuntimeRef.current =
+      null;
+
+    shieldAgentAccountRef.current =
+      "";
   }, [
     wallet.address,
     wallet.chainId,
@@ -875,13 +936,283 @@ export function VesuBorrow({
   }
 
   /**
-   * Confirms stage 1 before CAREL exposes the privacy action.
+   * Creates the client-side dependency bridge between the deterministic
+   * Agent Core and CAREL's already-guarded live Vesu/STRK20 execution.
    *
-   * Stage 1:
-   * Public STRK -> public Vesu Borrow position + public debt asset.
+   * The Agent never creates calldata here:
+   * - Vesu preparation remains server-side.
+   * - wallet.executeBorrow still rebuilds and validates Vesu calls.
+   * - executeShieldAsset still owns the STRK20 Wallet API boundary.
+   */
+  function createLiveShieldBorrowRuntime():
+    StarknetBorrowShieldRuntime {
+    if (
+      !selectedMarket ||
+      !wallet.address
+    ) {
+      throw new Error(
+        "Review a verified Vesu market and connect Ready before execution.",
+      );
+    }
+
+    const reviewedMarket =
+      selectedMarket;
+
+    return createStarknetBorrowShieldRuntime({
+      async prepareBorrow(
+        input,
+      ) {
+        const response =
+          await fetch(
+            "/api/vesu/borrow/prepare",
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              signal:
+                input.signal,
+
+              body:
+                JSON.stringify({
+                  poolId:
+                    reviewedMarket
+                      .pool.id,
+
+                  owner:
+                    input.owner,
+
+                  collateralAmount:
+                    input
+                      .collateralAmountText,
+
+                  borrowAmount:
+                    input
+                      .borrowAmountText,
+
+                  collateralAssetId:
+                    input
+                      .collateralAssetId,
+
+                  debtAssetId:
+                    input
+                      .debtAssetId,
+                }),
+            },
+          );
+
+        const raw: unknown =
+          await response.json();
+
+        const payload =
+          responseObject(
+            raw,
+          );
+
+        if (!response.ok) {
+          const blockers =
+            Array.isArray(
+              payload.blockers,
+            )
+              ? payload.blockers
+                  .filter(
+                    (
+                      value,
+                    ): value is string =>
+                      typeof value ===
+                      "string",
+                  )
+              : [];
+
+          throw new Error(
+            blockers.length
+              ? blockers.join(
+                  " ",
+                )
+              : typeof payload.error ===
+                  "string"
+                ? payload.error
+                : "Vesu Borrow preparation failed.",
+          );
+        }
+
+        const prepared =
+          payload as unknown as
+            PrepareResponse;
+
+        if (
+          !prepared.execution ||
+          prepared.provider !==
+            "Vesu" ||
+          prepared.pool.id !==
+            reviewedMarket
+              .pool.id
+        ) {
+          throw new Error(
+            "CAREL received a mismatched Borrow preparation.",
+          );
+        }
+
+        return {
+          execution:
+            prepared.execution,
+
+          label:
+            "Borrow " +
+            input.borrowAmountText +
+            " " +
+            selectedDebtAsset.symbol +
+            " against " +
+            input.collateralAmountText +
+            " STRK · Vesu " +
+            prepared.pool.name,
+        };
+      },
+
+      async executeBorrow(
+        execution,
+        label,
+      ) {
+        /*
+         * wallet.executeBorrow already performs the real guarded wallet
+         * submission. For this migration we intentionally report the stage
+         * as submitted so the generic Agent confirmation path performs the
+         * authoritative output verification before Shield can unlock.
+         */
+        const hash =
+          await wallet
+            .executeBorrow(
+              execution,
+              label,
+            );
+
+        return {
+          hash,
+
+          status:
+            "submitted",
+        };
+      },
+
+      async executeShieldAsset(
+        assetId,
+        amountText,
+        label,
+      ) {
+        return wallet
+          .executeShieldAsset(
+            assetId,
+            amountText,
+            label,
+          );
+      },
+
+      async readPublicBalance(
+        input,
+      ) {
+        const targetNetwork =
+          getCarelNetwork(
+            input.chainId,
+          );
+
+        if (!targetNetwork) {
+          throw new Error(
+            "Agent output verification received an unsupported Starknet network.",
+          );
+        }
+
+        const asset =
+          targetNetwork
+            .assetList
+            .find(
+              (candidate) =>
+                candidate.id ===
+                  input.assetId,
+            );
+
+        if (!asset) {
+          throw new Error(
+            "Agent output verification received an unknown CAREL asset.",
+          );
+        }
+
+        const observed =
+          await readStarknetPublicBalances(
+            input.account,
+            targetNetwork.provider,
+            [
+              asset,
+            ],
+          );
+
+        return (
+          findAssetBalance(
+            observed,
+            asset.id,
+            "public",
+          )?.amount ??
+          0n
+        );
+      },
+
+      async waitForTransaction(
+        input,
+      ) {
+        const targetNetwork =
+          getCarelNetwork(
+            input.chainId,
+          );
+
+        if (!targetNetwork) {
+          throw new Error(
+            "Agent confirmation received an unsupported Starknet network.",
+          );
+        }
+
+        const receipt: unknown =
+          await targetNetwork
+            .provider
+            .waitForTransaction(
+              input.transactionId,
+              {
+                retries: 2,
+                retryInterval:
+                  1500,
+              },
+            );
+
+        if (
+          receipt &&
+          typeof receipt ===
+            "object" &&
+          (
+            receipt as Record<
+              string,
+              unknown
+            >
+          ).execution_status ===
+            "REVERTED"
+        ) {
+          throw new Error(
+            "The Starknet transaction reverted.",
+          );
+        }
+      },
+    });
+  }
+
+
+  /**
+   * Confirms Borrow through the generic Agent runtime.
    *
-   * Stage 2:
-   * Exact borrowed debt asset -> STRK20 privacy pool.
+   * Shield remains locked until the runtime:
+   * 1. observes Starknet confirmation,
+   * 2. verifies the actual public Borrow output,
+   * 3. records that output in AgentExecutionSession.
    */
   async function refreshShieldBorrowConfirmation() {
     if (
@@ -889,8 +1220,43 @@ export function VesuBorrow({
       shieldBorrowProgress.kind !==
         "waiting" ||
       !network ||
-      network.id !== "mainnet"
+      network.id !==
+        "mainnet"
     ) {
+      return;
+    }
+
+    const plan =
+      shieldAgentPlanRef.current;
+
+    const session =
+      shieldAgentSessionRef.current;
+
+    const runtime =
+      shieldAgentRuntimeRef.current;
+
+    if (
+      !plan ||
+      !session ||
+      !runtime
+    ) {
+      setError(
+        "The Shield Borrow Agent session is unavailable. Review the Borrow again.",
+      );
+
+      return;
+    }
+
+    if (
+      shieldAgentAccountRef.current !==
+        wallet.address ||
+      plan.objective.chainId !==
+        wallet.chainId
+    ) {
+      setError(
+        "Wallet account or network changed. Restart Shield Borrow.",
+      );
+
       return;
     }
 
@@ -901,56 +1267,75 @@ export function VesuBorrow({
     setError("");
 
     try {
-      const receipt: unknown =
-        await network.provider
-          .waitForTransaction(
-            shieldBorrowProgress
-              .borrowHash,
+      const next =
+        await runtime
+          .confirmSubmittedStage(
+            plan,
+            session,
+            "borrow-1",
             {
-              retries: 2,
-              retryInterval: 1500,
+              runId:
+                session.runId,
+
+              chainId:
+                wallet.chainId,
+
+              account:
+                wallet.address,
             },
           );
 
-      if (
-        receipt &&
-        typeof receipt ===
-          "object"
-      ) {
-        const executionStatus =
-          (
-            receipt as Record<
-              string,
-              unknown
-            >
-          ).execution_status;
+      shieldAgentSessionRef.current =
+        next;
 
-        if (
-          executionStatus ===
-          "REVERTED"
-        ) {
-          throw new Error(
-            "The Vesu Borrow reverted. Shield remains locked.",
-          );
-        }
+      const output =
+        next.outputs[
+          "borrow-1"
+        ];
+
+      if (!output) {
+        throw new Error(
+          "Borrow confirmed without a verified Agent output.",
+        );
       }
 
-      await wallet
-        .refreshAssetBalances();
+      try {
+        await wallet
+          .refreshAssetBalances();
+      } catch {
+        // Agent verification already read the balance directly on-chain.
+      }
 
       setShieldBorrowProgress({
         ...shieldBorrowProgress,
 
-        kind: "ready",
+        kind:
+          "ready",
+
+        amount:
+          output.amountText,
+
+        amountUnits:
+          output.amountUnits ??
+          shieldBorrowProgress
+            .amountUnits,
+
+        debtSymbol:
+          output.assetSymbol,
       });
+
+      setSuccess(
+        "Borrow confirmed and " +
+        output.amountText +
+        " " +
+        output.assetSymbol +
+        " verified. Shield is unlocked.",
+      );
     } catch (cause) {
       setError(
-        cause instanceof Error &&
-        /revert/i.test(
-          cause.message,
-        )
+        cause instanceof Error
           ? cause.message
-          : "Borrow is not confirmed yet. Shield remains locked.",
+          : "Borrow is not confirmed and verified yet. Shield remains locked.",
       );
     } finally {
       setCheckingShieldBorrow(
@@ -961,10 +1346,10 @@ export function VesuBorrow({
 
 
   /**
-   * Shields exactly the reviewed Borrow output.
+   * Executes Shield only from the verified Agent Borrow output.
    *
-   * The Vesu collateral/debt position stays public.
-   * Only the borrowed proceeds move into STRK20 privacy.
+   * shieldBorrowProgress is now display state only; the exact Shield amount
+   * is resolved by executeAgentStage from session.outputs["borrow-1"].
    */
   async function shieldBorrowProceeds() {
     if (
@@ -1018,7 +1403,7 @@ export function VesuBorrow({
           expected
     ) {
       setError(
-        `The borrowed ${shieldBorrowProgress.debtSymbol} is not visible in the public wallet yet.`,
+        "The verified borrowed asset is not visible in the public wallet yet.",
       );
 
       return;
@@ -1034,6 +1419,40 @@ export function VesuBorrow({
       return;
     }
 
+    const plan =
+      shieldAgentPlanRef.current;
+
+    const session =
+      shieldAgentSessionRef.current;
+
+    const runtime =
+      shieldAgentRuntimeRef.current;
+
+    if (
+      !plan ||
+      !session ||
+      !runtime
+    ) {
+      setError(
+        "The Shield Borrow Agent session is unavailable.",
+      );
+
+      return;
+    }
+
+    if (
+      shieldAgentAccountRef.current !==
+        wallet.address ||
+      plan.objective.chainId !==
+        wallet.chainId
+    ) {
+      setError(
+        "Wallet account or network changed. Restart Shield Borrow.",
+      );
+
+      return;
+    }
+
     setShieldingBorrow(
       true,
     );
@@ -1043,26 +1462,43 @@ export function VesuBorrow({
 
     try {
       const result =
-        await wallet
-          .executeShieldAsset(
-            shieldBorrowProgress
-              .debtAssetId,
+        await executeAgentStage(
+          plan,
+          session,
+          "shield-2",
+          {
+            runId:
+              session.runId,
 
-            shieldBorrowProgress
-              .amount,
+            chainId:
+              wallet.chainId,
 
-            `Shield borrowed ${shieldBorrowProgress.amount} ${shieldBorrowProgress.debtSymbol}`,
-          );
+            account:
+              wallet.address,
+          },
+          runtime.registry,
+        );
+
+      shieldAgentSessionRef.current =
+        result.session;
+
+      const status =
+        result.receipt.status ===
+          "confirmed"
+          ? "confirmed"
+          : "submitted";
 
       setShieldBorrowProgress({
-        kind: "shielded",
+        kind:
+          "shielded",
 
         borrowHash:
           shieldBorrowProgress
             .borrowHash,
 
         shieldHash:
-          result.hash,
+          result.receipt
+            .transactionId,
 
         amount:
           shieldBorrowProgress
@@ -1076,21 +1512,129 @@ export function VesuBorrow({
           shieldBorrowProgress
             .debtSymbol,
 
-        status:
-          result.status,
+        status,
       });
 
       setSuccess(
-        `Borrowed ${shieldBorrowProgress.amount} ${shieldBorrowProgress.debtSymbol}; Shield ${result.status}.`,
+        "Borrowed " +
+        shieldBorrowProgress
+          .amount +
+        " " +
+        shieldBorrowProgress
+          .debtSymbol +
+        "; Shield " +
+        status +
+        ".",
       );
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Could not Shield the borrowed asset.",
+          : "Could not execute the Agent Shield stage.",
       );
     } finally {
       setShieldingBorrow(
+        false,
+      );
+    }
+  }
+
+
+  /**
+   * Completes a Shield stage that was submitted but did not finish within
+   * the wallet-side confirmation window.
+   */
+  async function refreshShieldStageConfirmation() {
+    if (
+      mode !== "shield" ||
+      shieldBorrowProgress.kind !==
+        "shielded" ||
+      shieldBorrowProgress.status !==
+        "submitted"
+    ) {
+      return;
+    }
+
+    const plan =
+      shieldAgentPlanRef.current;
+
+    const session =
+      shieldAgentSessionRef.current;
+
+    const runtime =
+      shieldAgentRuntimeRef.current;
+
+    if (
+      !plan ||
+      !session ||
+      !runtime
+    ) {
+      setError(
+        "The Shield Agent session is unavailable.",
+      );
+
+      return;
+    }
+
+    if (
+      shieldAgentAccountRef.current !==
+        wallet.address ||
+      plan.objective.chainId !==
+        wallet.chainId
+    ) {
+      setError(
+        "Wallet account or network changed. Restart Shield Borrow.",
+      );
+
+      return;
+    }
+
+    setCheckingShieldBorrow(
+      true,
+    );
+
+    setError("");
+
+    try {
+      const next =
+        await runtime
+          .confirmSubmittedStage(
+            plan,
+            session,
+            "shield-2",
+            {
+              runId:
+                session.runId,
+
+              chainId:
+                wallet.chainId,
+
+              account:
+                wallet.address,
+            },
+          );
+
+      shieldAgentSessionRef.current =
+        next;
+
+      setShieldBorrowProgress({
+        ...shieldBorrowProgress,
+
+        status:
+          "confirmed",
+      });
+
+      setSuccess(
+        "Borrow and Shield Agent plan completed.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Shield is not confirmed yet.",
+      );
+    } finally {
+      setCheckingShieldBorrow(
         false,
       );
     }
@@ -1190,6 +1734,175 @@ export function VesuBorrow({
     setSuccess("");
 
     try {
+      if (
+        mode === "shield"
+      ) {
+        if (
+          !network ||
+          network.id !==
+            "mainnet"
+        ) {
+          throw new Error(
+            "Shield Borrow requires Starknet Mainnet.",
+          );
+        }
+
+        const agentGoal =
+          "Borrow " +
+          borrowAmount +
+          " " +
+          selectedDebtAsset.symbol +
+          " against " +
+          collateralAmount +
+          " STRK but keep the result private.";
+
+        const plan =
+          buildStarknetAgentPlan({
+            goal:
+              agentGoal,
+
+            chainId:
+              wallet.chainId,
+
+            mode:
+              "shield",
+          });
+
+        if (
+          plan.status !==
+            "ready"
+        ) {
+          throw new Error(
+            plan.message ??
+            "CAREL could not build the Shield Borrow Agent plan.",
+          );
+        }
+
+        const runId =
+          "borrow-" +
+          Date.now()
+            .toString(36) +
+          "-" +
+          Math.random()
+            .toString(36)
+            .slice(2);
+
+        const session =
+          createAgentExecutionSession(
+            plan,
+            runId,
+          );
+
+        const runtime =
+          createLiveShieldBorrowRuntime();
+
+        shieldAgentPlanRef.current =
+          plan;
+
+        shieldAgentSessionRef.current =
+          session;
+
+        shieldAgentRuntimeRef.current =
+          runtime;
+
+        shieldAgentAccountRef.current =
+          wallet.address;
+
+        /*
+         * Kept only for the current UI readiness indicator.
+         * The Agent runtime independently records its authoritative on-chain
+         * baseline before Vesu submission.
+         */
+        const publicDebtBefore =
+          findAssetBalance(
+            wallet.balances,
+            selectedDebtAsset.id,
+            "public",
+          )?.amount ??
+          0n;
+
+        const expectedShieldAmount =
+          parseUnits(
+            borrowAmount,
+            selectedDebtAsset
+              .decimals,
+          );
+
+        const result =
+          await executeAgentStage(
+            plan,
+            session,
+            "borrow-1",
+            {
+              runId:
+                session.runId,
+
+              chainId:
+                wallet.chainId,
+
+              account:
+                wallet.address,
+            },
+            runtime.registry,
+          );
+
+        shieldAgentSessionRef.current =
+          result.session;
+
+        const verified =
+          result.session
+            .outputs[
+              "borrow-1"
+            ];
+
+        setShieldBorrowProgress({
+          kind:
+            verified
+              ? "ready"
+              : "waiting",
+
+          borrowHash:
+            result.receipt
+              .transactionId,
+
+          amount:
+            verified
+              ?.amountText ??
+            borrowAmount,
+
+          amountUnits:
+            verified
+              ?.amountUnits ??
+            expectedShieldAmount
+              .toString(),
+
+          debtAssetId:
+            selectedDebtAsset.id,
+
+          debtSymbol:
+            verified
+              ?.assetSymbol ??
+            selectedDebtAsset
+              .symbol,
+
+          publicBefore:
+            publicDebtBefore
+              .toString(),
+        });
+
+        setSuccess(
+          verified
+            ? "Borrow confirmed and verified. Shield is unlocked."
+            : "Borrow submitted through Agent Core. Confirm it before Shield.",
+        );
+
+        setReviewed(
+          false,
+        );
+
+        return;
+      }
+
       const response =
         await fetch(
           "/api/vesu/borrow/prepare",
@@ -1294,60 +2007,44 @@ export function VesuBorrow({
           `Borrow ${borrowAmount} ${selectedDebtAsset.symbol} against ${collateralAmount} STRK · Vesu ${prepared.pool.name}`,
         );
 
-      if (
-        mode === "shield"
-      ) {
-        setShieldBorrowProgress({
-          kind: "waiting",
-
-          borrowHash:
-            hash,
-
-          amount:
-            borrowAmount,
-
-          amountUnits:
-            expectedShieldAmount
-              .toString(),
-
-          debtAssetId:
-            selectedDebtAsset.id,
-
-          debtSymbol:
-            selectedDebtAsset
-              .symbol,
-
-          publicBefore:
-            publicDebtBefore
-              .toString(),
-        });
-
-        setSuccess(
-          `Borrow submitted. Confirm it before Shielding ${borrowAmount} ${selectedDebtAsset.symbol}.`,
-        );
-      } else {
-        setSuccess(
-          `Borrow submitted: ${hash.slice(
-            0,
-            10,
-          )}…${hash.slice(-6)}`,
-        );
-      }
+      setSuccess(
+        `Borrow submitted: ${hash.slice(
+          0,
+          10,
+        )}…${hash.slice(-6)}`,
+      );
 
       setReviewed(false);
 
-      if (
-        mode !== "shield"
-      ) {
-        try {
-          await loadMarkets(
-            false,
-          );
-        } catch {
-          // Execution result remains visible even if market refresh fails.
-        }
+      try {
+        await loadMarkets(
+          false,
+        );
+      } catch {
+        // Execution result remains visible even if market refresh fails.
       }
     } catch (cause) {
+      if (
+        mode === "shield"
+      ) {
+        shieldAgentPlanRef.current =
+          null;
+
+        shieldAgentSessionRef.current =
+          null;
+
+        shieldAgentRuntimeRef.current =
+          null;
+
+        shieldAgentAccountRef.current =
+          "";
+
+        setShieldBorrowProgress({
+          kind:
+            "idle",
+        });
+      }
+
       setError(
         cause instanceof Error
           ? cause.message
@@ -1826,6 +2523,29 @@ export function VesuBorrow({
                   )}
                 </strong>
               </div>
+
+              {shieldBorrowProgress
+                .status ===
+                  "submitted" && (
+                <button
+                  type="button"
+                  className={
+                    styles.secondary
+                  }
+                  disabled={busy}
+                  onClick={() =>
+                    void refreshShieldStageConfirmation()
+                  }
+                >
+                  <RefreshCw
+                    size={16}
+                  />
+
+                  {checkingShieldBorrow
+                    ? "Checking Shield confirmation…"
+                    : "Check Shield confirmation"}
+                </button>
+              )}
             </>
           )}
 
