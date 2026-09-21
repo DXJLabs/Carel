@@ -394,10 +394,12 @@ export function VesuBorrow({
       null,
     );
 
-  const borrowAgentSessionRef =
-    useRef<AgentExecutionSession | null>(
-      null,
-    );
+  const [
+    borrowAgentSession,
+    setBorrowAgentSession,
+  ] = useState<AgentExecutionSession | null>(
+    null,
+  );
 
   const borrowAgentRuntimeRef =
     useRef<StarknetBorrowRuntime | null>(
@@ -437,8 +439,7 @@ export function VesuBorrow({
     borrowAgentPlanRef.current =
       null;
 
-    borrowAgentSessionRef.current =
-      null;
+    setBorrowAgentSession(null);
 
     borrowAgentRuntimeRef.current =
       null;
@@ -449,8 +450,7 @@ export function VesuBorrow({
 
   const normalAgentSession =
     mode === "normal"
-      ? borrowAgentSessionRef
-          .current
+      ? borrowAgentSession
       : null;
 
   const normalAgentBorrowStage =
@@ -471,7 +471,7 @@ export function VesuBorrow({
 
   const unshieldAgentSession =
     mode === "unshield"
-      ? borrowAgentSessionRef.current
+      ? borrowAgentSession
       : null;
 
   const unshieldBorrowStage =
@@ -615,8 +615,7 @@ export function VesuBorrow({
     borrowAgentPlanRef.current =
       null;
 
-    borrowAgentSessionRef.current =
-      null;
+    setBorrowAgentSession(null);
 
     borrowAgentRuntimeRef.current =
       null;
@@ -826,7 +825,7 @@ export function VesuBorrow({
     }
 
     if (
-      borrowAgentSessionRef.current
+      borrowAgentSession
     ) {
       setError(
         "Finish the current Unshield Borrow flow first.",
@@ -922,8 +921,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current =
         plan;
 
-      borrowAgentSessionRef.current =
-        session;
+      setBorrowAgentSession(session);
 
       borrowAgentRuntimeRef.current =
         runtime;
@@ -947,8 +945,7 @@ export function VesuBorrow({
           runtime.registry,
         );
 
-      borrowAgentSessionRef.current =
-        result.session;
+      setBorrowAgentSession(result.session);
 
       setUnshieldProgress({
         kind: "waiting",
@@ -994,7 +991,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current;
 
     const session =
-      borrowAgentSessionRef.current;
+      borrowAgentSession;
 
     const runtime =
       borrowAgentRuntimeRef.current;
@@ -1053,8 +1050,7 @@ export function VesuBorrow({
         );
       }
 
-      borrowAgentSessionRef.current =
-        next;
+      setBorrowAgentSession(next);
 
       setUnshieldProgress({
         kind: "ready",
@@ -1391,7 +1387,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current;
 
     const session =
-      borrowAgentSessionRef.current;
+      borrowAgentSession;
 
     const runtime =
       borrowAgentRuntimeRef.current;
@@ -1448,8 +1444,7 @@ export function VesuBorrow({
             },
           );
 
-      borrowAgentSessionRef.current =
-        next;
+      setBorrowAgentSession(next);
 
       const output =
         next.outputs[
@@ -1512,7 +1507,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current;
 
     const session =
-      borrowAgentSessionRef.current;
+      borrowAgentSession;
 
     const runtime =
       borrowAgentRuntimeRef.current;
@@ -1575,8 +1570,7 @@ export function VesuBorrow({
         );
       }
 
-      borrowAgentSessionRef.current =
-        next;
+      setBorrowAgentSession(next);
 
       try {
         await wallet.refreshAssetBalances();
@@ -1627,7 +1621,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current;
 
     const session =
-      borrowAgentSessionRef.current;
+      borrowAgentSession;
 
     const runtime =
       borrowAgentRuntimeRef.current;
@@ -1682,8 +1676,7 @@ export function VesuBorrow({
             },
           );
 
-      borrowAgentSessionRef.current =
-        next;
+      setBorrowAgentSession(next);
 
       const output =
         next.outputs[
@@ -1820,7 +1813,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current;
 
     const session =
-      borrowAgentSessionRef.current;
+      borrowAgentSession;
 
     const runtime =
       borrowAgentRuntimeRef.current;
@@ -1876,8 +1869,7 @@ export function VesuBorrow({
           runtime.registry,
         );
 
-      borrowAgentSessionRef.current =
-        result.session;
+      setBorrowAgentSession(result.session);
 
       const status =
         result.receipt.status ===
@@ -1956,7 +1948,7 @@ export function VesuBorrow({
       borrowAgentPlanRef.current;
 
     const session =
-      borrowAgentSessionRef.current;
+      borrowAgentSession;
 
     const runtime =
       borrowAgentRuntimeRef.current;
@@ -2011,8 +2003,7 @@ export function VesuBorrow({
             },
           );
 
-      borrowAgentSessionRef.current =
-        next;
+      setBorrowAgentSession(next);
 
       setShieldBorrowProgress({
         ...shieldBorrowProgress,
@@ -2209,8 +2200,7 @@ export function VesuBorrow({
         borrowAgentPlanRef.current =
           plan;
 
-        borrowAgentSessionRef.current =
-          session;
+        setBorrowAgentSession(session);
 
         borrowAgentRuntimeRef.current =
           runtime;
@@ -2256,8 +2246,7 @@ export function VesuBorrow({
             runtime.registry,
           );
 
-        borrowAgentSessionRef.current =
-          result.session;
+        setBorrowAgentSession(result.session);
 
         const verified =
           result.session
@@ -2317,8 +2306,7 @@ export function VesuBorrow({
         mode === "normal"
       ) {
         if (
-          borrowAgentSessionRef
-            .current
+          borrowAgentSession
             ?.run.status ===
             "completed"
         ) {
@@ -2373,8 +2361,7 @@ export function VesuBorrow({
         borrowAgentPlanRef.current =
           plan;
 
-        borrowAgentSessionRef.current =
-          session;
+        setBorrowAgentSession(session);
 
         borrowAgentRuntimeRef.current =
           runtime;
@@ -2400,8 +2387,7 @@ export function VesuBorrow({
             runtime.registry,
           );
 
-        borrowAgentSessionRef.current =
-          result.session;
+        setBorrowAgentSession(result.session);
 
         setSuccess(
           "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
@@ -2426,7 +2412,7 @@ export function VesuBorrow({
         borrowAgentPlanRef.current;
 
       const session =
-        borrowAgentSessionRef.current;
+        borrowAgentSession;
 
       if (
         !plan ||
@@ -2478,8 +2464,7 @@ export function VesuBorrow({
           runtime.registry,
         );
 
-      borrowAgentSessionRef.current =
-        result.session;
+      setBorrowAgentSession(result.session);
 
       setSuccess(
         "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
@@ -2493,8 +2478,7 @@ export function VesuBorrow({
         mode === "normal"
       ) {
         const current =
-          borrowAgentSessionRef
-            .current;
+          borrowAgentSession;
 
         const stage =
           current
@@ -2519,8 +2503,7 @@ export function VesuBorrow({
         borrowAgentPlanRef.current =
           null;
 
-        borrowAgentSessionRef.current =
-          null;
+        setBorrowAgentSession(null);
 
         borrowAgentRuntimeRef.current =
           null;
