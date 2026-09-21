@@ -3,9 +3,12 @@ import {
 } from "next/server";
 
 import {
-  createSignedAgentFeeSettlementReceipt,
-  verifyAgentFeeSettlement,
-  type SignedAgentFeeQuote,
+  normalizeStarknetAddress,
+} from "@/lib/carel/ecosystems/starknet/addresses";
+
+import {
+  verifySignedAgentFeeSettlementReceipt,
+  type SignedAgentFeeSettlementReceipt,
 } from "@/lib/agent/server-fee";
 
 
@@ -35,7 +38,7 @@ export async function POST(
       )
     ) {
       throw new Error(
-        "Invalid Agent fee settlement request.",
+        "Invalid Agent fee resume request.",
       );
     }
 
@@ -48,39 +51,43 @@ export async function POST(
 
 
     if (
-      !body.signedQuote ||
-      typeof body.signedQuote !==
-        "object" ||
-      Array.isArray(
-        body.signedQuote,
-      ) ||
-      typeof body.transactionHash !==
-        "string"
+      typeof body.runId !==
+        "string" ||
+      typeof body.chainId !==
+        "string" ||
+      typeof body.payer !==
+        "string" ||
+      !body.settlementReceipt ||
+      typeof body.settlementReceipt !==
+        "object"
     ) {
       throw new Error(
-        "Agent fee settlement requires signedQuote and transactionHash.",
+        "Agent fee resume requires runId, chainId, payer and settlementReceipt.",
       );
     }
 
 
-    const quote =
-      await verifyAgentFeeSettlement({
-        signedQuote:
-          body.signedQuote as
-            SignedAgentFeeQuote,
-
-        transactionHash:
-          body.transactionHash,
-      });
+    const receipt =
+      verifySignedAgentFeeSettlementReceipt(
+        body.settlementReceipt as
+          SignedAgentFeeSettlementReceipt,
+      );
 
 
-    const settlementReceipt =
-      createSignedAgentFeeSettlementReceipt({
-        quote,
-
-        transactionHash:
-          body.transactionHash,
-      });
+    if (
+      receipt.runId !==
+        body.runId.trim() ||
+      receipt.chainId !==
+        body.chainId.trim() ||
+      receipt.payer !==
+        normalizeStarknetAddress(
+          body.payer,
+        )
+    ) {
+      throw new Error(
+        "Agent fee settlement receipt belongs to another execution.",
+      );
+    }
 
 
     return NextResponse.json(
@@ -88,14 +95,15 @@ export async function POST(
         settled:
           true,
 
-        settlementReceipt,
+        runId:
+          receipt.runId,
 
         executionReference: {
           kind:
             "transaction",
 
           id:
-            body.transactionHash,
+            receipt.transactionHash,
         },
       },
       {
@@ -117,7 +125,7 @@ export async function POST(
         error:
           cause instanceof Error
             ? cause.message
-            : "Could not verify CAREL Agent fee settlement.",
+            : "Could not restore CAREL Agent fee authorization.",
       },
       {
         status:

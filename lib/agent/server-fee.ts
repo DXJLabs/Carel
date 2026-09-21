@@ -43,6 +43,44 @@ export type SignedAgentFeeQuote =
   }>;
 
 
+export type AgentFeeSettlementReceipt =
+  Readonly<{
+    version:
+      1;
+
+    runId:
+      string;
+
+    idempotencyKey:
+      string;
+
+    quoteId:
+      string;
+
+    payer:
+      string;
+
+    chainId:
+      string;
+
+    transactionHash:
+      string;
+
+    settledAt:
+      number;
+  }>;
+
+
+export type SignedAgentFeeSettlementReceipt =
+  Readonly<{
+    receipt:
+      AgentFeeSettlementReceipt;
+
+    signature:
+      string;
+  }>;
+
+
 export type AgentFeeEvent =
   Readonly<{
     from_address:
@@ -752,7 +790,9 @@ export async function verifyAgentFeeSettlement({
 
   transactionHash:
     string;
-}>): Promise<void> {
+}>): Promise<
+  AgentFeeExecutionQuote
+> {
   if (
     !/^0x[0-9a-f]{1,64}$/i.test(
       transactionHash,
@@ -912,6 +952,265 @@ export async function verifyAgentFeeSettlement({
 
     events,
   });
+
+
+  return quote;
+}
+
+
+function canonicalSettlementReceipt(
+  receipt:
+    AgentFeeSettlementReceipt,
+): string {
+  return JSON.stringify([
+    receipt.version,
+    receipt.runId,
+    receipt.idempotencyKey,
+    receipt.quoteId,
+    receipt.payer,
+    receipt.chainId,
+    receipt.transactionHash,
+    receipt.settledAt,
+  ]);
+}
+
+
+export function createSignedAgentFeeSettlementReceipt({
+  quote,
+  transactionHash,
+  now =
+    Date.now(),
+}: Readonly<{
+  quote:
+    AgentFeeExecutionQuote;
+
+  transactionHash:
+    string;
+
+  now?:
+    number;
+}>): SignedAgentFeeSettlementReceipt {
+  const tx =
+    transactionHash
+      .trim()
+      .toLowerCase();
+
+
+  if (
+    !/^0x[0-9a-f]{1,64}$/.test(
+      tx,
+    )
+  ) {
+    throw new Error(
+      "Agent fee settlement receipt received an invalid transaction hash.",
+    );
+  }
+
+
+  if (
+    quote.idempotencyKey !==
+      agentFeeIdempotencyKey(
+        quote.runId,
+      )
+  ) {
+    throw new Error(
+      "Agent fee settlement receipt received an invalid run identity.",
+    );
+  }
+
+
+  if (
+    !/^[0-9a-f]{64}$/i.test(
+      quote.quoteId,
+    )
+  ) {
+    throw new Error(
+      "Agent fee settlement receipt received an invalid quote id.",
+    );
+  }
+
+
+  if (
+    !Number.isFinite(
+      now,
+    ) ||
+    now <= 0
+  ) {
+    throw new Error(
+      "Agent fee settlement receipt received an invalid settlement time.",
+    );
+  }
+
+
+  const receipt:
+    AgentFeeSettlementReceipt = {
+    version:
+      1,
+
+    runId:
+      quote.runId,
+
+    idempotencyKey:
+      quote.idempotencyKey,
+
+    quoteId:
+      quote.quoteId
+        .toLowerCase(),
+
+    payer:
+      normalizeStarknetAddress(
+        quote.payer,
+      ),
+
+    chainId:
+      quote.chainId.trim(),
+
+    transactionHash:
+      tx,
+
+    settledAt:
+      now,
+  };
+
+
+  return {
+    receipt,
+
+    signature:
+      sign(
+        `settled:${canonicalSettlementReceipt(
+          receipt,
+        )}`,
+      ),
+  };
+}
+
+
+export function verifySignedAgentFeeSettlementReceipt(
+  signed:
+    SignedAgentFeeSettlementReceipt,
+): AgentFeeSettlementReceipt {
+  if (
+    !signed ||
+    typeof signed !==
+      "object" ||
+    !signed.receipt ||
+    typeof signed.receipt !==
+      "object"
+  ) {
+    throw new Error(
+      "Invalid CAREL Agent fee settlement receipt.",
+    );
+  }
+
+
+  const raw =
+    signed.receipt;
+
+
+  const runId =
+    raw.runId
+      ?.trim();
+
+  const chainId =
+    raw.chainId
+      ?.trim();
+
+  const tx =
+    raw.transactionHash
+      ?.trim()
+      .toLowerCase();
+
+
+  if (
+    raw.version !==
+      1 ||
+    !runId ||
+    runId.length >
+      128 ||
+    !chainId ||
+    !/^[0-9a-f]{64}$/i.test(
+      raw.quoteId,
+    ) ||
+    !/^0x[0-9a-f]{1,64}$/.test(
+      tx,
+    ) ||
+    !Number.isFinite(
+      raw.settledAt,
+    ) ||
+    raw.settledAt <= 0 ||
+    raw.settledAt >
+      Date.now() +
+      5 * 60_000
+  ) {
+    throw new Error(
+      "Invalid CAREL Agent fee settlement receipt.",
+    );
+  }
+
+
+  if (
+    raw.idempotencyKey !==
+      agentFeeIdempotencyKey(
+        runId,
+      )
+  ) {
+    throw new Error(
+      "CAREL Agent fee settlement receipt has an invalid idempotency key.",
+    );
+  }
+
+
+  const receipt:
+    AgentFeeSettlementReceipt = {
+    version:
+      1,
+
+    runId,
+
+    idempotencyKey:
+      raw.idempotencyKey,
+
+    quoteId:
+      raw.quoteId
+        .toLowerCase(),
+
+    payer:
+      normalizeStarknetAddress(
+        raw.payer,
+      ),
+
+    chainId,
+
+    transactionHash:
+      tx,
+
+    settledAt:
+      raw.settledAt,
+  };
+
+
+  const expected =
+    sign(
+      `settled:${canonicalSettlementReceipt(
+        receipt,
+      )}`,
+    );
+
+
+  if (
+    !safeSignatureEqual(
+      signed.signature,
+      expected,
+    )
+  ) {
+    throw new Error(
+      "CAREL Agent fee settlement receipt signature is invalid.",
+    );
+  }
+
+
+  return receipt;
 }
 
 

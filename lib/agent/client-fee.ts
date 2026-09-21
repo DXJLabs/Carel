@@ -22,6 +22,40 @@ export type SignedAgentFeeQuotePayload =
   }>;
 
 
+export type SignedAgentFeeSettlementReceiptPayload =
+  Readonly<{
+    receipt:
+      Readonly<{
+        version:
+          1;
+
+        runId:
+          string;
+
+        idempotencyKey:
+          string;
+
+        quoteId:
+          string;
+
+        payer:
+          string;
+
+        chainId:
+          string;
+
+        transactionHash:
+          string;
+
+        settledAt:
+          number;
+      }>;
+
+    signature:
+      string;
+  }>;
+
+
 export type AgentFeeClientSession =
   Readonly<{
     state:
@@ -29,6 +63,9 @@ export type AgentFeeClientSession =
 
     signedQuote?:
       SignedAgentFeeQuotePayload;
+
+    settlementReceipt?:
+      SignedAgentFeeSettlementReceiptPayload;
   }>;
 
 
@@ -455,6 +492,36 @@ export async function settleAgentPlanFee(
   }
 
 
+  const settlementReceipt =
+    raw.settlementReceipt;
+
+
+  const validSettlementReceipt =
+    Boolean(
+      settlementReceipt &&
+      typeof settlementReceipt ===
+        "object" &&
+      !Array.isArray(
+        settlementReceipt,
+      ) &&
+      (
+        settlementReceipt as
+          Record<
+            string,
+            unknown
+          >
+      ).receipt &&
+      typeof (
+        settlementReceipt as
+          Record<
+            string,
+            unknown
+          >
+      ).signature ===
+        "string"
+    );
+
+
   return {
     state:
       settleAgentFee(
@@ -463,6 +530,14 @@ export async function settleAgentPlanFee(
 
     signedQuote:
       session.signedQuote,
+
+    ...(validSettlementReceipt
+      ? {
+          settlementReceipt:
+            settlementReceipt as
+              SignedAgentFeeSettlementReceiptPayload,
+        }
+      : {}),
   };
 }
 

@@ -10,6 +10,7 @@ import {
   type AgentFeeClientSession,
   type AgentFeeHttpClient,
   type AgentFeeWalletExecutor,
+  type SignedAgentFeeSettlementReceiptPayload,
 } from "@/lib/agent/client-fee";
 
 
@@ -182,6 +183,161 @@ export function assertAgentExecutionFeeAuthorization(
     throw new Error(
       "Agent fee authorization is not executable.",
     );
+  }
+}
+
+
+type PersistedAgentFeeSettlement =
+  Readonly<{
+    version:
+      1;
+
+    runId:
+      string;
+
+    chainId:
+      string;
+
+    payer:
+      string;
+
+    settlementReceipt:
+      SignedAgentFeeSettlementReceiptPayload;
+  }>;
+
+
+function feeStorageKey(
+  payer:
+    string,
+
+  runId:
+    string,
+): string {
+  return [
+    "carel.agent.fee.v1",
+    payer
+      .trim()
+      .toLowerCase(),
+    runId,
+  ].join(
+    ":",
+  );
+}
+
+
+function saveSettlementEvidence(
+  evidence:
+    PersistedAgentFeeSettlement,
+) {
+  if (
+    typeof window ===
+      "undefined"
+  ) {
+    return;
+  }
+
+
+  try {
+    window.localStorage
+      .setItem(
+        feeStorageKey(
+          evidence.payer,
+          evidence.runId,
+        ),
+
+        JSON.stringify(
+          evidence,
+        ),
+      );
+  } catch {
+    /*
+     * A storage failure happens after fee settlement.
+     * Never turn it into a transaction failure or invite another charge.
+     */
+  }
+}
+
+
+function loadSettlementEvidence(
+  payer:
+    string,
+
+  runId:
+    string,
+): PersistedAgentFeeSettlement | null {
+  if (
+    typeof window ===
+      "undefined"
+  ) {
+    return null;
+  }
+
+
+  try {
+    const raw =
+      window.localStorage
+        .getItem(
+          feeStorageKey(
+            payer,
+            runId,
+          ),
+        );
+
+
+    if (!raw) {
+      return null;
+    }
+
+
+    const parsed:
+      unknown =
+      JSON.parse(
+        raw,
+      );
+
+
+    if (
+      !parsed ||
+      typeof parsed !==
+        "object" ||
+      Array.isArray(
+        parsed,
+      )
+    ) {
+      return null;
+    }
+
+
+    const value =
+      parsed as
+        Record<
+          string,
+          unknown
+        >;
+
+
+    if (
+      value.version !==
+        1 ||
+      value.runId !==
+        runId ||
+      typeof value.chainId !==
+        "string" ||
+      typeof value.payer !==
+        "string" ||
+      !value.settlementReceipt ||
+      typeof value.settlementReceipt !==
+        "object"
+    ) {
+      return null;
+    }
+
+
+    return value as
+      unknown as
+        PersistedAgentFeeSettlement;
+  } catch {
+    return null;
   }
 }
 
@@ -541,6 +697,28 @@ export function createAgentFeeGateCoordinator({
     }
 
 
+    if (
+      current.feeSession
+        .settlementReceipt
+    ) {
+      saveSettlementEvidence({
+        version:
+          1,
+
+        runId:
+          current.runId,
+
+        chainId,
+
+        payer,
+
+        settlementReceipt:
+          current.feeSession
+            .settlementReceipt,
+      });
+    }
+
+
     return {
       runId:
         current.runId,
@@ -552,6 +730,247 @@ export function createAgentFeeGateCoordinator({
         issueAuthorization(
           plan,
           current.runId,
+          "settled",
+        ),
+    };
+  }
+
+
+  async function resume(
+    plan:
+      AgentPlan,
+
+    {
+      runId,
+      chainId,
+      payer,
+    }:
+      Readonly<{
+        runId:
+          string;
+
+        chainId:
+          string;
+
+        payer:
+          string;
+      }>,
+  ): Promise<
+    AgentFeeGateResult
+  > {
+    const normalizedRunId =
+      runId.trim();
+
+
+    if (
+      !normalizedRunId ||
+      normalizedRunId.length >
+        128
+    ) {
+      throw new Error(
+        "Cannot resume an invalid Agent execution run.",
+      );
+    }
+
+
+    const policyEnabled =
+      await readPolicy(
+        httpClient,
+      );
+
+
+    const fingerprint =
+      planFingerprint(
+        plan,
+      );
+
+
+    const scopeKey =
+      `${chainId}:${payer.toLowerCase()}:${fingerprint}`;
+
+
+    if (
+      !policyEnabled
+    ) {
+      active = {
+        scopeKey,
+        fingerprint,
+
+        runId:
+          normalizedRunId,
+
+        protocolStarted:
+          false,
+
+        policyEnabled:
+          false,
+
+        feeSession:
+          null,
+      };
+
+
+      return {
+        runId:
+          normalizedRunId,
+
+        status:
+          "disabled",
+
+        authorization:
+          issueAuthorization(
+            plan,
+            normalizedRunId,
+            "disabled",
+          ),
+      };
+    }
+
+
+    const evidence =
+      loadSettlementEvidence(
+        payer,
+        normalizedRunId,
+      );
+
+
+    if (
+      !evidence ||
+      evidence.runId !==
+        normalizedRunId ||
+      evidence.chainId !==
+        chainId ||
+      evidence.payer
+        .toLowerCase() !==
+        payer.toLowerCase()
+    ) {
+      throw new Error(
+        "CAREL cannot restore the settled Agent fee for this run.",
+      );
+    }
+
+
+    const response =
+      await httpClient(
+        "/api/agent/fee/resume",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          cache:
+            "no-store",
+
+          body:
+            JSON.stringify({
+              runId:
+                normalizedRunId,
+
+              chainId,
+
+              payer,
+
+              settlementReceipt:
+                evidence
+                  .settlementReceipt,
+            }),
+        },
+      );
+
+
+    const raw:
+      unknown =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !raw ||
+      typeof raw !==
+        "object" ||
+      Array.isArray(
+        raw,
+      ) ||
+      (
+        raw as
+          Record<
+            string,
+            unknown
+          >
+      ).settled !==
+        true ||
+      (
+        raw as
+          Record<
+            string,
+            unknown
+          >
+      ).runId !==
+        normalizedRunId
+    ) {
+      const message =
+        raw &&
+        typeof raw ===
+          "object" &&
+        !Array.isArray(
+          raw,
+        ) &&
+        typeof (
+          raw as
+            Record<
+              string,
+              unknown
+            >
+        ).error ===
+          "string"
+          ? (
+              raw as {
+                error:
+                  string;
+              }
+            ).error
+          : "CAREL could not restore Agent fee authorization.";
+
+
+      throw new Error(
+        message,
+      );
+    }
+
+
+    active = {
+      scopeKey,
+      fingerprint,
+
+      runId:
+        normalizedRunId,
+
+      protocolStarted:
+        false,
+
+      policyEnabled:
+        true,
+
+      feeSession:
+        null,
+    };
+
+
+    return {
+      runId:
+        normalizedRunId,
+
+      status:
+        "settled",
+
+      authorization:
+        issueAuthorization(
+          plan,
+          normalizedRunId,
           "settled",
         ),
     };
@@ -613,6 +1032,7 @@ export function createAgentFeeGateCoordinator({
 
   return {
     prepare,
+    resume,
     markProtocolStarted,
     reset,
     snapshot,

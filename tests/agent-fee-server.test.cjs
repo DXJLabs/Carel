@@ -614,3 +614,117 @@ test(
     );
   },
 );
+
+
+test(
+  "settled Agent fee receipt remains valid after quote execution window",
+  () => {
+    configure();
+
+
+    const signed =
+      fees
+        .createSignedAgentFeeQuote({
+          runId:
+            "resume-run",
+
+          chainId:
+            MAINNET,
+
+          payer:
+            "0x456",
+
+          now:
+            1_800_000,
+        });
+
+
+    const settled =
+      fees
+        .createSignedAgentFeeSettlementReceipt({
+          quote:
+            signed.quote,
+
+          transactionHash:
+            "0xabc",
+
+          now:
+            1_900_000,
+        });
+
+
+    const receipt =
+      fees
+        .verifySignedAgentFeeSettlementReceipt(
+          settled,
+        );
+
+
+    assert.equal(
+      receipt.runId,
+      "resume-run",
+    );
+
+
+    assert.equal(
+      receipt.transactionHash,
+      "0xabc",
+    );
+  },
+);
+
+
+test(
+  "tampering with settled Agent fee receipt invalidates authorization evidence",
+  () => {
+    configure();
+
+
+    const signed =
+      fees
+        .createSignedAgentFeeQuote({
+          runId:
+            "resume-run",
+
+          chainId:
+            MAINNET,
+
+          payer:
+            "0x456",
+
+          now:
+            1_800_000,
+        });
+
+
+    const settled =
+      fees
+        .createSignedAgentFeeSettlementReceipt({
+          quote:
+            signed.quote,
+
+          transactionHash:
+            "0xabc",
+
+          now:
+            1_900_000,
+        });
+
+
+    assert.throws(
+      () =>
+        fees
+          .verifySignedAgentFeeSettlementReceipt({
+            ...settled,
+
+            receipt: {
+              ...settled.receipt,
+
+              transactionHash:
+                "0xdef",
+            },
+          }),
+      /signature/i,
+    );
+  },
+);
