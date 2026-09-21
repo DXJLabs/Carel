@@ -4,6 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowDownUp, ArrowUpRight, Check, Copy, RefreshCw } from "lucide-react";
 import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
+import type { AgentPlan } from "@/lib/agent/plan";
+import {
+  createAgentExecutionSession,
+  executeAgentStage,
+  type AgentExecutionSession,
+} from "@/lib/agent/executor";
+import { buildBridgeAgentPlan } from "@/lib/agent/bridge-planner";
+import {
+  createGardenBridgeAgentRuntime,
+  type GardenBridgeAgentRuntime,
+} from "@/lib/agent/garden-bridge-runtime";
+import { BITCOIN_TESTNET4 } from "@/lib/carel/ecosystems/bitcoin/chains";
+import { STARKNET_SEPOLIA } from "@/lib/carel/ecosystems/starknet/chains";
 import { sepoliaProvider } from "@/lib/strk20/config";
 import { bitcoinAddress, felt, formatBitcoinAmount, parseBitcoinAmount, validateFundingCalls } from "@/lib/garden/protocol";
 import type { BridgeCall, BridgeDirection, BridgeIntent, BridgeOrder, BridgeQuote, GardenCatalog, SavedBridge } from "@/lib/garden/types";
@@ -55,6 +68,35 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
   const ownerRef = useRef(owner); ownerRef.current = owner;
   const modeRef = useRef(mode); modeRef.current = mode;
   const mounted = useRef(true), locked = useRef(false), inputVersion = useRef(0);
+
+  const bridgePlanRef =
+    useRef<AgentPlan | null>(
+      null,
+    );
+
+  const bridgeRuntimeRef =
+    useRef<
+      GardenBridgeAgentRuntime | null
+    >(null);
+
+  const bridgeSessionRef =
+    useRef<
+      AgentExecutionSession | null
+    >(null);
+
+  const orderRef =
+    useRef<
+      BridgeOrder | null
+    >(null);
+
+  const [
+    bridgeAgentSession,
+    setBridgeAgentSession,
+  ] =
+    useState<
+      AgentExecutionSession | null
+    >(null);
+
   const [catalog, setCatalog] = useState<GardenCatalog | null>(null);
   const [catalogError, setCatalogError] = useState("");
   const [catalogVersion, setCatalogVersion] = useState(0);
@@ -86,8 +128,30 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
   const current = (capturedOwner: string) => mounted.current && capturedOwner === ownerRef.current;
   const invalidate = () => { inputVersion.current++; setQuote(null); setError(""); setNotice(""); };
 
+  const clearBridgeAgent = () => {
+    bridgePlanRef.current =
+      null;
+
+    bridgeRuntimeRef.current =
+      null;
+
+    bridgeSessionRef.current =
+      null;
+
+    orderRef.current =
+      null;
+
+    setBridgeAgentSession(
+      null,
+    );
+  };
+
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { inputVersion.current++; setQuote(null); }, [mode]);
+  useEffect(() => {
+    inputVersion.current++;
+    setQuote(null);
+    clearBridgeAgent();
+  }, [mode]);
   useEffect(() => {
     if (!intent || !catalog) return;
     inputVersion.current++; setQuote(null); setDirection(intent.direction); setAmount(intent.amount);
@@ -104,7 +168,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     return () => controller.abort();
   }, [catalogVersion]);
   useEffect(() => {
-    inputVersion.current++; setQuote(null); setActiveId(null); setOrder(null); setHistory([]); setError(""); setNotice(""); setOrderError("");
+    inputVersion.current++; setQuote(null); setActiveId(null); setOrder(null); orderRef.current = null; setHistory([]); setError(""); setNotice(""); setOrderError(""); clearBridgeAgent();
     const sync = () => setRecords(savedOrders(owner));
     sync(); window.addEventListener(EVENT, sync); window.addEventListener("storage", sync);
     return () => { window.removeEventListener(EVENT, sync); window.removeEventListener("storage", sync); };
@@ -125,6 +189,124 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     }).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); });
     return () => controller.abort();
   }, [owner, historyOnly, refresh]);
+  async function syncBridgeAgent(
+    orderId: string,
+  ) {
+    const plan =
+      bridgePlanRef.current;
+
+    const runtime =
+      bridgeRuntimeRef.current;
+
+    const session =
+      bridgeSessionRef.current;
+
+    const stage =
+      session
+        ?.run.stages.find(
+          (item) =>
+            item.stageId ===
+            "bridge-1",
+        );
+
+    if (
+      !plan ||
+      !runtime ||
+      !session ||
+      stage?.status !==
+        "submitted"
+    ) {
+      return;
+    }
+
+    const reference =
+      stage.executionReference;
+
+    if (
+      !reference ||
+      reference.kind !==
+        "provider-order" ||
+      reference.id !==
+        orderId
+    ) {
+      return;
+    }
+
+    try {
+      const next =
+        await runtime
+          .confirmSubmittedStage(
+            plan,
+            session,
+            "bridge-1",
+            {
+              runId:
+                session.runId,
+
+              chainId:
+                wallet.chainId,
+
+              account:
+                owner,
+            },
+          );
+
+      bridgeSessionRef.current =
+        next;
+
+      setBridgeAgentSession(
+        next,
+      );
+
+      if (
+        next.run.status ===
+          "completed"
+      ) {
+        const output =
+          next.outputs[
+            "bridge-1"
+          ];
+
+        setNotice(
+          output
+            ? `Agent verified destination delivery: ${output.amountText} ${output.assetSymbol}.`
+            : "Agent verified Garden destination delivery.",
+        );
+      } else if (
+        next.run.status ===
+          "failed"
+      ) {
+        const failed =
+          next.run.stages.find(
+            (item) =>
+              item.stageId ===
+              "bridge-1",
+          );
+
+        setNotice(
+          failed?.error ??
+          "Garden Bridge Agent run ended without destination delivery.",
+        );
+      }
+    } catch (cause) {
+      /*
+       * Intermediate Garden states remain submitted.
+       * Only unexpected confirmation errors surface in the UI.
+       */
+      if (
+        cause instanceof Error &&
+        !/still (awaiting-deposit|confirming|exchanging|settling|refunding)/i.test(
+          cause.message,
+        )
+      ) {
+        setOrderError(
+          cause.message,
+        );
+      }
+    }
+  }
+
+
   useEffect(() => {
     if (!activeId || !owner) return;
     const controller = new AbortController();
@@ -136,8 +318,24 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
       try {
         const value = await api<BridgeOrder>({ action: "order", id: activeId, owner }, controller.signal);
         if (controller.signal.aborted) return;
-        setOrder(value); setOrderError("");
-        terminal = ["completed", "refunded"].includes(value.state);
+        setOrder(value);
+        orderRef.current = value;
+        setOrderError("");
+
+        terminal =
+          [
+            "completed",
+            "refunded",
+            "expired",
+          ].includes(
+            value.state,
+          );
+
+        if (terminal) {
+          void syncBridgeAgent(
+            value.id,
+          );
+        }
         const saved = savedOrders(owner).find(row => row.id === activeId);
         if (value.direction === "to-bitcoin" && value.state === "awaiting-deposit" && saved?.fundingTx) {
           try {
@@ -171,28 +369,495 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     finally { locked.current = false; if (mounted.current) setBusy(false); }
   }
   async function create() {
-    if (locked.current || !quote) return;
-    locked.current = true; setBusy(true); setError(""); setNotice("");
-    const capturedOwner = owner;
+    if (
+      locked.current ||
+      !quote
+    ) {
+      return;
+    }
+
+    locked.current =
+      true;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    const capturedOwner =
+      owner;
+
     try {
-      if (!capturedOwner || mode !== "normal" || Date.now() >= quote.expiresAt) throw new Error("Get a fresh quote in Normal mode before creating the bridge.");
-      const request = { direction, assetId, amount, bitcoinAddress: bitcoinAddress(btcAddress), starknetAddress: capturedOwner, expectedReceive: quote.destinationAmount };
-      const fingerprint = JSON.stringify(request), draftKey = `carel.garden.draft:${capturedOwner}`;
-      const bytes = crypto.getRandomValues(new Uint32Array(2));
-      let nonce = (((BigInt(bytes[0]) << 32n) | BigInt(bytes[1])) || 1n).toString();
-      try {
-        const draft = JSON.parse(localStorage.getItem(draftKey) || "null");
-        if (draft?.fingerprint === fingerprint && /^[1-9]\d{0,19}$/.test(draft.nonce)) nonce = draft.nonce;
-        localStorage.setItem(draftKey, JSON.stringify({ fingerprint, nonce }));
-      } catch { /* Garden history remains the recovery source. */ }
-      const result = await post<{ id: string }>({ action: "create", ...request, nonce });
-      remember(capturedOwner, { id: result.id, owner: capturedOwner, createdAt: Date.now() });
-      try { localStorage.removeItem(draftKey); } catch { /* Optional persistence. */ }
-      if (current(capturedOwner)) { setRecords(savedOrders(capturedOwner)); setActiveId(result.id); setQuote(null); }
+      if (
+        !capturedOwner ||
+        mode !== "normal" ||
+        Date.now() >=
+          quote.expiresAt
+      ) {
+        throw new Error(
+          "Get a fresh quote in Normal mode before creating the bridge.",
+        );
+      }
+
+      const selected =
+        catalog
+          ?.starknet.find(
+            (item) =>
+              item.id ===
+              assetId,
+          );
+
+      if (!selected) {
+        throw new Error(
+          "Choose a Garden Starknet asset before creating the bridge.",
+        );
+      }
+
+      const sourceChainId =
+        direction ===
+          "to-starknet"
+          ? BITCOIN_TESTNET4
+              .chainId
+          : STARKNET_SEPOLIA
+              .chainId;
+
+      const destinationChainId =
+        direction ===
+          "to-starknet"
+          ? STARKNET_SEPOLIA
+              .chainId
+          : BITCOIN_TESTNET4
+              .chainId;
+
+      const sourceAssetSymbol =
+        direction ===
+          "to-starknet"
+          ? "BTC"
+          : selected.symbol;
+
+      const destinationAssetSymbol =
+        direction ===
+          "to-starknet"
+          ? selected.symbol
+          : "BTC";
+
+
+      const plan =
+        buildBridgeAgentPlan({
+          goal:
+            `Bridge ${amount} ${sourceAssetSymbol} to ${direction === "to-starknet" ? "Starknet Sepolia" : "Bitcoin Testnet4"}.`,
+
+          connectedChainId:
+            wallet.chainId,
+
+          sourceChainId,
+          destinationChainId,
+
+          sourceAssetSymbol,
+          destinationAssetSymbol,
+
+          amountText:
+            amount,
+
+          mode,
+        });
+
+      if (
+        plan.status !==
+          "ready"
+      ) {
+        throw new Error(
+          plan.message ??
+          "CAREL could not build the Bridge Agent plan.",
+        );
+      }
+
+
+      /*
+       * Freeze every reviewed input before the executor runs.
+       *
+       * The Agent runtime is not allowed to silently use UI state that
+       * changed after review.
+       */
+      const reviewedQuote =
+        quote;
+
+      const reviewedDirection =
+        direction;
+
+      const reviewedAssetId =
+        assetId;
+
+      const reviewedAmount =
+        amount;
+
+      const reviewedBitcoinAddress =
+        bitcoinAddress(
+          btcAddress,
+        );
+
+
+      const runtime =
+        createGardenBridgeAgentRuntime({
+          async createOrder(
+            input,
+          ) {
+            if (
+              input
+                .connectedChainId !==
+                wallet.chainId ||
+              felt(
+                input.account,
+              ) !==
+                capturedOwner ||
+              input.sourceChainId !==
+                sourceChainId ||
+              input
+                .destinationChainId !==
+                destinationChainId ||
+              input
+                .sourceAssetSymbol !==
+                sourceAssetSymbol ||
+              input
+                .destinationAssetSymbol !==
+                destinationAssetSymbol ||
+              parseBitcoinAmount(
+                input.amountText,
+              ) !==
+                parseBitcoinAmount(
+                  reviewedAmount,
+                )
+            ) {
+              throw new Error(
+                "Bridge Agent execution no longer matches the reviewed Garden route.",
+              );
+            }
+
+
+            const request = {
+              direction:
+                reviewedDirection,
+
+              assetId:
+                reviewedAssetId,
+
+              amount:
+                reviewedAmount,
+
+              bitcoinAddress:
+                reviewedBitcoinAddress,
+
+              starknetAddress:
+                capturedOwner,
+
+              expectedReceive:
+                reviewedQuote
+                  .destinationAmount,
+            };
+
+
+            /*
+             * Preserve Garden's existing idempotent nonce/recovery logic.
+             */
+            const fingerprint =
+              JSON.stringify(
+                request,
+              );
+
+            const draftKey =
+              `carel.garden.draft:${capturedOwner}`;
+
+            const bytes =
+              crypto
+                .getRandomValues(
+                  new Uint32Array(
+                    2,
+                  ),
+                );
+
+            let nonce =
+              (
+                (
+                  BigInt(
+                    bytes[0],
+                  ) <<
+                  32n
+                ) |
+                BigInt(
+                  bytes[1],
+                )
+              ) ||
+              1n;
+
+            let nonceText =
+              nonce.toString();
+
+            try {
+              const draft =
+                JSON.parse(
+                  localStorage
+                    .getItem(
+                      draftKey,
+                    ) ||
+                  "null",
+                );
+
+              if (
+                draft
+                  ?.fingerprint ===
+                    fingerprint &&
+                /^[1-9]\d{0,19}$/.test(
+                  draft.nonce,
+                )
+              ) {
+                nonceText =
+                  draft.nonce;
+              }
+
+              localStorage
+                .setItem(
+                  draftKey,
+                  JSON.stringify({
+                    fingerprint,
+
+                    nonce:
+                      nonceText,
+                  }),
+                );
+            } catch {
+              // Garden history remains the recovery source.
+            }
+
+
+            const result =
+              await post<{
+                id: string;
+              }>({
+                action:
+                  "create",
+
+                ...request,
+
+                nonce:
+                  nonceText,
+              });
+
+
+            remember(
+              capturedOwner,
+              {
+                id:
+                  result.id,
+
+                owner:
+                  capturedOwner,
+
+                createdAt:
+                  Date.now(),
+              },
+            );
+
+
+            try {
+              localStorage
+                .removeItem(
+                  draftKey,
+                );
+            } catch {
+              // Optional persistence cleanup.
+            }
+
+
+            return {
+              orderId:
+                result.id,
+            };
+          },
+
+
+          async readOrder(
+            input,
+          ) {
+            /*
+             * Polling already verified this order in the UI.
+             * Reuse that observation when possible to avoid a duplicate
+             * provider request exactly at terminal settlement.
+             */
+            const cached =
+              orderRef.current;
+
+            const value =
+              cached?.id ===
+                input.orderId
+                ? cached
+                : await api<
+                    BridgeOrder
+                  >(
+                    {
+                      action:
+                        "order",
+
+                      id:
+                        input.orderId,
+
+                      owner:
+                        input.account,
+                    },
+
+                    input.signal,
+                  );
+
+            return {
+              state:
+                value.state,
+
+              ...(value.state ===
+                "completed"
+                ? {
+                    destinationAssetSymbol:
+                      value.direction ===
+                        "to-starknet"
+                        ? value.asset
+                            .symbol
+                        : "BTC",
+
+                    destinationAmountText:
+                      formatBitcoinAmount(
+                        value
+                          .destinationAmount,
+                      ),
+                  }
+                : {}),
+            };
+          },
+        });
+
+
+      const session =
+        createAgentExecutionSession(
+          plan,
+          `garden-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`,
+        );
+
+
+      const executed =
+        await executeAgentStage(
+          plan,
+          session,
+          "bridge-1",
+          {
+            runId:
+              session.runId,
+
+            chainId:
+              wallet.chainId,
+
+            account:
+              capturedOwner,
+          },
+          runtime.registry,
+        );
+
+
+      const stage =
+        executed
+          .session
+          .run.stages.find(
+            (item) =>
+              item.stageId ===
+              "bridge-1",
+          );
+
+      const reference =
+        stage
+          ?.executionReference;
+
+      if (
+        !reference ||
+        reference.kind !==
+          "provider-order"
+      ) {
+        throw new Error(
+          "Garden Agent did not return a provider order reference.",
+        );
+      }
+
+
+      bridgePlanRef.current =
+        plan;
+
+      bridgeRuntimeRef.current =
+        runtime;
+
+      bridgeSessionRef.current =
+        executed.session;
+
+      setBridgeAgentSession(
+        executed.session,
+      );
+
+
+      if (
+        current(
+          capturedOwner,
+        )
+      ) {
+        setRecords(
+          savedOrders(
+            capturedOwner,
+          ),
+        );
+
+        setActiveId(
+          reference.id,
+        );
+
+        setQuote(
+          null,
+        );
+
+        setNotice(
+          "Garden order created through Agent Core. Complete the source deposit and CAREL will verify destination delivery.",
+        );
+      }
     } catch (cause) {
-      if (current(capturedOwner)) { setError(message(cause)); if (cause instanceof RequestError && cause.code === "QUOTE_CHANGED") setQuote(null); }
-    } finally { locked.current = false; if (mounted.current) setBusy(false); }
+      clearBridgeAgent();
+
+      if (
+        current(
+          capturedOwner,
+        )
+      ) {
+        setError(
+          message(
+            cause,
+          ),
+        );
+
+        if (
+          cause instanceof
+            RequestError &&
+          cause.code ===
+            "QUOTE_CHANGED"
+        ) {
+          setQuote(
+            null,
+          );
+        }
+      }
+    } finally {
+      locked.current =
+        false;
+
+      if (
+        mounted.current
+      ) {
+        setBusy(
+          false,
+        );
+      }
+    }
   }
+
   async function fund() {
     if (locked.current || !activeId || !owner || !order) return;
     locked.current = true; setBusy(true); setError(""); setNotice("");
@@ -235,6 +900,16 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
   }
 
   const needsPublicMode = mode !== "normal" && !historyOnly;
+
+  const bridgeAgentStage =
+    bridgeAgentSession
+      ?.run.stages.find(
+        (item) =>
+          item.stageId ===
+          "bridge-1",
+      ) ??
+    null;
+
   const selectedAsset = catalog?.starknet.find(asset => asset.id === assetId);
   const sourceSymbol = direction === "to-starknet" ? "BTC" : selectedAsset?.symbol || "BTC";
   const destinationSymbol = direction === "to-starknet" ? selectedAsset?.symbol || "BTC" : "BTC";
@@ -264,6 +939,7 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     {activeId && <div className={styles.review}>
       <div className={styles.heading}><h3>{order ? STATUS[order.state] : "Loading bridge…"}</h3><button className={styles.iconButton} disabled={working} aria-label="Refresh bridge status" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button></div>
       <p className={styles.helper}>Order <span className={styles.address}>{activeId}</span></p>
+      {bridgeAgentStage?.executionReference?.kind === "provider-order" && bridgeAgentStage.executionReference.id === activeId && <div className={styles.detail}><span>Agent stage</span><strong>{bridgeAgentStage.status}</strong></div>}
       {orderError && <p className={styles.notice} role="alert">{orderError} Status is not confirmed.</p>}
       {order && <><div className={styles.detail}><span>Send</span><strong>{formatBitcoinAmount(order.sourceAmount)} {order.direction === "to-starknet" ? "BTC" : order.asset.symbol}</strong></div><div className={styles.detail}><span>Receive</span><strong>{formatBitcoinAmount(order.destinationAmount)} {order.direction === "to-starknet" ? order.asset.symbol : "BTC"}</strong></div>
         <div className={styles.detail}><span>Recipient</span><span className={styles.address}>{order.recipientAddress}</span></div>

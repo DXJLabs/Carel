@@ -615,3 +615,44 @@ test(
     );
   },
 );
+
+
+
+test(
+  "Garden Bridge UI creates provider orders through Agent Core",
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/bridge/GardenBridge.tsx",
+        ),
+        "utf8",
+      );
+
+    assert.match(
+      source,
+      /buildBridgeAgentPlan\(/,
+    );
+
+    assert.match(
+      source,
+      /createGardenBridgeAgentRuntime\(/,
+    );
+
+    assert.match(
+      source,
+      /executeAgentStage\([\s\S]*"bridge-1"/,
+    );
+
+    assert.match(
+      source,
+      /executionReference[\s\S]*provider-order/,
+    );
+
+    assert.match(
+      source,
+      /confirmSubmittedStage\(/,
+    );
+  },
+);
