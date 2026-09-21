@@ -305,7 +305,7 @@ test(
 
 
 test(
-  "existing Shield Swap and Unshield Staking remain explicit reviewed flows",
+  "Shield Swap and Unshield Staking resolve to staged Agent plans",
   () => {
     const shieldSwap =
       workspace
@@ -349,12 +349,12 @@ test(
 
     assert.equal(
       shieldSwap.kind,
-      "explicit",
+      "plan",
     );
 
     assert.equal(
       unshieldStake.kind,
-      "explicit",
+      "plan",
     );
   },
 );
@@ -398,7 +398,7 @@ test(
 
 
 test(
-  "Unshield Borrow remains an explicit reviewed multi-stage flow",
+  "Unshield Borrow resolves to a staged Agent plan",
   () => {
     const result =
       workspace
@@ -422,7 +422,7 @@ test(
 
     assert.equal(
       result.kind,
-      "explicit",
+      "plan",
     );
 
     assert.equal(
@@ -440,7 +440,7 @@ test(
 
 
 test(
-  "Vesu Lend remains an explicit reviewed execution flow",
+  "Vesu Lend resolves to its staged Agent plan",
   () => {
     const result =
       workspace
@@ -464,7 +464,7 @@ test(
 
     assert.equal(
       result.kind,
-      "explicit",
+      "plan",
     );
 
     assert.equal(
@@ -606,7 +606,7 @@ test(
 
     assert.equal(
       decision.kind,
-      "explicit",
+      "plan",
     );
 
     assert.equal(

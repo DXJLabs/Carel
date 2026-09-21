@@ -37,7 +37,13 @@ export type WorkspaceAgentDecision =
       message?: string;
     }>
   | Readonly<{
-      kind: "explicit";
+      /**
+       * A staged Agent Core plan owns execution.
+       *
+       * Provider selection happens inside the runtime stage boundary rather
+       * than through one flat ExecutionIntent.
+       */
+      kind: "plan";
       tool: WorkspaceExecutionTool;
       route: AgentRoute;
     }>
@@ -80,10 +86,13 @@ function executionTool(
 }
 
 /**
- * Keeps already-reviewed multi-stage privacy flows available until CAREL's
- * generic execution intents can describe their complete direction/lifecycle.
+ * Returns whether execution is owned by CAREL's staged Agent Core rather
+ * than one flat provider ExecutionIntent.
+ *
+ * These are not legacy/manual flows. Their lifecycle requires multiple
+ * verified stages or a runtime-specific composition.
  */
-function usesExplicitExecutionFlow(
+function usesStagedAgentPlan(
   tool: WorkspaceExecutionTool,
   mode: AgentExecutionMode,
 ): boolean {
@@ -202,14 +211,14 @@ export function resolveWorkspaceAgentGoal(
   }
 
   if (
-    usesExplicitExecutionFlow(
+    usesStagedAgentPlan(
       tool,
       input.mode,
     )
   ) {
     return {
       kind:
-        "explicit",
+        "plan",
 
       tool,
       route,

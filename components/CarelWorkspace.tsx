@@ -603,7 +603,7 @@ export function CarelApp() {
         decision.kind ===
           "execution" ||
         decision.kind ===
-          "explicit"
+          "plan"
       ) {
         setAgentPlan(
           structuredPlan,
