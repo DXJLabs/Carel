@@ -10,6 +10,16 @@ import type {
   AgentPlan,
 } from "@/lib/agent/plan";
 
+import type {
+  AgentRecoveryBoundPayload,
+  AgentRecoveryData,
+  SignedAgentRecoveryDraft,
+} from "@/lib/agent/recovery-types";
+
+import type {
+  AgentRuntimeRecovery,
+} from "@/lib/agent/runtime-recovery";
+
 import {
   getAgentRuntimeStage,
 } from "@/lib/agent/state-machine";
@@ -79,6 +89,9 @@ export type PreparedPublicLend =
 
     amountUnits:
       bigint;
+
+    poolId:
+      string;
 
     /**
      * Public Vesu position observation.
@@ -164,6 +177,25 @@ export type ReadLendPublicBalanceInput =
   }>;
 
 
+export type ReadPublicLendPositionInput =
+  Readonly<{
+    chainId:
+      string;
+
+    account:
+      string;
+
+    poolId:
+      string;
+
+    assetId:
+      string;
+
+    signal?:
+      AbortSignal;
+  }>;
+
+
 export type WaitLendTransactionInput =
   Readonly<{
     chainId:
@@ -215,11 +247,20 @@ export type StarknetLendRuntimeDependencies =
     ):
       Promise<bigint>;
 
+    readPublicLendPositionShares(
+      input:
+        ReadPublicLendPositionInput,
+    ):
+      Promise<bigint>;
+
     waitForTransaction(
       input:
         WaitLendTransactionInput,
     ):
       Promise<void>;
+
+    recovery?:
+      AgentRuntimeRecovery;
   }>;
 
 
@@ -237,11 +278,17 @@ type PublicLendSnapshot =
     sharesBefore:
       bigint;
 
-    readPositionShares(
-      signal?:
-        AbortSignal,
-    ):
-      Promise<bigint>;
+    chainId:
+      string;
+
+    account:
+      string;
+
+    poolId:
+      string;
+
+    assetId:
+      string;
   }>;
 
 
@@ -486,6 +533,191 @@ function requireLendInput(
 }
 
 
+function recoveryBigInt(
+  data:
+    AgentRecoveryData,
+
+  key:
+    string,
+
+  positive =
+    false,
+): bigint {
+  const raw =
+    data[key];
+
+
+  if (
+    typeof raw !==
+      "string" ||
+    !/^\d+$/.test(
+      raw,
+    )
+  ) {
+    throw new Error(
+      `Recovered Lend snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  const value =
+    BigInt(
+      raw,
+    );
+
+
+  if (
+    positive &&
+    value <= 0n
+  ) {
+    throw new Error(
+      `Recovered Lend snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  return value;
+}
+
+
+function recoveredLendSnapshot(
+  payload:
+    AgentRecoveryBoundPayload,
+
+  action:
+    "lend" |
+    "unshield",
+): LendSnapshot {
+  const data =
+    payload.data;
+
+
+  if (
+    data.action !==
+      action
+  ) {
+    throw new Error(
+      "Recovered Lend snapshot does not match the submitted Agent stage.",
+    );
+  }
+
+
+  if (
+    action ===
+      "lend"
+  ) {
+    if (
+      data.kind !==
+        "public-lend" ||
+      !data.poolId ||
+      !data.assetId
+    ) {
+      throw new Error(
+        "Recovered public Lend snapshot is incomplete.",
+      );
+    }
+
+
+    return {
+      kind:
+        "public-lend",
+
+      executionKey:
+        payload.executionKey,
+
+      transactionId:
+        payload.transactionId,
+
+      sharesBefore:
+        recoveryBigInt(
+          data,
+          "sharesBefore",
+        ),
+
+      chainId:
+        payload.chainId,
+
+      account:
+        payload.account,
+
+      poolId:
+        data.poolId,
+
+      assetId:
+        data.assetId,
+    };
+  }
+
+
+  if (
+    !data.assetId ||
+    !data.assetSymbol
+  ) {
+    throw new Error(
+      "Recovered Unshield Lend snapshot is incomplete.",
+    );
+  }
+
+
+  const decimals =
+    Number(
+      data.decimals,
+    );
+
+
+  if (
+    !Number.isInteger(
+      decimals,
+    ) ||
+    decimals < 0 ||
+    decimals > 255
+  ) {
+    throw new Error(
+      "Recovered Unshield Lend snapshot has invalid decimals.",
+    );
+  }
+
+
+  return {
+    kind:
+      "unshield",
+
+    executionKey:
+      payload.executionKey,
+
+    transactionId:
+      payload.transactionId,
+
+    chainId:
+      payload.chainId,
+
+    account:
+      payload.account,
+
+    assetId:
+      data.assetId,
+
+    assetSymbol:
+      data.assetSymbol,
+
+    decimals,
+
+    publicBefore:
+      recoveryBigInt(
+        data,
+        "publicBefore",
+      ),
+
+    amountUnits:
+      recoveryBigInt(
+        data,
+        "amountUnits",
+        true,
+      ),
+  };
+}
+
+
 export function createStarknetLendRuntime(
   dependencies:
     StarknetLendRuntimeDependencies,
@@ -495,6 +727,84 @@ export function createStarknetLendRuntime(
       string,
       LendSnapshot
     >();
+
+
+  async function sealRecovery(
+    input:
+      AgentStageExecutionInput,
+
+    data:
+      AgentRecoveryData,
+  ): Promise<
+    SignedAgentRecoveryDraft | null
+  > {
+    if (
+      !dependencies.recovery
+    ) {
+      return null;
+    }
+
+
+    try {
+      return await dependencies
+        .recovery
+        .seal({
+          runId:
+            input.context.runId,
+
+          stageId:
+            input.stage.id,
+
+          executionKey:
+            input.executionKey,
+
+          chainId:
+            input.context.chainId,
+
+          account:
+            input.context.account,
+
+          data,
+        });
+    } catch {
+      /*
+       * Recovery availability is not allowed to block a reviewed protocol
+       * transaction.
+       */
+      return null;
+    }
+  }
+
+
+  async function bindRecovery(
+    draft:
+      SignedAgentRecoveryDraft | null,
+
+    transactionId:
+      string,
+  ): Promise<void> {
+    if (
+      !draft ||
+      !dependencies.recovery
+    ) {
+      return;
+    }
+
+
+    try {
+      await dependencies
+        .recovery
+        .bind(
+          draft,
+          transactionId,
+        );
+    } catch {
+      /*
+       * The tx already exists. Never invite a duplicate Lend because local
+       * persistence or the recovery endpoint failed afterwards.
+       */
+    }
+  }
 
 
   const lendExecutor:
@@ -623,6 +933,29 @@ export function createStarknetLendRuntime(
             );
 
 
+        const recoveryDraft =
+          await sealRecovery(
+            input,
+            {
+              action:
+                "lend",
+
+              kind:
+                "public-lend",
+
+              poolId:
+                prepared.poolId,
+
+              assetId:
+                asset.id,
+
+              sharesBefore:
+                sharesBefore
+                  .toString(),
+            },
+          );
+
+
         const transaction =
           await prepared
             .execute();
@@ -650,10 +983,26 @@ export function createStarknetLendRuntime(
 
             sharesBefore,
 
-            readPositionShares:
-              prepared
-                .readPositionShares,
+            chainId:
+              input.context
+                .chainId,
+
+            account:
+              input.context
+                .account,
+
+            poolId:
+              prepared.poolId,
+
+            assetId:
+              asset.id,
           },
+        );
+
+
+        await bindRecovery(
+          recoveryDraft,
+          transactionId,
         );
 
 
@@ -730,16 +1079,45 @@ export function createStarknetLendRuntime(
       }
 
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "lend",
+
+            kind:
+              "private-lend",
+
+            assetId:
+              asset.id,
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await prepared
           .execute();
 
 
+      const transactionId =
+        requireHash(
+          transaction.hash,
+        );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
+
       return {
-        transactionId:
-          requireHash(
-            transaction.hash,
-          ),
+        transactionId,
 
         status:
           "submitted",
@@ -860,6 +1238,34 @@ export function createStarknetLendRuntime(
           });
 
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "unshield",
+
+            assetId:
+              asset.id,
+
+            assetSymbol:
+              asset.symbol,
+
+            decimals:
+              asset.decimals
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await dependencies
           .executeUnshieldAsset(
@@ -912,6 +1318,12 @@ export function createStarknetLendRuntime(
 
           amountUnits,
         },
+      );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
       );
 
 
@@ -1003,10 +1415,26 @@ export function createStarknetLendRuntime(
       AbortSignal,
   ) {
     const sharesAfter =
-      await snapshot
-        .readPositionShares(
-          signal,
-        );
+      await dependencies
+        .readPublicLendPositionShares({
+          chainId:
+            snapshot.chainId,
+
+          account:
+            snapshot.account,
+
+          poolId:
+            snapshot.poolId,
+
+          assetId:
+            snapshot.assetId,
+
+          ...(signal
+            ? {
+                signal,
+              }
+            : {}),
+        });
 
 
     if (
@@ -1124,10 +1552,72 @@ export function createStarknetLendRuntime(
       );
 
 
-    const snapshot =
+    let snapshot =
       snapshots.get(
         key,
       );
+
+
+    if (
+      !snapshot &&
+      dependencies.recovery
+    ) {
+      const recovered =
+        await dependencies
+          .recovery
+          .load({
+            runId:
+              session.runId,
+
+            stageId,
+
+            executionKey:
+              executionKey(
+                session.runId,
+                stageId,
+              ),
+
+            chainId:
+              context.chainId,
+
+            account:
+              context.account,
+
+            transactionId:
+              runtimeStage.txHash,
+          });
+
+
+      if (recovered) {
+        const recoverableAction =
+          stage.action;
+
+
+        if (
+          recoverableAction !==
+            "lend" &&
+          recoverableAction !==
+            "unshield"
+        ) {
+          throw new Error(
+            "Recovered Lend capsule belongs to an unsupported Agent stage.",
+          );
+        }
+
+
+        snapshot =
+          recoveredLendSnapshot(
+            recovered,
+            recoverableAction,
+          );
+
+
+        snapshots.set(
+          key,
+          snapshot,
+        );
+      }
+    }
 
 
     if (!snapshot) {

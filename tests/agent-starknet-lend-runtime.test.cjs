@@ -165,6 +165,9 @@ function context(
 function createRuntime({
   exposeShares =
     true,
+
+  recovery =
+    undefined,
 } = {}) {
   const USDC =
     asset(
@@ -199,6 +202,12 @@ function createRuntime({
   const runtime =
     lend
       .createStarknetLendRuntime({
+        ...(recovery
+          ? {
+              recovery,
+            }
+          : {}),
+
         async preparePublicLend(
           input,
         ) {
@@ -229,6 +238,9 @@ function createRuntime({
               USDC.decimals,
 
             amountUnits,
+
+            poolId:
+              "vesu-test",
 
             async readPositionShares() {
               return shares;
@@ -326,6 +338,24 @@ function createRuntime({
             status:
               "confirmed",
           };
+        },
+
+
+        async readPublicLendPositionShares(
+          input,
+        ) {
+          assert.equal(
+            input.poolId,
+            "vesu-test",
+          );
+
+          assert.equal(
+            input.assetId,
+            USDC.id,
+          );
+
+
+          return shares;
         },
 
 
@@ -739,6 +769,329 @@ test(
         )
         .status,
       "submitted",
+    );
+  },
+);
+
+
+test(
+  "public Vesu Lend restores signed shares baseline after reload",
+  async () => {
+    const USDC =
+      asset(
+        "USDC",
+      );
+
+
+    const runId =
+      "lend-recovered";
+
+    const stageId =
+      "lend-1";
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {},
+
+
+      async load(input) {
+        assert.equal(
+          input.runId,
+          runId,
+        );
+
+
+        return {
+          version:
+            1,
+
+          kind:
+            "lend",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId:
+            MAINNET,
+
+          account:
+            "0x123",
+
+          data: {
+            action:
+              "lend",
+
+            kind:
+              "public-lend",
+
+            poolId:
+              "vesu-test",
+
+            assetId:
+              USDC.id,
+
+            sharesBefore:
+              (
+                490n *
+                10n **
+                  BigInt(
+                    USDC.decimals,
+                  )
+              ).toString(),
+          },
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0xabc",
+        };
+      },
+    };
+
+
+    const {
+      runtime,
+    } =
+      createRuntime({
+        recovery,
+      });
+
+
+    const plan =
+      planner
+        .buildStarknetAgentPlan({
+          goal:
+            "Lend 10 USDC.",
+
+          chainId:
+            MAINNET,
+
+          mode:
+            "normal",
+        });
+
+
+    let session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0xabc",
+          },
+        );
+
+
+    session =
+      await runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          context(
+            runId,
+          ),
+        );
+
+
+    assert.equal(
+      session.run.status,
+      "completed",
+    );
+  },
+);
+
+
+test(
+  "Unshield Lend restores signed public balance baseline after reload",
+  async () => {
+    const USDC =
+      asset(
+        "USDC",
+      );
+
+
+    const runId =
+      "lend-unshield-recovered";
+
+    const stageId =
+      "unshield-1";
+
+    const amountUnits =
+      amounts.parseUnits(
+        "10",
+        USDC.decimals,
+      );
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {},
+
+
+      async load() {
+        return {
+          version:
+            1,
+
+          kind:
+            "lend",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId:
+            MAINNET,
+
+          account:
+            "0x123",
+
+          data: {
+            action:
+              "unshield",
+
+            assetId:
+              USDC.id,
+
+            assetSymbol:
+              USDC.symbol,
+
+            decimals:
+              USDC.decimals
+                .toString(),
+
+            publicBefore:
+              (
+                990n *
+                10n **
+                  BigInt(
+                    USDC.decimals,
+                  )
+              ).toString(),
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0xabc",
+        };
+      },
+    };
+
+
+    const {
+      runtime,
+    } =
+      createRuntime({
+        recovery,
+      });
+
+
+    const plan =
+      planner
+        .buildStarknetAgentPlan({
+          goal:
+            "Lend 10 USDC.",
+
+          chainId:
+            MAINNET,
+
+          mode:
+            "unshield",
+        });
+
+
+    let session =
+      executor
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0xabc",
+          },
+        );
+
+
+    session =
+      await runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          context(
+            runId,
+          ),
+        );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "unshield-1",
+        ).status,
+      "confirmed",
+    );
+
+
+    assert.equal(
+      machine
+        .getAgentRuntimeStage(
+          session.run,
+          "lend-2",
+        ).status,
+      "review",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        "unshield-1"
+      ].amountText,
+      "10",
     );
   },
 );

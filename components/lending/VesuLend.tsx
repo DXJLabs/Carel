@@ -43,6 +43,13 @@ import {
   createAgentFeeGateCoordinator,
 } from "@/lib/agent/client-fee-gate";
 
+import {
+  clearActiveAgentRecoveryPointer,
+  loadActiveAgentRecoveryPointer,
+  loadAgentRecoveryCapsule,
+  saveActiveAgentRecoveryPointer,
+} from "@/lib/agent/client-recovery";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -50,6 +57,7 @@ import type {
 import {
   createAgentExecutionSession,
   executeAgentStage,
+  restoreSubmittedAgentExecutionSession,
   type AgentExecutionSession,
 } from "@/lib/agent/executor";
 
@@ -337,6 +345,82 @@ export function VesuLend({
   }
 
 
+  function rememberLendRecovery(
+    plan:
+      AgentPlan,
+
+    session:
+      AgentExecutionSession,
+
+    stageId:
+      string,
+  ) {
+    if (
+      !wallet.address
+    ) {
+      return;
+    }
+
+
+    if (
+      session.run.status ===
+        "completed"
+    ) {
+      clearActiveAgentRecoveryPointer({
+        kind:
+          "lend",
+
+        account:
+          wallet.address,
+      });
+
+      return;
+    }
+
+
+    const stage =
+      session.run.stages.find(
+        (candidate) =>
+          candidate.stageId ===
+            stageId,
+      );
+
+
+    if (
+      stage?.status !==
+        "submitted" ||
+      !stage.txHash
+    ) {
+      return;
+    }
+
+
+    saveActiveAgentRecoveryPointer({
+      version:
+        1,
+
+      kind:
+        "lend",
+
+      account:
+        wallet.address,
+
+      chainId:
+        wallet.chainId,
+
+      runId:
+        session.runId,
+
+      stageId,
+
+      goal:
+        plan.objective.goal,
+
+      mode,
+    });
+  }
+
+
   function clearAgentFlow() {
     planRef.current =
       null;
@@ -508,8 +592,224 @@ export function VesuLend({
     wallet.address,
     wallet.chainId,
     mode,
-    selectedAssetId,
-    selectedPoolId,
+  ]);
+
+
+  useEffect(() => {
+    let cancelled =
+      false;
+
+
+    if (
+      !wallet.connected ||
+      !wallet.address
+    ) {
+      return;
+    }
+
+
+    const pointer =
+      loadActiveAgentRecoveryPointer({
+        kind:
+          "lend",
+
+        account:
+          wallet.address,
+      });
+
+
+    if (
+      !pointer ||
+      pointer.chainId !==
+        wallet.chainId ||
+      pointer.mode !==
+        mode
+    ) {
+      return;
+    }
+
+
+    void (
+      async () => {
+        const capsule =
+          await loadAgentRecoveryCapsule({
+            account:
+              wallet.address,
+
+            runId:
+              pointer.runId,
+
+            stageId:
+              pointer.stageId,
+          });
+
+
+        if (
+          cancelled ||
+          !capsule ||
+          capsule.kind !==
+            "lend" ||
+          capsule.chainId !==
+            wallet.chainId
+        ) {
+          return;
+        }
+
+
+        const plan =
+          buildStarknetAgentPlan({
+            goal:
+              pointer.goal,
+
+            chainId:
+              wallet.chainId,
+
+            mode:
+              pointer.mode,
+          });
+
+
+        if (
+          plan.status !==
+            "ready"
+        ) {
+          return;
+        }
+
+
+        const feeGate =
+          await feeGateRef.current
+            .resume(
+              plan,
+              {
+                runId:
+                  pointer.runId,
+
+                chainId:
+                  wallet.chainId,
+
+                payer:
+                  wallet.address,
+              },
+            );
+
+
+        if (cancelled) {
+          return;
+        }
+
+
+        const session =
+          restoreSubmittedAgentExecutionSession(
+            plan,
+            pointer.runId,
+            pointer.stageId,
+            {
+              kind:
+                "transaction",
+
+              id:
+                capsule
+                  .transactionId,
+            },
+            feeGate.authorization,
+          );
+
+
+        /*
+         * Confirmation of an existing tx does not require a currently loaded
+         * Vesu market. New stages still require one.
+         */
+        const runtime =
+          createLiveVesuLendRuntime({
+            wallet,
+
+            market:
+              null,
+          });
+
+
+        planRef.current =
+          plan;
+
+        runtimeRef.current =
+          runtime;
+
+        accountRef.current =
+          wallet.address;
+
+
+        feeGateRef.current
+          .markProtocolStarted(
+            pointer.runId,
+          );
+
+
+        try {
+          const parsed =
+            parseLendGoal(
+              pointer.goal,
+            );
+
+
+          const asset =
+            getVesuLendAssetBySymbol(
+              parsed.symbol,
+            );
+
+
+          if (asset) {
+            setSelectedAssetId(
+              asset.id,
+            );
+          }
+
+
+          setAmount(
+            parsed.amountText,
+          );
+        } catch {
+          // Signed Agent plan remains authoritative.
+        }
+
+
+        setLendAgentSession(
+          session,
+        );
+
+        setError(
+          "",
+        );
+
+        setSuccess(
+          "Recovered the submitted Vesu Lend Agent transaction. Confirm it to continue.",
+        );
+      }
+    )().catch(
+      (cause) => {
+        if (cancelled) {
+          return;
+        }
+
+
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not recover the submitted Vesu Lend Agent transaction.",
+        );
+      },
+    );
+
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    wallet.connected,
+    wallet.address,
+    wallet.chainId,
+    mode,
   ]);
 
 
@@ -726,6 +1026,13 @@ export function VesuLend({
       );
 
 
+      rememberLendRecovery(
+        plan,
+        result.session,
+        first.stageId,
+      );
+
+
       setSuccess(
         stageAction(
           first.stageId,
@@ -764,7 +1071,7 @@ export function VesuLend({
     const plan =
       planRef.current;
 
-    const runtime =
+    let runtime =
       runtimeRef.current;
 
 
@@ -788,6 +1095,33 @@ export function VesuLend({
 
 
     try {
+      if (
+        stageAction(
+          reviewStage.stageId,
+        ) ===
+          "lend"
+      ) {
+        if (!selectedMarket) {
+          throw new Error(
+            "Refresh and select a verified Vesu market before continuing Lend.",
+          );
+        }
+
+
+        runtime =
+          createLiveVesuLendRuntime({
+            wallet,
+
+            market:
+              selectedMarket,
+          });
+
+
+        runtimeRef.current =
+          runtime;
+      }
+
+
       const result =
         await executeAgentStage(
           plan,
@@ -802,6 +1136,13 @@ export function VesuLend({
 
       setLendAgentSession(
         result.session,
+      );
+
+
+      rememberLendRecovery(
+        plan,
+        result.session,
+        reviewStage.stageId,
       );
 
 
@@ -886,6 +1227,15 @@ export function VesuLend({
         next.run.status ===
           "completed"
       ) {
+        clearActiveAgentRecoveryPointer({
+          kind:
+            "lend",
+
+          account:
+            wallet.address,
+        });
+
+
         setSuccess(
           mode ===
             "shield"
@@ -939,6 +1289,19 @@ export function VesuLend({
 
 
   function resetAgentLend() {
+    if (
+      wallet.address
+    ) {
+      clearActiveAgentRecoveryPointer({
+        kind:
+          "lend",
+
+        account:
+          wallet.address,
+      });
+    }
+
+
     clearAgentFlow();
 
     setError("");

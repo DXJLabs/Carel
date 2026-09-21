@@ -16,6 +16,10 @@ import {
 } from "@/lib/agent/starknet-lend-runtime";
 
 import {
+  createAgentRuntimeRecovery,
+} from "@/lib/agent/client-recovery";
+
+import {
   getCarelNetwork,
 } from "@/lib/carel/networks";
 
@@ -192,12 +196,24 @@ export function createLiveVesuLendRuntime({
     LendRuntimeWallet;
 
   market:
-    VesuLendMarketRef;
+    VesuLendMarketRef | null;
 }>): StarknetLendRuntime {
   return createStarknetLendRuntime({
+    recovery:
+      createAgentRuntimeRecovery(
+        "lend",
+      ),
+
     async preparePublicLend(
       input,
     ) {
+      if (!market) {
+        throw new Error(
+          "Refresh and select a verified Vesu market before executing a new public Lend stage.",
+        );
+      }
+
+
       const network =
         getCarelNetwork(
           input.chainId,
@@ -381,6 +397,9 @@ export function createLiveVesuLendRuntime({
 
         amountUnits,
 
+        poolId:
+          market.pool.id,
+
         readPositionShares,
 
         async execute() {
@@ -407,6 +426,13 @@ export function createLiveVesuLendRuntime({
     async prepareShieldLend(
       input,
     ) {
+      if (!market) {
+        throw new Error(
+          "Refresh and select a verified Vesu market before executing Shield Lend.",
+        );
+      }
+
+
       const network =
         getCarelNetwork(
           input.chainId,
@@ -578,6 +604,69 @@ export function createLiveVesuLendRuntime({
           amountText,
           label,
         );
+    },
+
+
+    async readPublicLendPositionShares(
+      input,
+    ) {
+      const network =
+        getCarelNetwork(
+          input.chainId,
+        );
+
+
+      if (
+        !network ||
+        network.id !==
+          "mainnet"
+      ) {
+        throw new Error(
+          "Vesu Lend position verification requires Starknet Mainnet.",
+        );
+      }
+
+
+      const pool =
+        getVesuPool(
+          input.poolId,
+        );
+
+
+      const asset =
+        getVesuLendAsset(
+          input.assetId,
+        );
+
+
+      if (
+        !pool ||
+        !asset
+      ) {
+        throw new Error(
+          "Recovered Vesu Lend position references an unknown pool or asset.",
+        );
+      }
+
+
+      const current =
+        await readVesuLendingPosition({
+          provider:
+            network.provider,
+
+          pool,
+
+          owner:
+            input.account,
+
+          asset,
+        });
+
+
+      return (
+        current?.shares ??
+        0n
+      );
     },
 
 
