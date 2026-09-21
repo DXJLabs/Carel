@@ -488,6 +488,38 @@ test(
         "utf8",
       );
 
+    const borrowControllerPath =
+      path.join(
+        ROOT,
+        "components/borrow/useBorrowController.ts",
+      );
+
+    const controllerSource =
+      fs.existsSync(
+        borrowControllerPath,
+      )
+        ? fs.readFileSync(
+            borrowControllerPath,
+            "utf8",
+          )
+        : source;
+
+    const borrowViewPath =
+      path.join(
+        ROOT,
+        "components/borrow/BorrowView.tsx",
+      );
+
+    const viewSource =
+      fs.existsSync(
+        borrowViewPath,
+      )
+        ? fs.readFileSync(
+            borrowViewPath,
+            "utf8",
+          )
+        : source;
+
     const borrowRuntimePath =
       path.join(
         ROOT,
@@ -510,7 +542,7 @@ test(
       )
     ) {
       assert.match(
-        source,
+        controllerSource,
         /createVesuBorrowRuntime\(/,
       );
     }
@@ -528,12 +560,12 @@ test(
     );
 
     assert.match(
-      source,
+      controllerSource,
       /executeAgentStage\([\s\S]*"borrow-1"/,
     );
 
     assert.match(
-      source,
+      controllerSource,
       /executeAgentStage\([\s\S]*"shield-2"/,
     );
 
@@ -548,7 +580,7 @@ test(
     );
 
     assert.match(
-      source,
+      viewSource,
       /Vesu collateral and debt[\s\S]*remain public/,
     );
 
