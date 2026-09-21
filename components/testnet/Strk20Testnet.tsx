@@ -64,6 +64,11 @@ import {
 } from "@/lib/carel/networks";
 
 import {
+  agentFeeIdempotencyKey,
+  type AgentFeeExecutionQuote,
+} from "@/lib/agent/fee-runtime";
+
+import {
   clearBalancesByVisibility,
   findAssetBalance,
   mergeBalances,
@@ -248,6 +253,11 @@ type CarelTestnetContextValue = {
     label: string,
   ) => Promise<string>;
   executeBridge: (calls: BridgeCall[], expectedAddress: string) => Promise<string>;
+
+  executeAgentFee: (
+    quote: AgentFeeExecutionQuote,
+    label: string,
+  ) => Promise<string>;
   executeShieldLend: (
     payload: VesuShieldLendExecutionPayload,
     label: string,
@@ -668,6 +678,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
   const [maturityTarget, setMaturityTarget] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
   const bridgeSubmitting = useRef(false);
+  const agentFeeSubmitting = useRef(false);
   const swapSubmitting = useRef(false);
   const stakingSubmitting = useRef(false);
   const lendSubmitting = useRef(false);
@@ -5641,6 +5652,355 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Executes one reviewed CAREL Agent fee transfer.
+   *
+   * The wallet independently validates the signed quote payload shape before
+   * signing. Server settlement later verifies the exact on-chain Transfer
+   * event, so a transaction hash alone never proves payment.
+   */
+  const executeAgentFee = async (
+    quote:
+      AgentFeeExecutionQuote,
+
+    label:
+      string,
+  ): Promise<string> => {
+    if (
+      agentFeeSubmitting.current ||
+      busy ||
+      !walletAccount
+    ) {
+      throw new Error(
+        "Connect your wallet and finish the current wallet request first.",
+      );
+    }
+
+
+    const account =
+      walletAccount;
+
+
+    const network =
+      getCarelNetwork(
+        chainId,
+      );
+
+
+    if (!network) {
+      throw new Error(
+        "CAREL Agent fee is not available on this network.",
+      );
+    }
+
+
+    if (
+      quote.chainId !==
+        network.chainId ||
+      quote.assetId !==
+        network.assets.strk.id ||
+      quote.assetSymbol !==
+        network.assets.strk.symbol ||
+      quote.assetDecimals !==
+        network.assets.strk.decimals
+    ) {
+      throw new Error(
+        "Agent fee quote does not match the connected Starknet network.",
+      );
+    }
+
+
+    if (
+      quote.idempotencyKey !==
+        agentFeeIdempotencyKey(
+          quote.runId,
+        )
+    ) {
+      throw new Error(
+        "Agent fee quote contains an invalid idempotency key.",
+      );
+    }
+
+
+    if (
+      Date.now() >
+        quote.expiresAt
+    ) {
+      throw new Error(
+        "Agent fee quote expired before wallet approval.",
+      );
+    }
+
+
+    if (
+      felt(
+        quote.payer,
+      ) !==
+        felt(
+          account.address,
+        )
+    ) {
+      throw new Error(
+        "Agent fee quote belongs to another wallet.",
+      );
+    }
+
+
+    const amount =
+      BigInt(
+        quote.amountUnits,
+      );
+
+
+    if (
+      amount <= 0n ||
+      parseUnits(
+        quote.amountText,
+        quote.assetDecimals,
+      ) !==
+        amount
+    ) {
+      throw new Error(
+        "Agent fee quote contains an invalid amount.",
+      );
+    }
+
+
+    const recipient =
+      felt(
+        quote.recipient,
+      );
+
+
+    if (
+      BigInt(
+        recipient,
+      ) === 0n ||
+      recipient ===
+        felt(
+          account.address,
+        )
+    ) {
+      throw new Error(
+        "Agent fee quote contains an invalid recipient.",
+      );
+    }
+
+
+    const identifier =
+      network.assets.strk
+        .identifier;
+
+
+    if (
+      identifier.kind !==
+        "contract"
+    ) {
+      throw new Error(
+        "CAREL Agent fee asset has no Starknet token contract.",
+      );
+    }
+
+
+    const token =
+      identifier.address;
+
+
+    const assertSession =
+      async () => {
+        const selected =
+          account
+            .walletProvider as unknown as
+            WalletWithStarknetFeaturesV6;
+
+
+        const [
+          walletChain,
+          accounts,
+        ] =
+          await Promise.all([
+            walletV6
+              .requestChainId(
+                selected,
+              ),
+
+            account
+              .requestAccounts(
+                true,
+              ),
+          ]);
+
+
+        if (
+          currentAccount.current !==
+            account ||
+          String(
+            walletChain,
+          ) !==
+            network.chainId ||
+          !accounts[0] ||
+          felt(
+            accounts[0],
+          ) !==
+            felt(
+              quote.payer,
+            )
+        ) {
+          throw new Error(
+            "Wallet account or network changed before Agent fee approval.",
+          );
+        }
+      };
+
+
+    const balance =
+      await network.provider
+        .callContract({
+          contractAddress:
+            token,
+
+          entrypoint:
+            "balance_of",
+
+          calldata: [
+            quote.payer,
+          ],
+        });
+
+
+    if (
+      balance.length <
+        2
+    ) {
+      throw new Error(
+        "Could not verify STRK balance for the Agent fee.",
+      );
+    }
+
+
+    const available =
+      BigInt(
+        balance[0],
+      ) +
+      (
+        BigInt(
+          balance[1],
+        ) << 128n
+      );
+
+
+    if (
+      available <
+        amount
+    ) {
+      throw new Error(
+        "Insufficient public STRK balance for the CAREL Agent fee.",
+      );
+    }
+
+
+    const mask =
+      (1n << 128n) -
+      1n;
+
+
+    const calls:
+      Call[] = [
+        {
+          contractAddress:
+            token,
+
+          entrypoint:
+            "transfer",
+
+          calldata: [
+            recipient,
+
+            `0x${(
+              amount &
+              mask
+            ).toString(16)}`,
+
+            `0x${(
+              amount >>
+              128n
+            ).toString(16)}`,
+          ],
+        },
+      ];
+
+
+    agentFeeSubmitting.current =
+      true;
+
+    setBusy(
+      true,
+    );
+
+    setError(
+      null,
+    );
+
+
+    try {
+      await assertSession();
+
+
+      if (
+        Date.now() >
+          quote.expiresAt
+      ) {
+        throw new Error(
+          "Agent fee quote expired before signing.",
+        );
+      }
+
+
+      const response =
+        await account
+          .execute(
+            calls,
+          );
+
+
+      const hash =
+        response
+          .transaction_hash;
+
+
+      if (
+        !/^0x[0-9a-f]{1,64}$/i.test(
+          hash,
+        )
+      ) {
+        throw new Error(
+          "Ready did not return a valid Agent fee transaction hash.",
+        );
+      }
+
+
+      setTx({
+        kind:
+          "submitted",
+
+        label,
+
+        hash,
+      });
+
+
+      return hash;
+    } finally {
+      agentFeeSubmitting.current =
+        false;
+
+      setBusy(
+        false,
+      );
+    }
+  };
+
+
   const executeBridge = async (input: BridgeCall[], expectedAddress: string): Promise<string> => {
     if (bridgeSubmitting.current || busy || !walletAccount) throw new Error("Connect your wallet and finish the current wallet request first.");
     const account = walletAccount;
@@ -5708,6 +6068,7 @@ export function CarelTestnetProvider({ children }: { children: ReactNode }) {
       executeStakingAction,
       executeShieldStaking,
       executeBridge,
+      executeAgentFee,
       executeShieldLend,
       executeLend,
       executeWithdrawVesuLend,

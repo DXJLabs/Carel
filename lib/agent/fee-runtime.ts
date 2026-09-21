@@ -27,6 +27,18 @@ export type AgentFeeExecutionQuote =
     runId:
       string;
 
+    /**
+     * Stable once-per-plan identity signed by the CAREL server.
+     */
+    idempotencyKey:
+      string;
+
+    payer:
+      string;
+
+    issuedAt:
+      number;
+
     chainId:
       string;
 
@@ -303,6 +315,38 @@ function validateQuote(
   ) {
     throw new Error(
       "Agent fee quote belongs to another execution run.",
+    );
+  }
+
+
+  if (
+    quote.idempotencyKey !==
+      state.idempotencyKey
+  ) {
+    throw new Error(
+      "Agent fee quote idempotency key does not match this execution run.",
+    );
+  }
+
+
+  if (
+    !quote.payer.trim()
+  ) {
+    throw new Error(
+      "Agent fee quote is missing its payer.",
+    );
+  }
+
+
+  if (
+    !Number.isFinite(
+      quote.issuedAt,
+    ) ||
+    quote.issuedAt >
+      now
+  ) {
+    throw new Error(
+      "Agent fee quote contains an invalid issue time.",
     );
   }
 

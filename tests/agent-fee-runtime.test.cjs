@@ -135,6 +135,16 @@ function quote(
     runId:
       "run-1",
 
+    idempotencyKey:
+      "run-1:agent-fee",
+
+    payer:
+      "0x456",
+
+    issuedAt:
+      Date.now() -
+      1_000,
+
     chainId:
       MAINNET,
 
@@ -300,6 +310,9 @@ test(
           .attachAgentFeeQuote(
             state,
             quote({
+              issuedAt:
+                50,
+
               expiresAt:
                 100,
             }),
