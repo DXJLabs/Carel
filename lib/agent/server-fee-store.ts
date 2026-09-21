@@ -111,6 +111,34 @@ export type DurableAgentFeeSettlement =
   }>;
 
 
+export type AgentFeeTransactionClaim =
+  Readonly<{
+    version:
+      1;
+
+    transactionHash:
+      string;
+
+    runId:
+      string;
+
+    idempotencyKey:
+      string;
+
+    planDigest:
+      string;
+
+    payer:
+      string;
+
+    chainId:
+      string;
+
+    claimedAt:
+      number;
+  }>;
+
+
 export type AgentFeeStore =
   Readonly<{
     bindRun(
@@ -228,6 +256,22 @@ function settlementKey(
       runId,
     ) +
     ":settlement"
+  );
+}
+
+
+function transactionClaimKey(
+  transactionHash:
+    string,
+): string {
+  return (
+    "carel:agent-fee:v1:tx:" +
+    digest(
+      normalizeTransaction(
+        transactionHash,
+      ),
+    ) +
+    ":claim"
   );
 }
 
@@ -446,6 +490,53 @@ function requireStoredBinding(
 }
 
 
+function requireStoredTransactionClaim(
+  value:
+    AgentFeeTransactionClaim | null,
+): AgentFeeTransactionClaim {
+  if (
+    !value ||
+    value.version !==
+      1 ||
+    !value.runId ||
+    !value.idempotencyKey ||
+    !value.chainId
+  ) {
+    throw new Error(
+      "CAREL Agent fee transaction claim is missing or corrupted.",
+    );
+  }
+
+
+  return {
+    ...value,
+
+    transactionHash:
+      normalizeTransaction(
+        value.transactionHash,
+      ),
+
+    runId:
+      normalizeRunId(
+        value.runId,
+      ),
+
+    planDigest:
+      normalizePlanDigest(
+        value.planDigest,
+      ),
+
+    payer:
+      normalizeStarknetAddress(
+        value.payer,
+      ),
+
+    chainId:
+      value.chainId.trim(),
+  };
+}
+
+
 function requireStoredSettlement(
   value:
     DurableAgentFeeSettlement | null,
@@ -639,6 +730,103 @@ export function createAgentFeeStore(
         settlementReceipt:
           signed,
       };
+
+
+      /*
+       * A fee transaction may authorize exactly one Agent execution.
+       *
+       * This closes cross-run replay of the same STRK Transfer transaction.
+       */
+      const transactionClaim:
+        AgentFeeTransactionClaim = {
+        version:
+          1,
+
+        transactionHash:
+          candidate
+            .transactionHash,
+
+        runId:
+          candidate.runId,
+
+        idempotencyKey:
+          candidate
+            .idempotencyKey,
+
+        planDigest:
+          candidate.planDigest,
+
+        payer:
+          candidate.payer,
+
+        chainId:
+          candidate.chainId,
+
+        claimedAt:
+          candidate.settledAt,
+      };
+
+
+      const claimKey =
+        transactionClaimKey(
+          candidate
+            .transactionHash,
+        );
+
+
+      const claimed =
+        await backend.set(
+          claimKey,
+          transactionClaim,
+          {
+            nx:
+              true,
+
+            ex:
+              ttlSeconds,
+          },
+        );
+
+
+      if (
+        claimed !==
+          "OK"
+      ) {
+        const existingClaim =
+          requireStoredTransactionClaim(
+            await backend.get<
+              AgentFeeTransactionClaim
+            >(
+              claimKey,
+            ),
+          );
+
+
+        if (
+          existingClaim
+            .transactionHash !==
+              transactionClaim
+                .transactionHash ||
+          existingClaim.runId !==
+            transactionClaim.runId ||
+          existingClaim
+            .idempotencyKey !==
+              transactionClaim
+                .idempotencyKey ||
+          existingClaim
+            .planDigest !==
+              transactionClaim
+                .planDigest ||
+          existingClaim.payer !==
+            transactionClaim.payer ||
+          existingClaim.chainId !==
+            transactionClaim.chainId
+        ) {
+          throw new Error(
+            "CAREL Agent fee transaction is already claimed by another execution.",
+          );
+        }
+      }
 
 
       const key =

@@ -476,3 +476,83 @@ test(
     );
   },
 );
+
+
+test(
+  "one Agent fee transaction cannot settle two different runs",
+  async () => {
+    const store =
+      createAgentFeeStore(
+        memoryBackend(),
+        {
+          ttlSeconds:
+            3600,
+        },
+      );
+
+
+    await store
+      .bindRun(
+        quote(),
+      );
+
+
+    await store
+      .persistSettlement(
+        settlement(
+          "0xabc",
+        ),
+      );
+
+
+    await store
+      .bindRun(
+        quote({
+          runId:
+            "run-2",
+
+          idempotencyKey:
+            "run-2:agent-fee",
+
+          planDigest:
+            "2".repeat(
+              64,
+            ),
+        }),
+      );
+
+
+    const replay = {
+      ...settlement(
+        "0xabc",
+      ),
+
+      receipt: {
+        ...settlement(
+          "0xabc",
+        ).receipt,
+
+        runId:
+          "run-2",
+
+        idempotencyKey:
+          "run-2:agent-fee",
+
+        planDigest:
+          "2".repeat(
+            64,
+          ),
+      },
+    };
+
+
+    await assert.rejects(
+      () =>
+        store
+          .persistSettlement(
+            replay,
+          ),
+      /already claimed/i,
+    );
+  },
+);
