@@ -650,3 +650,157 @@ test(
     );
   },
 );
+
+
+test(
+  "Agent fee resume can use durable server settlement without local browser evidence",
+  async () => {
+    let resumeCalls =
+      0;
+
+
+    const coordinator =
+      gate
+        .createAgentFeeGateCoordinator({
+          async httpClient(
+            url,
+            init,
+          ) {
+            if (
+              url.endsWith(
+                "/policy",
+              )
+            ) {
+              return response({
+                enabled:
+                  true,
+              });
+            }
+
+
+            assert.match(
+              url,
+              /\/resume$/,
+            );
+
+
+            resumeCalls++;
+
+
+            const body =
+              JSON.parse(
+                init.body,
+              );
+
+
+            assert.equal(
+              body.runId,
+              "durable-run",
+            );
+
+
+            /*
+             * Node test has no window/localStorage, so no settlementReceipt
+             * can be supplied by the browser here.
+             */
+            assert.equal(
+              body
+                .settlementReceipt,
+              undefined,
+            );
+
+
+            return response({
+              settled:
+                true,
+
+              runId:
+                "durable-run",
+
+              settlementReceipt: {
+                receipt: {
+                  version:
+                    1,
+
+                  runId:
+                    "durable-run",
+
+                  idempotencyKey:
+                    "durable-run:agent-fee",
+
+                  planDigest:
+                    "1".repeat(
+                      64,
+                    ),
+
+                  quoteId:
+                    "a".repeat(
+                      64,
+                    ),
+
+                  payer:
+                    "0x456",
+
+                  chainId:
+                    MAINNET,
+
+                  transactionHash:
+                    "0xabc",
+
+                  settledAt:
+                    Date.now(),
+                },
+
+                signature:
+                  "b".repeat(
+                    64,
+                  ),
+              },
+
+              executionReference: {
+                kind:
+                  "transaction",
+
+                id:
+                  "0xabc",
+              },
+            });
+          },
+        });
+
+
+    const result =
+      await coordinator
+        .resume(
+          plan(),
+          {
+            runId:
+              "durable-run",
+
+            chainId:
+              MAINNET,
+
+            payer:
+              "0x456",
+          },
+        );
+
+
+    assert.equal(
+      result.status,
+      "settled",
+    );
+
+
+    assert.equal(
+      result.runId,
+      "durable-run",
+    );
+
+
+    assert.equal(
+      resumeCalls,
+      1,
+    );
+  },
+);

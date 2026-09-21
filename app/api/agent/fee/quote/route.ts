@@ -6,6 +6,10 @@ import {
   createSignedAgentFeeQuote,
 } from "@/lib/agent/server-fee";
 
+import {
+  getAgentFeeStore,
+} from "@/lib/agent/server-fee-store";
+
 
 export const runtime =
   "nodejs";
@@ -77,6 +81,16 @@ export async function POST(
       });
 
 
+    /*
+     * Redis is now the durable run-level idempotency boundary.
+     * The quote does not leave CAREL until runId is atomically bound.
+     */
+    await getAgentFeeStore()
+      .bindRun(
+        signed.quote,
+      );
+
+
     return NextResponse.json(
       signed,
       {
@@ -97,7 +111,7 @@ export async function POST(
 
 
     const unavailable =
-      /not configured|signing secret|recipient|fee amount/i.test(
+      /not configured|signing secret|recipient|fee amount|redis store/i.test(
         message,
       );
 

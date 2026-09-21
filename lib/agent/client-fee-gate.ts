@@ -840,26 +840,29 @@ export function createAgentFeeGateCoordinator({
       );
 
 
-    if (
-      !evidence ||
-      evidence.runId !==
-        normalizedRunId ||
-      evidence.chainId !==
-        chainId ||
-      evidence.payer
-        .toLowerCase() !==
-        payer.toLowerCase() ||
-      evidence
-        .settlementReceipt
-        .receipt
-        .planDigest
-        .toLowerCase() !==
-        expectedPlanDigest
-    ) {
-      throw new Error(
-        "CAREL cannot restore the settled Agent fee for this run.",
+    /*
+     * Redis is the authoritative reload boundary now.
+     *
+     * Local settlement evidence is only an optional migration/cache hint.
+     * Corrupted or missing browser storage must not prevent server recovery.
+     */
+    const validLocalEvidence =
+      Boolean(
+        evidence &&
+        evidence.runId ===
+          normalizedRunId &&
+        evidence.chainId ===
+          chainId &&
+        evidence.payer
+          .toLowerCase() ===
+          payer.toLowerCase() &&
+        evidence
+          .settlementReceipt
+          .receipt
+          .planDigest
+          .toLowerCase() ===
+          expectedPlanDigest
       );
-    }
 
 
     const response =
@@ -889,9 +892,14 @@ export function createAgentFeeGateCoordinator({
 
               payer,
 
-              settlementReceipt:
+              ...(validLocalEvidence &&
                 evidence
-                  .settlementReceipt,
+                ? {
+                    settlementReceipt:
+                      evidence
+                        .settlementReceipt,
+                  }
+                : {}),
             }),
         },
       );
@@ -954,6 +962,57 @@ export function createAgentFeeGateCoordinator({
       throw new Error(
         message,
       );
+    }
+
+
+    const returnedSettlement =
+      (
+        raw as
+          Record<
+            string,
+            unknown
+          >
+      ).settlementReceipt;
+
+
+    if (
+      returnedSettlement &&
+      typeof returnedSettlement ===
+        "object" &&
+      !Array.isArray(
+        returnedSettlement,
+      ) &&
+      (
+        returnedSettlement as
+          Record<
+            string,
+            unknown
+          >
+      ).receipt &&
+      typeof (
+        returnedSettlement as
+          Record<
+            string,
+            unknown
+          >
+      ).signature ===
+        "string"
+    ) {
+      saveSettlementEvidence({
+        version:
+          1,
+
+        runId:
+          normalizedRunId,
+
+        chainId,
+
+        payer,
+
+        settlementReceipt:
+          returnedSettlement as
+            SignedAgentFeeSettlementReceiptPayload,
+      });
     }
 
 

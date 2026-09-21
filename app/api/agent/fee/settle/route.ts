@@ -8,6 +8,10 @@ import {
   type SignedAgentFeeQuote,
 } from "@/lib/agent/server-fee";
 
+import {
+  getAgentFeeStore,
+} from "@/lib/agent/server-fee-store";
+
 
 export const runtime =
   "nodejs";
@@ -83,19 +87,35 @@ export async function POST(
       });
 
 
+    /*
+     * SET NX makes the first verified fee transaction canonical.
+     *
+     * Retrying the same transaction is idempotent.
+     * A different transaction for the same run is rejected.
+     */
+    const durable =
+      await getAgentFeeStore()
+        .persistSettlement(
+          settlementReceipt,
+        );
+
+
     return NextResponse.json(
       {
         settled:
           true,
 
-        settlementReceipt,
+        settlementReceipt:
+          durable
+            .settlementReceipt,
 
         executionReference: {
           kind:
             "transaction",
 
           id:
-            body.transactionHash,
+            durable
+              .transactionHash,
         },
       },
       {
