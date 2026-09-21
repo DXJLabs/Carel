@@ -760,7 +760,9 @@ export function verifySignedAgentFeeQuote(
 
 
   const expectedRecipient =
-    feeRecipient();
+    feeRecipient(
+      network.id,
+    );
 
 
   if (
