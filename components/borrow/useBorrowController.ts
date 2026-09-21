@@ -27,6 +27,13 @@ import {
   createAgentFeeGateCoordinator,
 } from "@/lib/agent/client-fee-gate";
 
+import {
+  clearActiveAgentRecoveryPointer,
+  loadActiveAgentRecoveryPointer,
+  loadAgentRecoveryCapsule,
+  saveActiveAgentRecoveryPointer,
+} from "@/lib/agent/client-recovery";
+
 import type {
   AgentPlan,
 } from "@/lib/agent/plan";
@@ -38,6 +45,7 @@ import {
 import {
   createAgentExecutionSession,
   executeAgentStage,
+  restoreSubmittedAgentExecutionSession,
   type AgentExecutionSession,
 } from "@/lib/agent/executor";
 
@@ -204,6 +212,82 @@ export function useBorrowController({
       wallet,
     });
   }
+
+  function rememberBorrowRecovery(
+    plan:
+      AgentPlan,
+
+    session:
+      AgentExecutionSession,
+
+    stageId:
+      string,
+  ) {
+    if (
+      !wallet.address
+    ) {
+      return;
+    }
+
+
+    if (
+      session.run.status ===
+        "completed"
+    ) {
+      clearActiveAgentRecoveryPointer({
+        kind:
+          "borrow",
+
+        account:
+          wallet.address,
+      });
+
+      return;
+    }
+
+
+    const stage =
+      session.run.stages.find(
+        (candidate) =>
+          candidate.stageId ===
+            stageId,
+      );
+
+
+    if (
+      stage?.status !==
+        "submitted" ||
+      !stage.txHash
+    ) {
+      return;
+    }
+
+
+    saveActiveAgentRecoveryPointer({
+      version:
+        1,
+
+      kind:
+        "borrow",
+
+      account:
+        wallet.address,
+
+      chainId:
+        wallet.chainId,
+
+      runId:
+        session.runId,
+
+      stageId,
+
+      goal:
+        plan.objective.goal,
+
+      mode,
+    });
+  }
+
 
   function clearBorrowAgentRefs() {
     borrowAgentPlanRef.current =
@@ -513,6 +597,225 @@ export function useBorrowController({
   ]);
 
   useEffect(() => {
+    let cancelled =
+      false;
+
+
+    if (
+      !wallet.connected ||
+      !wallet.address
+    ) {
+      return;
+    }
+
+
+    const pointer =
+      loadActiveAgentRecoveryPointer({
+        kind:
+          "borrow",
+
+        account:
+          wallet.address,
+      });
+
+
+    if (
+      !pointer ||
+      pointer.chainId !==
+        wallet.chainId ||
+      pointer.mode !==
+        mode
+    ) {
+      return;
+    }
+
+
+    void (
+      async () => {
+        const capsule =
+          await loadAgentRecoveryCapsule({
+            account:
+              wallet.address,
+
+            runId:
+              pointer.runId,
+
+            stageId:
+              pointer.stageId,
+          });
+
+
+        if (
+          cancelled ||
+          !capsule ||
+          capsule.kind !==
+            "borrow" ||
+          capsule.chainId !==
+            wallet.chainId
+        ) {
+          return;
+        }
+
+
+        const plan =
+          buildStarknetAgentPlan({
+            goal:
+              pointer.goal,
+
+            chainId:
+              wallet.chainId,
+
+            mode:
+              pointer.mode,
+          });
+
+
+        if (
+          plan.status !==
+            "ready"
+        ) {
+          return;
+        }
+
+
+        const feeGate =
+          await feeGateRef.current
+            .resume(
+              plan,
+              {
+                runId:
+                  pointer.runId,
+
+                chainId:
+                  wallet.chainId,
+
+                payer:
+                  wallet.address,
+              },
+            );
+
+
+        if (cancelled) {
+          return;
+        }
+
+
+        const session =
+          restoreSubmittedAgentExecutionSession(
+            plan,
+            pointer.runId,
+            pointer.stageId,
+            {
+              kind:
+                "transaction",
+
+              id:
+                capsule
+                  .transactionId,
+            },
+            feeGate.authorization,
+          );
+
+
+        /*
+         * selectedMarket may still be loading after a hard reload.
+         * Recovery confirmation itself does not require prepareBorrow().
+         */
+        const runtime =
+          createBorrowRuntime();
+
+
+        borrowAgentPlanRef.current =
+          plan;
+
+        borrowAgentRuntimeRef.current =
+          runtime;
+
+        borrowAgentAccountRef.current =
+          wallet.address;
+
+
+        feeGateRef.current
+          .markProtocolStarted(
+            pointer.runId,
+          );
+
+
+        try {
+          const parsed =
+            parseBorrowGoal(
+              pointer.goal,
+            );
+
+
+          setCollateralAmount(
+            parsed
+              .collateralAmountText,
+          );
+
+          setBorrowAmount(
+            parsed
+              .borrowAmountText,
+          );
+
+
+          const debtAsset =
+            getVesuBorrowDebtAssetBySymbol(
+              parsed.borrowSymbol,
+            );
+
+
+          if (debtAsset) {
+            setDebtAssetId(
+              debtAsset.id,
+            );
+          }
+        } catch {
+          // The signed plan remains authoritative.
+        }
+
+
+        setBorrowAgentSession(
+          session,
+        );
+
+        setError(
+          "",
+        );
+
+        setSuccess(
+          "Recovered the submitted Borrow Agent transaction. Confirm it to continue.",
+        );
+      }
+    )().catch(
+      (cause) => {
+        if (cancelled) {
+          return;
+        }
+
+
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not recover the submitted Borrow Agent transaction.",
+        );
+      },
+    );
+
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    wallet.connected,
+    wallet.address,
+    wallet.chainId,
+    mode,
+  ]);
+
+
+  useEffect(() => {
     resetMarkets();
     setError("");
     setSuccess("");
@@ -702,6 +1005,14 @@ export function useBorrowController({
         );
 
       setBorrowAgentSession(result.session);
+
+
+      rememberBorrowRecovery(
+        plan,
+        result.session,
+        "unshield-1",
+      );
+
 
       setSuccess(
         "Unshield submitted through Agent Core. Confirm it before Vesu Borrow.",
@@ -897,6 +1208,21 @@ export function useBorrowController({
 
       setBorrowAgentSession(next);
 
+
+      if (
+        next.run.status ===
+          "completed"
+      ) {
+        clearActiveAgentRecoveryPointer({
+          kind:
+            "borrow",
+
+          account:
+            wallet.address,
+        });
+      }
+
+
       const output =
         next.outputs[
           "borrow-1"
@@ -1020,6 +1346,21 @@ export function useBorrowController({
       }
 
       setBorrowAgentSession(next);
+
+
+      if (
+        next.run.status ===
+          "completed"
+      ) {
+        clearActiveAgentRecoveryPointer({
+          kind:
+            "borrow",
+
+          account:
+            wallet.address,
+        });
+      }
+
 
       try {
         await wallet.refreshAssetBalances();
@@ -1262,6 +1603,14 @@ export function useBorrowController({
         result.session,
       );
 
+
+      rememberBorrowRecovery(
+        plan,
+        result.session,
+        "shield-2",
+      );
+
+
       const status =
         result.receipt.status ===
           "confirmed"
@@ -1367,6 +1716,21 @@ export function useBorrowController({
           );
 
       setBorrowAgentSession(next);
+
+
+      if (
+        next.run.status ===
+          "completed"
+      ) {
+        clearActiveAgentRecoveryPointer({
+          kind:
+            "borrow",
+
+          account:
+            wallet.address,
+        });
+      }
+
 
       setSuccess(
         "Borrow and Shield Agent plan completed.",
@@ -1597,6 +1961,14 @@ export function useBorrowController({
 
         setBorrowAgentSession(result.session);
 
+
+        rememberBorrowRecovery(
+          plan,
+          result.session,
+          "borrow-1",
+        );
+
+
         const verified =
           result.session
             .outputs[
@@ -1720,6 +2092,14 @@ export function useBorrowController({
 
         setBorrowAgentSession(result.session);
 
+
+        rememberBorrowRecovery(
+          plan,
+          result.session,
+          "borrow-1",
+        );
+
+
         setSuccess(
           "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",
         );
@@ -1794,6 +2174,14 @@ export function useBorrowController({
         );
 
       setBorrowAgentSession(result.session);
+
+
+      rememberBorrowRecovery(
+        plan,
+        result.session,
+        "borrow-2",
+      );
+
 
       setSuccess(
         "Borrow submitted through Agent Core. Confirm it to verify the borrowed output.",

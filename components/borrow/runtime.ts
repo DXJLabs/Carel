@@ -15,6 +15,10 @@ import {
   type StarknetBorrowRuntime,
 } from "@/lib/agent/starknet-borrow-runtime";
 
+import {
+  createAgentRuntimeRecovery,
+} from "@/lib/agent/client-recovery";
+
 import type {
   VesuBorrowExecutionPayload,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
@@ -62,16 +66,34 @@ export function createVesuBorrowRuntime({
   debtSymbol: string;
   wallet: BorrowRuntimeWallet;
 }>): StarknetBorrowRuntime {
-  if (!market || !wallet.address) {
+  if (!wallet.address) {
     throw new Error(
-      "Review a verified Vesu market and connect Ready before execution.",
+      "Connect Ready before Borrow execution or recovery.",
     );
   }
 
-  const reviewedMarket = market;
+  /*
+   * Confirmation/recovery of an already-submitted transaction does not need
+   * a fresh Vesu market object. prepareBorrow() still fails closed below when
+   * a new Borrow stage is actually executed.
+   */
+  const reviewedMarket =
+    market;
 
   return createStarknetBorrowRuntime({
+    recovery:
+      createAgentRuntimeRecovery(
+        "borrow",
+      ),
+
     async prepareBorrow(input) {
+      if (!reviewedMarket) {
+        throw new Error(
+          "Review a verified Vesu market before executing a new Borrow stage.",
+        );
+      }
+
+
       const response =
         await fetch(
           "/api/vesu/borrow/prepare",

@@ -87,7 +87,13 @@ const {
 );
 
 
-function createFixture(mode) {
+function createFixture(
+  mode,
+  {
+    recovery =
+      undefined,
+  } = {},
+) {
   const chainId =
     STARKNET_MAINNET.chainId;
 
@@ -156,6 +162,12 @@ function createFixture(mode) {
 
   const runtime =
     createStarknetBorrowRuntime({
+      ...(recovery
+        ? {
+            recovery,
+          }
+        : {}),
+
       async prepareBorrow(input) {
         return {
           label:
@@ -684,6 +696,357 @@ test(
     assert.equal(
       session.run.status,
       "completed",
+    );
+  },
+);
+
+
+test(
+  "Normal Borrow restores signed public-output verification after reload",
+  async () => {
+    const chainId =
+      STARKNET_MAINNET.chainId;
+
+    const usdc =
+      findCarelAssetBySymbol(
+        chainId,
+        "USDC",
+      );
+
+
+    assert.ok(
+      usdc,
+    );
+
+
+    const runId =
+      "borrow-recovered";
+
+    const stageId =
+      "borrow-1";
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {
+        // Existing signed capsule is simulated below.
+      },
+
+
+      async load(input) {
+        assert.equal(
+          input.runId,
+          runId,
+        );
+
+        assert.equal(
+          input.stageId,
+          stageId,
+        );
+
+
+        return {
+          version:
+            1,
+
+          kind:
+            "borrow",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId,
+
+          account:
+            "0x123",
+
+          data: {
+            action:
+              "borrow",
+
+            assetId:
+              usdc.id,
+
+            assetSymbol:
+              usdc.symbol,
+
+            amountText:
+              "50",
+
+            amountUnits:
+              "50000000",
+
+            publicBefore:
+              "100000000",
+          },
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0x111",
+        };
+      },
+    };
+
+
+    const {
+      plan,
+      context,
+      runtime,
+    } =
+      createFixture(
+        "normal",
+        {
+          recovery,
+        },
+      );
+
+
+    let session =
+      require(
+        "../lib/agent/executor.ts"
+      )
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0x111",
+          },
+        );
+
+
+    const recoveredContext = {
+      ...context,
+
+      runId,
+    };
+
+
+    session =
+      await runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          recoveredContext,
+        );
+
+
+    assert.equal(
+      session.run.status,
+      "completed",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        stageId
+      ].assetSymbol,
+      "USDC",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        stageId
+      ].amountText,
+      "50",
+    );
+  },
+);
+
+
+test(
+  "Unshield Borrow restores signed collateral verification and unlocks borrow-2",
+  async () => {
+    const chainId =
+      STARKNET_MAINNET.chainId;
+
+    const strk =
+      findCarelAssetBySymbol(
+        chainId,
+        "STRK",
+      );
+
+
+    assert.ok(
+      strk,
+    );
+
+
+    const runId =
+      "unshield-borrow-recovered";
+
+    const stageId =
+      "unshield-1";
+
+    const amountUnits =
+      (
+        500n *
+        10n ** 18n
+      );
+
+
+    const publicBefore =
+      (
+        100n *
+        10n ** 18n
+      );
+
+
+    const recovery = {
+      async seal() {
+        return null;
+      },
+
+
+      async bind() {},
+
+
+      async load() {
+        return {
+          version:
+            1,
+
+          kind:
+            "borrow",
+
+          runId,
+
+          stageId,
+
+          executionKey:
+            `${runId}:${stageId}`,
+
+          chainId,
+
+          account:
+            "0x123",
+
+          data: {
+            action:
+              "unshield",
+
+            assetId:
+              strk.id,
+
+            assetSymbol:
+              strk.symbol,
+
+            amountText:
+              "500",
+
+            amountUnits:
+              amountUnits
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+          },
+
+          issuedAt:
+            Date.now() -
+            1000,
+
+          expiresAt:
+            Date.now() +
+            60_000,
+
+          transactionId:
+            "0x333",
+        };
+      },
+    };
+
+
+    const {
+      plan,
+      context,
+      runtime,
+    } =
+      createFixture(
+        "unshield",
+        {
+          recovery,
+        },
+      );
+
+
+    let session =
+      require(
+        "../lib/agent/executor.ts"
+      )
+        .restoreSubmittedAgentExecutionSession(
+          plan,
+          runId,
+          stageId,
+          {
+            kind:
+              "transaction",
+
+            id:
+              "0x333",
+          },
+        );
+
+
+    session =
+      await runtime
+        .confirmSubmittedStage(
+          plan,
+          session,
+          stageId,
+          {
+            ...context,
+
+            runId,
+          },
+        );
+
+
+    assert.equal(
+      getAgentRuntimeStage(
+        session.run,
+        "unshield-1",
+      ).status,
+      "confirmed",
+    );
+
+
+    assert.equal(
+      getAgentRuntimeStage(
+        session.run,
+        "borrow-2",
+      ).status,
+      "review",
+    );
+
+
+    assert.equal(
+      session.outputs[
+        "unshield-1"
+      ].amountText,
+      "500",
     );
   },
 );

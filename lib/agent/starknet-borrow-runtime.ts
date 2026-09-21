@@ -14,6 +14,16 @@ import type {
   AgentPlan,
 } from "@/lib/agent/plan";
 
+import type {
+  AgentRecoveryBoundPayload,
+  AgentRecoveryData,
+  SignedAgentRecoveryDraft,
+} from "@/lib/agent/recovery-types";
+
+import type {
+  AgentRuntimeRecovery,
+} from "@/lib/agent/runtime-recovery";
+
 import {
   getAgentRuntimeStage,
 } from "@/lib/agent/state-machine";
@@ -139,6 +149,9 @@ export type StarknetBorrowRuntimeDependencies =
         WaitAgentTransactionInput,
     ):
       Promise<void>;
+
+    recovery?:
+      AgentRuntimeRecovery;
   }>;
 
 
@@ -368,6 +381,128 @@ function requireBorrowInput(
 }
 
 
+function recoveryBigInt(
+  data:
+    AgentRecoveryData,
+
+  key:
+    string,
+
+  positive =
+    false,
+): bigint {
+  const raw =
+    data[key];
+
+
+  if (
+    typeof raw !==
+      "string" ||
+    !/^\d+$/.test(
+      raw,
+    )
+  ) {
+    throw new Error(
+      `Recovered Borrow snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  const value =
+    BigInt(
+      raw,
+    );
+
+
+  if (
+    positive &&
+    value <= 0n
+  ) {
+    throw new Error(
+      `Recovered Borrow snapshot contains invalid ${key}.`,
+    );
+  }
+
+
+  return value;
+}
+
+
+function recoveredPublicOutputSnapshot(
+  payload:
+    AgentRecoveryBoundPayload,
+
+  expectedAction:
+    "borrow" |
+    "unshield",
+): PublicOutputSnapshot {
+  const data =
+    payload.data;
+
+
+  if (
+    data.action !==
+      expectedAction ||
+    !data.assetId ||
+    !data.assetSymbol ||
+    !data.amountText
+  ) {
+    throw new Error(
+      "Recovered Borrow snapshot does not match the submitted Agent stage.",
+    );
+  }
+
+
+  const amountUnits =
+    recoveryBigInt(
+      data,
+      "amountUnits",
+      true,
+    );
+
+
+  const publicBefore =
+    recoveryBigInt(
+      data,
+      "publicBefore",
+    );
+
+
+  return {
+    executionKey:
+      payload.executionKey,
+
+    transactionId:
+      payload.transactionId,
+
+    chainId:
+      payload.chainId,
+
+    account:
+      payload.account,
+
+    assetId:
+      data.assetId,
+
+    assetSymbol:
+      data.assetSymbol,
+
+    amountText:
+      data.amountText,
+
+    amountUnits,
+
+    publicBefore,
+
+    actionLabel:
+      expectedAction ===
+        "borrow"
+        ? "Borrow"
+        : "Unshield",
+  };
+}
+
+
 export function createStarknetBorrowRuntime(
   dependencies:
     StarknetBorrowRuntimeDependencies,
@@ -377,6 +512,84 @@ export function createStarknetBorrowRuntime(
       string,
       PublicOutputSnapshot
     >();
+
+
+  async function sealRecovery(
+    input:
+      AgentStageExecutionInput,
+
+    data:
+      AgentRecoveryData,
+  ): Promise<
+    SignedAgentRecoveryDraft | null
+  > {
+    if (
+      !dependencies.recovery
+    ) {
+      return null;
+    }
+
+
+    try {
+      return await dependencies
+        .recovery
+        .seal({
+          runId:
+            input.context.runId,
+
+          stageId:
+            input.stage.id,
+
+          executionKey:
+            input.executionKey,
+
+          chainId:
+            input.context.chainId,
+
+          account:
+            input.context.account,
+
+          data,
+        });
+    } catch {
+      /*
+       * Recovery is an availability layer.
+       * Failure to seal must not block the reviewed protocol transaction.
+       */
+      return null;
+    }
+  }
+
+
+  async function bindRecovery(
+    draft:
+      SignedAgentRecoveryDraft | null,
+
+    transactionId:
+      string,
+  ): Promise<void> {
+    if (
+      !draft ||
+      !dependencies.recovery
+    ) {
+      return;
+    }
+
+
+    try {
+      await dependencies
+        .recovery
+        .bind(
+          draft,
+          transactionId,
+        );
+    } catch {
+      /*
+       * The tx already exists at this point.
+       * Never report it as failed merely because recovery persistence failed.
+       */
+    }
+  }
 
 
   async function verifyPublicOutput(
@@ -583,6 +796,36 @@ export function createStarknetBorrowRuntime(
               : {}),
           });
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "borrow",
+
+            assetId:
+              debtAsset.id,
+
+            assetSymbol:
+              debtAsset.symbol,
+
+            amountText:
+              exactAmountText(
+                preparedBorrow,
+                debtAsset.decimals,
+              ),
+
+            amountUnits:
+              preparedBorrow
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await dependencies
           .executeBorrow(
@@ -636,6 +879,13 @@ export function createStarknetBorrowRuntime(
         ),
         snapshot,
       );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
 
       /*
        * Always enter the state machine as submitted first.
@@ -752,6 +1002,36 @@ export function createStarknetBorrowRuntime(
               : {}),
           });
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "unshield",
+
+            assetId:
+              asset.id,
+
+            assetSymbol:
+              asset.symbol,
+
+            amountText:
+              exactAmountText(
+                amountUnits,
+                asset.decimals,
+              ),
+
+            amountUnits:
+              amountUnits
+                .toString(),
+
+            publicBefore:
+              publicBefore
+                .toString(),
+          },
+        );
+
+
       const transaction =
         await dependencies
           .executeUnshieldAsset(
@@ -807,6 +1087,13 @@ export function createStarknetBorrowRuntime(
         ),
         snapshot,
       );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
 
       /*
        * Same invariant as Borrow:
@@ -899,6 +1186,26 @@ export function createStarknetBorrowRuntime(
         );
       }
 
+      const recoveryDraft =
+        await sealRecovery(
+          input,
+          {
+            action:
+              "shield",
+
+            assetId:
+              asset.id,
+
+            assetSymbol:
+              asset.symbol,
+
+            amountUnits:
+              amountUnits
+                .toString(),
+          },
+        );
+
+
       const result =
         await dependencies
           .executeShieldAsset(
@@ -909,11 +1216,21 @@ export function createStarknetBorrowRuntime(
             `Shield borrowed ${amountText} ${asset.symbol}`,
           );
 
+
+      const transactionId =
+        requireTransactionHash(
+          result.hash,
+        );
+
+
+      await bindRecovery(
+        recoveryDraft,
+        transactionId,
+      );
+
+
       return {
-        transactionId:
-          requireTransactionHash(
-            result.hash,
-          ),
+        transactionId,
 
         status:
           result.status,
@@ -1025,16 +1342,60 @@ export function createStarknetBorrowRuntime(
         runtimeStage.txHash,
       );
 
-    const snapshot =
+    let snapshot =
       publicOutputSnapshots.get(
         key,
       );
+
+
+    if (
+      !snapshot &&
+      dependencies.recovery
+    ) {
+      const recovered =
+        await dependencies
+          .recovery
+          .load({
+            runId:
+              session.runId,
+
+            stageId,
+
+            executionKey,
+
+            chainId:
+              context.chainId,
+
+            account:
+              context.account,
+
+            transactionId:
+              runtimeStage.txHash,
+          });
+
+
+      if (recovered) {
+        snapshot =
+          recoveredPublicOutputSnapshot(
+            recovered,
+            planStage.action,
+          );
+
+
+        publicOutputSnapshots.set(
+          key,
+          snapshot,
+        );
+      }
+    }
+
 
     if (!snapshot) {
       throw new Error(
         `CAREL cannot verify this ${planStage.action} stage because its execution snapshot is unavailable.`,
       );
     }
+
 
     const output =
       await verifyPublicOutput(
