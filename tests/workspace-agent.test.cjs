@@ -488,6 +488,33 @@ test(
         "utf8",
       );
 
+    const borrowRuntimePath =
+      path.join(
+        ROOT,
+        "components/borrow/runtime.ts",
+      );
+
+    const runtimeSource =
+      fs.existsSync(
+        borrowRuntimePath,
+      )
+        ? fs.readFileSync(
+            borrowRuntimePath,
+            "utf8",
+          )
+        : source;
+
+    if (
+      fs.existsSync(
+        borrowRuntimePath,
+      )
+    ) {
+      assert.match(
+        source,
+        /createVesuBorrowRuntime\(/,
+      );
+    }
+
     /*
      * Borrow execution is Agent-native:
      * - borrow-1 is submitted through the generic Agent executor;
@@ -496,7 +523,7 @@ test(
      * - shield-2 remains a separate STRK20 transaction.
      */
     assert.match(
-      source,
+      runtimeSource,
       /createStarknetBorrowRuntime\(/,
     );
 
@@ -511,12 +538,12 @@ test(
     );
 
     assert.match(
-      source,
+      runtimeSource,
       /async executeBorrow[\s\S]*await wallet[\s\S]*\.executeBorrow\(/,
     );
 
     assert.match(
-      source,
+      runtimeSource,
       /async executeShieldAsset[\s\S]*return wallet[\s\S]*\.executeShieldAsset\(/,
     );
 

@@ -30,14 +30,6 @@ import {
 } from "@/lib/carel/core/amounts";
 
 import {
-  findAssetBalance,
-} from "@/lib/carel/core/balances";
-
-import {
-  readStarknetPublicBalances,
-} from "@/lib/carel/ecosystems/starknet/balances";
-
-import {
   parseBorrowGoal,
 } from "@/lib/agent/borrow";
 
@@ -55,170 +47,29 @@ import {
   type AgentExecutionSession,
 } from "@/lib/agent/executor";
 
-import {
-  createStarknetBorrowRuntime,
-  type StarknetBorrowRuntime,
-} from "@/lib/agent/starknet-borrow-runtime";
-
 import type {
-  VesuBorrowExecutionPayload,
-} from "@/lib/carel/ecosystems/starknet/protocols/vesu/borrow";
+  StarknetBorrowRuntime,
+} from "@/lib/agent/starknet-borrow-runtime";
 
 import {
   getVesuBorrowDebtAssetBySymbol,
   VESU_BORROW_DEBT_ASSETS,
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/pairs";
 
+import {
+  type BorrowMode,
+  type BorrowMarket,
+  type MarketsResponse,
+  formatBps,
+  responseObject,
+  shortAddress,
+} from "./model";
+
+import {
+  createVesuBorrowRuntime,
+} from "./runtime";
+
 import styles from "../CarelWorkspace.module.css";
-
-type BorrowMode =
-  | "normal"
-  | "shield"
-  | "unshield";
-
-
-
-type BorrowEvaluation =
-  Readonly<{
-    eligible: boolean;
-    requestedLtvBps: number;
-    ltvHeadroomBps: number;
-    projectedUtilizationBps: number;
-    blockers:
-      readonly string[];
-  }>;
-
-type BorrowMarket =
-  Readonly<{
-    id: string;
-
-    provider: string;
-
-    pool:
-      Readonly<{
-        id: string;
-        name: string;
-        address: string;
-      }>;
-
-    collateral:
-      Readonly<{
-        id: string;
-        symbol: string;
-        decimals: number;
-      }>;
-
-    debt:
-      Readonly<{
-        id: string;
-        symbol: string;
-        decimals: number;
-      }>;
-
-    risk:
-      Readonly<{
-        maxLtvBps: number;
-        liquidationFactorBps: number;
-        utilizationBps: number;
-        maxUtilizationBps: number;
-
-        availableLiquidity: string;
-        pairDebt: string;
-        debtCap: string;
-
-        observedAt: number;
-      }>;
-
-    evaluation:
-      BorrowEvaluation | null;
-  }>;
-
-type MarketsResponse =
-  Readonly<{
-    network: string;
-    pair: string;
-    markets:
-      readonly BorrowMarket[];
-  }>;
-
-type PrepareResponse =
-  Readonly<{
-    provider: string;
-
-    pool:
-      Readonly<{
-        id: string;
-        name: string;
-        address: string;
-      }>;
-
-    evaluation:
-      Readonly<{
-        requestedLtvBps: number;
-        maxLtvBps: number;
-        projectedUtilizationBps: number;
-        maxUtilizationBps: number;
-      }>;
-
-    execution:
-      VesuBorrowExecutionPayload;
-  }>;
-
-/**
- * Formats protocol basis points for factual risk display.
- */
-function formatBps(
-  value: number,
-): string {
-  if (
-    !Number.isFinite(value)
-  ) {
-    return "—";
-  }
-
-  return `${(
-    value / 100
-  ).toFixed(2)}%`;
-}
-
-/**
- * Parses JSON responses without trusting non-object payloads.
- */
-function responseObject(
-  value: unknown,
-): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
-    throw new Error(
-      "CAREL Borrow API returned an invalid response.",
-    );
-  }
-
-  return value as Record<
-    string,
-    unknown
-  >;
-}
-
-/**
- * Produces a short display form while keeping the complete address
- * available to CAREL's execution validator.
- */
-function shortAddress(
-  address: string,
-): string {
-  if (address.length <= 16) {
-    return address;
-  }
-
-  return `${address.slice(
-    0,
-    8,
-  )}…${address.slice(-6)}`;
-}
 
 /**
  * Public Vesu Borrow interface.
@@ -369,6 +220,19 @@ export function VesuBorrow({
         selectedPoolId,
       ],
     );
+
+  function createBorrowRuntime():
+    StarknetBorrowRuntime {
+    return createVesuBorrowRuntime({
+      market:
+        selectedMarket,
+
+      debtSymbol:
+        selectedDebtAsset.symbol,
+
+      wallet,
+    });
+  }
 
   function clearBorrowAgentRefs() {
     borrowAgentPlanRef.current =
@@ -965,7 +829,7 @@ export function VesuBorrow({
         );
 
       const runtime =
-        createLiveBorrowRuntime();
+        createBorrowRuntime();
 
       borrowAgentPlanRef.current =
         plan;
@@ -1111,291 +975,6 @@ export function VesuBorrow({
     } finally {
       setCheckingUnshield(false);
     }
-  }
-
-
-  /**
-   * Creates the client-side dependency bridge  /**
-   * Creates the client-side dependency bridge between the deterministic
-   * Agent Core and CAREL's already-guarded live Vesu/STRK20 execution.
-   *
-   * The Agent never creates calldata here:
-   * - Vesu preparation remains server-side.
-   * - wallet.executeBorrow still rebuilds and validates Vesu calls.
-   * - executeShieldAsset still owns the STRK20 Wallet API boundary.
-   */
-  function createLiveBorrowRuntime():
-    StarknetBorrowRuntime {
-    if (
-      !selectedMarket ||
-      !wallet.address
-    ) {
-      throw new Error(
-        "Review a verified Vesu market and connect Ready before execution.",
-      );
-    }
-
-    const reviewedMarket =
-      selectedMarket;
-
-    return createStarknetBorrowRuntime({
-      async prepareBorrow(
-        input,
-      ) {
-        const response =
-          await fetch(
-            "/api/vesu/borrow/prepare",
-            {
-              method:
-                "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              signal:
-                input.signal,
-
-              body:
-                JSON.stringify({
-                  poolId:
-                    reviewedMarket
-                      .pool.id,
-
-                  owner:
-                    input.owner,
-
-                  collateralAmount:
-                    input
-                      .collateralAmountText,
-
-                  borrowAmount:
-                    input
-                      .borrowAmountText,
-
-                  collateralAssetId:
-                    input
-                      .collateralAssetId,
-
-                  debtAssetId:
-                    input
-                      .debtAssetId,
-                }),
-            },
-          );
-
-        const raw: unknown =
-          await response.json();
-
-        const payload =
-          responseObject(
-            raw,
-          );
-
-        if (!response.ok) {
-          const blockers =
-            Array.isArray(
-              payload.blockers,
-            )
-              ? payload.blockers
-                  .filter(
-                    (
-                      value,
-                    ): value is string =>
-                      typeof value ===
-                      "string",
-                  )
-              : [];
-
-          throw new Error(
-            blockers.length
-              ? blockers.join(
-                  " ",
-                )
-              : typeof payload.error ===
-                  "string"
-                ? payload.error
-                : "Vesu Borrow preparation failed.",
-          );
-        }
-
-        const prepared =
-          payload as unknown as
-            PrepareResponse;
-
-        if (
-          !prepared.execution ||
-          prepared.provider !==
-            "Vesu" ||
-          prepared.pool.id !==
-            reviewedMarket
-              .pool.id
-        ) {
-          throw new Error(
-            "CAREL received a mismatched Borrow preparation.",
-          );
-        }
-
-        return {
-          execution:
-            prepared.execution,
-
-          label:
-            "Borrow " +
-            input.borrowAmountText +
-            " " +
-            selectedDebtAsset.symbol +
-            " against " +
-            input.collateralAmountText +
-            " STRK · Vesu " +
-            prepared.pool.name,
-        };
-      },
-
-      async executeBorrow(
-        execution,
-        label,
-      ) {
-        /*
-         * wallet.executeBorrow already performs the real guarded wallet
-         * submission. For this migration we intentionally report the stage
-         * as submitted so the generic Agent confirmation path performs the
-         * authoritative output verification before Shield can unlock.
-         */
-        const hash =
-          await wallet
-            .executeBorrow(
-              execution,
-              label,
-            );
-
-        return {
-          hash,
-
-          status:
-            "submitted",
-        };
-      },
-
-      async executeShieldAsset(
-        assetId,
-        amountText,
-        label,
-      ) {
-        return wallet
-          .executeShieldAsset(
-            assetId,
-            amountText,
-            label,
-          );
-      },
-
-      async executeUnshieldAsset(
-        assetId,
-        amountText,
-        label,
-      ) {
-        return wallet
-          .executeUnshieldAsset(
-            assetId,
-            amountText,
-            label,
-          );
-      },
-
-      async readPublicBalance(
-        input,
-      ) {
-        const targetNetwork =
-          getCarelNetwork(
-            input.chainId,
-          );
-
-        if (!targetNetwork) {
-          throw new Error(
-            "Agent output verification received an unsupported Starknet network.",
-          );
-        }
-
-        const asset =
-          targetNetwork
-            .assetList
-            .find(
-              (candidate) =>
-                candidate.id ===
-                  input.assetId,
-            );
-
-        if (!asset) {
-          throw new Error(
-            "Agent output verification received an unknown CAREL asset.",
-          );
-        }
-
-        const observed =
-          await readStarknetPublicBalances(
-            input.account,
-            targetNetwork.provider,
-            [
-              asset,
-            ],
-          );
-
-        return (
-          findAssetBalance(
-            observed,
-            asset.id,
-            "public",
-          )?.amount ??
-          0n
-        );
-      },
-
-      async waitForTransaction(
-        input,
-      ) {
-        const targetNetwork =
-          getCarelNetwork(
-            input.chainId,
-          );
-
-        if (!targetNetwork) {
-          throw new Error(
-            "Agent confirmation received an unsupported Starknet network.",
-          );
-        }
-
-        const receipt: unknown =
-          await targetNetwork
-            .provider
-            .waitForTransaction(
-              input.transactionId,
-              {
-                retries: 2,
-                retryInterval:
-                  1500,
-              },
-            );
-
-        if (
-          receipt &&
-          typeof receipt ===
-            "object" &&
-          (
-            receipt as Record<
-              string,
-              unknown
-            >
-          ).execution_status ===
-            "REVERTED"
-        ) {
-          throw new Error(
-            "The Starknet transaction reverted.",
-          );
-        }
-      },
-    });
   }
 
 
@@ -2129,7 +1708,7 @@ export function VesuBorrow({
           );
 
         const runtime =
-          createLiveBorrowRuntime();
+          createBorrowRuntime();
 
         borrowAgentPlanRef.current =
           plan;
@@ -2235,7 +1814,7 @@ export function VesuBorrow({
           );
 
         const runtime =
-          createLiveBorrowRuntime();
+          createBorrowRuntime();
 
         borrowAgentPlanRef.current =
           plan;
@@ -2322,7 +1901,7 @@ export function VesuBorrow({
        * Fresh runtime after the mandatory post-Unshield Vesu risk review.
        */
       const runtime =
-        createLiveBorrowRuntime();
+        createBorrowRuntime();
 
       borrowAgentRuntimeRef.current =
         runtime;
