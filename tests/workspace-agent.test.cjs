@@ -656,3 +656,86 @@ test(
     );
   },
 );
+
+
+test(
+  "Staking UI is Agent-native and discovers assets from provider capabilities",
+  () => {
+    const wrapper =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/staking/AvnuStaking.tsx",
+        ),
+        "utf8",
+      );
+
+    const controller =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/staking/useStakingController.ts",
+        ),
+        "utf8",
+      );
+
+    const runtime =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "components/staking/runtime.ts",
+        ),
+        "utf8",
+      );
+
+    const discovery =
+      fs.readFileSync(
+        path.join(
+          ROOT,
+          "lib/carel/ecosystems/starknet/staking-assets.ts",
+        ),
+        "utf8",
+      );
+
+
+    assert.match(
+      wrapper,
+      /useStakingController\(/,
+    );
+
+    assert.match(
+      controller,
+      /getStarknetStakingAssetOptions\(/,
+    );
+
+    assert.match(
+      controller,
+      /buildStarknetAgentPlan\(/,
+    );
+
+    assert.match(
+      controller,
+      /executeAgentStage\(/,
+    );
+
+    assert.match(
+      runtime,
+      /createStarknetStakingRuntime\(/,
+    );
+
+    assert.match(
+      runtime,
+      /\.executeUnshieldAsset\(/,
+    );
+
+    assert.match(
+      discovery,
+      /CAREL_EXECUTION_CAPABILITY_REGISTRY/,
+    );
+
+    assert.doesNotMatch(
+      wrapper,
+      /network\.assets\.strk/,
+    );
+  },
+);

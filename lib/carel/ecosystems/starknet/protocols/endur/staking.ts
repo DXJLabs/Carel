@@ -743,7 +743,11 @@ export async function executePublicStakingRoute({
   amount: string;
   pool: StakingPool;
   stakeAsset: AssetRef;
-  executor: EndurStakingExecutor;
+  executor:
+    Pick<
+      EndurStakingExecutor,
+      "executeStaking"
+    >;
 }): Promise<StakingExecutionResult> {
   parseStakingAmount(
     amount,
@@ -892,7 +896,11 @@ export async function executeEndurShieldStake({
   feeAmount: bigint;
   stakeAsset: AssetRef;
   outputAsset: AssetRef;
-  executor: EndurStakingExecutor;
+  executor:
+    Pick<
+      EndurStakingExecutor,
+      "executeShieldStaking"
+    >;
 }): Promise<StakingExecutionResult> {
   const stakeAmount =
     parseStakingAmount(
