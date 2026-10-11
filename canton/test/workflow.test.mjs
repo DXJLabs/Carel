@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {InMemoryProposalBook} from '../src/workflow.mjs';
+import {submitAgreementToCanton} from '../src/canton-adapter.mjs';
+const now=1760000000000;
+const base={allowedAssets:['canton:CBTC'],maxAmountUnits:'1000',expiresAt:now+3600000};
+const alice={...base,id:'mandate-a',owner:'alice',agentId:'a',allowedActions:['propose'],allowedCounterparties:['bob']};
+const bob={...base,id:'mandate-b',owner:'bob',agentId:'b',allowedActions:['accept'],allowedCounterparties:['alice']};
+const make=(book,more={})=>book.create({mandate:alice,assetId:'canton:CBTC',amountUnits:'10',counterparty:'bob',nonce:'nonce-'+Math.random(),now,...more});
+test('allowed bilateral quote produces authorization-pending agreement',()=>{
+ const book=new InMemoryProposalBook();const proposal=make(book,{nonce:'unique'});
+ const a=book.accept({proposal,mandate:bob,now});assert.equal(a.status,'awaiting-ledger-authorization');
+});
+test('blocks oversized amount',()=>assert.throws(()=>make(new InMemoryProposalBook(),{amountUnits:'1001'}),/exceeds/));
+test('blocks zero amount',()=>assert.throws(()=>make(new InMemoryProposalBook(),{amountUnits:'0'}),/positive/));
+test('blocks unknown asset',()=>assert.throws(()=>make(new InMemoryProposalBook(),{assetId:'strk:ETH'}),/asset not allowed/));
+test('blocks wrong counterparty',()=>assert.throws(()=>make(new InMemoryProposalBook(),{counterparty:'eve'}),/counterparty not allowed/));
+test('blocks expired mandate',()=>assert.throws(()=>make(new InMemoryProposalBook(),{now:now+3600000}),/expired/));
+test('blocks replay of nonce',()=>{const book=new InMemoryProposalBook();make(book,{nonce:'same'});assert.throws(()=>make(book,{nonce:'same'}),/duplicate/)});
+test('blocks duplicate acceptance',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique2'});book.accept({proposal:p,mandate:bob,now});assert.throws(()=>book.accept({proposal:p,mandate:bob,now}),/already accepted/)});
+test('blocks wrong accepting agent',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique3'});assert.throws(()=>book.accept({proposal:p,mandate:alice,now}),/not allowed/)});
+test('never submits when Canton client absent',async()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique4'});const a=book.accept({proposal:p,mandate:bob,now});await assert.rejects(()=>submitAgreementToCanton({agreement:a,client:null,authorization:{status:'verified-by-wallet-or-participant'}}),/not configured/)});
+test('never submits without participant authorization',async()=>{await assert.rejects(()=>submitAgreementToCanton({agreement:{status:'awaiting-ledger-authorization'},client:{submitAgreement:()=>{}},authorization:null}),/authorization required/)});
