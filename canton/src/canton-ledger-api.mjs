@@ -15,7 +15,7 @@ function requiredTemplateId(value) {
 
 function int64(value, name) {
   if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new Error(`${name} must be an unsigned integer string`);
-  return value;
+  return BigInt(value).toString();
 }
 
 async function readResponse(response) {
@@ -105,6 +105,11 @@ export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, 
       return request('/v2/state/active-contracts', {method: 'POST', body: {userId, actAs, readAs, filter, ...(activeAt === undefined ? {} : {activeAt})}});
     },
     async submitProposal({proposal, authorization} = {}) {
+      requireNonempty(proposal?.proposer, 'proposer');
+      requireNonempty(proposal?.counterparty, 'counterparty');
+      requireNonempty(proposal?.proposerAgent, 'proposerAgent');
+      requireNonempty(proposal?.assetId, 'assetId');
+      requireNonempty(proposal?.nonce, 'nonce');
       const proof = this.verifyAuthorization({agreement: proposal, authorization, operation: 'propose', requiredParties: [proposal?.proposer]});
       const resolvedTemplateId = requiredTemplateId(configuredMandateTemplateId);
       const resolvedProposalTemplateId = requiredTemplateId(configuredProposalTemplateId);
@@ -138,6 +143,10 @@ export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, 
     async submitAgreement({agreement, authorization} = {}) {
       if (!agreement || !['awaiting-ledger-authorization', 'authorized-for-ledger'].includes(agreement.status))
         throw new Error('invalid agreement state');
+      requireNonempty(agreement.proposer, 'proposer');
+      requireNonempty(agreement.counterparty, 'counterparty');
+      requireNonempty(agreement.assetId, 'assetId');
+      requireNonempty(agreement.mandateContractId, 'mandateContractId');
       const proof = this.verifyAuthorization({agreement, authorization, operation: 'accept', requiredParties: [agreement.proposer, agreement.counterparty]});
       const resolvedTemplateId = requiredTemplateId(configuredProposalTemplateId);
       requireNonempty(agreement.proposalContractId, 'proposalContractId');
