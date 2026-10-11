@@ -1,0 +1,11 @@
+{
+  "name": "confidential-agent-network-starter",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "demo": "node demo.mjs"
+  },
+  "engines": {"node": ">=20"}
+}
