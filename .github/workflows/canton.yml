@@ -1,0 +1,81 @@
+name: Canton CI
+
+on:
+  push:
+    branches:
+      - canton
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canton-ci:
+    name: Node.js, DPM, DAR, and Daml Script tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Enforce canton branch
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/canton"
+
+      - name: Check out canton
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install DPM
+        env:
+          DPM_HOME: ${{ runner.temp }}/dpm
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://get.digitalasset.com/install/install.sh | sh
+          echo "${DPM_HOME}/bin" >> "${GITHUB_PATH}"
+          "${DPM_HOME}/bin/dpm" version
+
+      - name: Install the SDK declared by daml.yaml
+        working-directory: canton
+        run: |
+          set -euo pipefail
+          dpm install package
+          dpm version --active
+
+      - name: Run Node.js tests (25-test minimum)
+        run: |
+          set -euo pipefail
+          npm test --prefix canton -- --test-reporter=tap 2>&1 | tee "${RUNNER_TEMP}/node-tests.tap"
+          test_count="$(grep -Ec '^ok [0-9]+ - ' "${RUNNER_TEMP}/node-tests.tap" || true)"
+          test "${test_count}" -ge 25
+          echo "Node.js tests passed: ${test_count}"
+
+      - name: Build the DAR
+        working-directory: canton
+        run: |
+          set -euo pipefail
+          dpm build
+          find .daml/dist -maxdepth 1 -type f -name '*.dar' -print -quit | grep -q .
+
+      - name: Run Daml Script integration tests
+        working-directory: canton
+        run: |
+          set -euo pipefail
+          dpm test
+
+      - name: Upload DAR
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: confidential-agent-network-dar
+          path: canton/.daml/dist/*.dar
+          if-no-files-found: error
