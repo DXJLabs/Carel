@@ -13,6 +13,7 @@ template Mandate
   where
     signatory owner
     observer agent, counterparty
+    ensure maxAmountUnits > 0 && maxTransactions > 0 && transactionsUsed >= 0 && transactionsUsed <= maxTransactions
 
     choice Propose : (ContractId Mandate, ContractId Proposal)
       with
