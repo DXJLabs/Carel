@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {InMemoryProposalBook} from '../src/workflow.mjs';
 import {submitAgreementToCanton} from '../src/canton-adapter.mjs';
 const now=1760000000000;
-const base={allowedAssets:['canton:CBTC'],maxAmountUnits:'1000',expiresAt:now+3600000};
+const base={allowedAssets:['canton:CBTC'],maxAmountUnits:'1000',maxTransactions:'1',expiresAt:now+3600000};
 const alice={...base,id:'mandate-a',owner:'alice',agentId:'a',allowedActions:['propose'],allowedCounterparties:['bob']};
 const bob={...base,id:'mandate-b',owner:'bob',agentId:'b',allowedActions:['accept'],allowedCounterparties:['alice']};
 const make=(book,more={})=>book.create({mandate:alice,assetId:'canton:CBTC',amountUnits:'10',counterparty:'bob',nonce:'nonce-'+Math.random(),now,...more});
@@ -19,5 +19,9 @@ test('blocks expired mandate',()=>assert.throws(()=>make(new InMemoryProposalBoo
 test('blocks replay of nonce',()=>{const book=new InMemoryProposalBook();make(book,{nonce:'same'});assert.throws(()=>make(book,{nonce:'same'}),/duplicate/)});
 test('blocks duplicate acceptance',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique2'});book.accept({proposal:p,mandate:bob,now});assert.throws(()=>book.accept({proposal:p,mandate:bob,now}),/already accepted/)});
 test('blocks wrong accepting agent',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique3'});assert.throws(()=>book.accept({proposal:p,mandate:alice,now}),/not allowed/)});
+test('blocks an expired proposal at acceptance',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique-expired'});assert.throws(()=>book.accept({proposal:p,mandate:bob,now:now+3600001}),/expired/)});
+test('enforces the mandate transaction count across proposals',()=>{const book=new InMemoryProposalBook();const first=make(book,{nonce:'unique-cap-1'});book.accept({proposal:first,mandate:bob,now});const second=make(book,{nonce:'unique-cap-2'});assert.throws(()=>book.accept({proposal:second,mandate:bob,now}),/transaction limit/)});
+test('requires both user parties before ledger authorization',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique-auth'});const agreement=book.accept({proposal:p,mandate:bob,now});assert.throws(()=>book.authorize({agreement,authorization:{status:'verified-by-wallet-or-participant',userId:'u',commandId:'c',actAs:['alice']},now}),/missing required party/)});
+test('authorizes once and rejects authorization replay',()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique-auth-replay'});const agreement=book.accept({proposal:p,mandate:bob,now});const authorization={status:'verified-by-wallet-or-participant',userId:'u',commandId:'unique-command',actAs:['alice','bob']};assert.equal(book.authorize({agreement,authorization,now}).status,'authorized-for-ledger');assert.throws(()=>book.authorize({agreement,authorization,now}),/duplicate authorization/)});
 test('never submits when Canton client absent',async()=>{const book=new InMemoryProposalBook();const p=make(book,{nonce:'unique4'});const a=book.accept({proposal:p,mandate:bob,now});await assert.rejects(()=>submitAgreementToCanton({agreement:a,client:null,authorization:{status:'verified-by-wallet-or-participant'}}),/not configured/)});
 test('never submits without participant authorization',async()=>{await assert.rejects(()=>submitAgreementToCanton({agreement:{status:'awaiting-ledger-authorization'},client:{submitAgreement:()=>{}},authorization:null}),/authorization required/)});

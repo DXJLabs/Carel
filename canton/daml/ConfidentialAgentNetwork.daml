@@ -1,0 +1,84 @@
+module ConfidentialAgentNetwork where
+
+template Mandate
+  with
+    owner : Party
+    agent : Party
+    counterparty : Party
+    assetId : Text
+    maxAmountUnits : Int64
+    maxTransactions : Int64
+    transactionsUsed : Int64
+    expiresAt : Time
+  where
+    signatory owner
+    observer agent, counterparty
+
+    choice Propose : (ContractId Mandate, ContractId Proposal)
+      with
+        proposerAgent : Party
+        amountUnits : Int64
+        nonce : Text
+      controller owner
+      do
+        now <- getTime
+        assertMsg "mandate expired" (now < expiresAt)
+        assertMsg "amount must be positive" (amountUnits > 0)
+        assertMsg "amount exceeds mandate limit" (amountUnits <= maxAmountUnits)
+        assertMsg "transaction limit reached" (transactionsUsed < maxTransactions)
+        nextMandate <- create this with transactionsUsed = transactionsUsed + 1
+        proposal <- create Proposal with
+          owner
+          counterparty
+          proposerAgent
+          acceptorAgent = counterparty
+          assetId
+          amountUnits
+          expiresAt
+          nonce
+        return (nextMandate, proposal)
+
+template Proposal
+  with
+    owner : Party
+    counterparty : Party
+    proposerAgent : Party
+    acceptorAgent : Party
+    assetId : Text
+    amountUnits : Int64
+    expiresAt : Time
+    nonce : Text
+  where
+    signatory owner
+    observer counterparty, proposerAgent, acceptorAgent
+
+    choice Accept : ContractId SettlementAuthorization
+      controller owner, counterparty
+      do
+        now <- getTime
+        assertMsg "proposal expired" (now < expiresAt)
+        create SettlementAuthorization with
+          owner
+          counterparty
+          proposerAgent
+          acceptorAgent
+          assetId
+          amountUnits
+          proposalNonce = nonce
+
+template SettlementAuthorization
+  with
+    owner : Party
+    counterparty : Party
+    proposerAgent : Party
+    acceptorAgent : Party
+    assetId : Text
+    amountUnits : Int64
+    proposalNonce : Text
+  where
+    signatory owner, counterparty
+    observer proposerAgent, acceptorAgent
+
+    choice Cancel : ()
+      controller owner, counterparty
+      do return ()
