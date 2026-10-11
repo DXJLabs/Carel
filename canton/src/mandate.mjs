@@ -75,6 +75,8 @@ export function authorizationMessage({authorization, agreement, operation, requi
       mandateContractId: agreement.mandateContractId ?? null,
       proposer: agreement.proposer ?? null,
       counterparty: agreement.counterparty ?? null,
+      proposerAgent: agreement.proposerAgent ?? null,
+      acceptorAgent: agreement.acceptorAgent ?? null,
       assetId: agreement.assetId ?? null,
       amountUnits: agreement.amountUnits ?? null,
       nonce: agreement.nonce ?? null,

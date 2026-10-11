@@ -36,7 +36,13 @@ function createdContracts(response, templateId) {
   if (!Array.isArray(events))
     throw new Error('Canton Ledger API response missing transaction.events; contract ID lifecycle cannot be continued safely');
   return events
-    .map(event => event?.CreatedEvent?.value)
+    // JSON Ledger API events are encoded as {CreatedEvent: { ...fields }}.
+    // Keep the nested-value form for older fixtures, but never require it for
+    // a real participant response.
+    .map(event => {
+      const created = event?.CreatedEvent ?? event?.createdEvent;
+      return created?.value ?? created;
+    })
     .filter(event => event && event.templateId === templateId && typeof event.contractId === 'string');
 }
 
@@ -99,10 +105,17 @@ export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, 
       return validateUserAuthorization(authorization, {agreement, operation, requiredParties, trustedPublicKeys: partyPublicKeys});
     },
     async health() { return request('/livez'); },
-    async activeContracts({userId, actAs, readAs = [], filter = [], activeAt} = {}) {
-      requireNonempty(userId, 'userId');
-      if (!Array.isArray(actAs) || actAs.length === 0) throw new Error('actAs required for active contract query');
-      return request('/v2/state/active-contracts', {method: 'POST', body: {userId, actAs, readAs, filter, ...(activeAt === undefined ? {} : {activeAt})}});
+    async activeContracts({eventFormat, filter, verbose = false, activeAtOffset} = {}) {
+      if ((eventFormat === undefined) === (filter === undefined))
+        throw new Error('exactly one of eventFormat or filter is required for active contract query');
+      return request('/v2/state/active-contracts', {
+        method: 'POST',
+        body: {
+          ...(eventFormat === undefined ? {filter} : {eventFormat}),
+          verbose,
+          ...(activeAtOffset === undefined ? {} : {activeAtOffset})
+        }
+      });
     },
     async submitProposal({proposal, authorization} = {}) {
       requireNonempty(proposal?.proposer, 'proposer');

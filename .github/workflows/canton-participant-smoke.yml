@@ -1,0 +1,80 @@
+name: Canton participant smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      dar_run_id:
+        description: Successful Canton CI run ID whose DAR artifact should be tested
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  canton-participant-smoke:
+    if: github.ref == 'refs/heads/canton'
+    name: Mandate, proposal, acceptance, and visibility
+    runs-on: ubuntu-24.04
+    environment: canton-devnet
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out canton
+        uses: actions/checkout@v4
+        with:
+          ref: canton
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install DPM
+        env:
+          DPM_HOME: ${{ runner.temp }}/dpm
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://get.digitalasset.com/install/install.sh | sh
+          echo "${DPM_HOME}/bin" >> "${GITHUB_PATH}"
+          "${DPM_HOME}/bin/dpm" version
+
+      - name: Download the DAR from the selected Canton CI run
+        uses: actions/download-artifact@v4
+        with:
+          name: confidential-agent-network-dar
+          path: canton/.daml/dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.dar_run_id }}
+
+      - name: Resolve the DAR package ID
+        run: |
+          set -euo pipefail
+          dar_path="$(find canton/.daml/dist -type f -name '*.dar' -print -quit)"
+          test -n "${dar_path}"
+          package_id="$(dpm damlc inspect-dar --json "${dar_path}" | jq -r '.main_package_id')"
+          test -n "${package_id}" && test "${package_id}" != "null"
+          echo "CANTON_SMOKE_DAR_PATH=${dar_path}" >> "${GITHUB_ENV}"
+          echo "CANTON_PACKAGE_ID=${package_id}" >> "${GITHUB_ENV}"
+
+      - name: Exercise the real participant workflow
+        env:
+          CANTON_LEDGER_API_URL: ${{ secrets.CANTON_LEDGER_API_URL }}
+          CANTON_LEDGER_API_TOKEN: ${{ secrets.CANTON_LEDGER_API_TOKEN }}
+          CANTON_LEDGER_USER_ID: ${{ secrets.CANTON_LEDGER_USER_ID }}
+          CANTON_OWNER_PARTY: ${{ secrets.CANTON_OWNER_PARTY }}
+          CANTON_COUNTERPARTY_PARTY: ${{ secrets.CANTON_COUNTERPARTY_PARTY }}
+          CANTON_AGENT_PARTY: ${{ secrets.CANTON_AGENT_PARTY }}
+          CANTON_UNRELATED_PARTY: ${{ secrets.CANTON_UNRELATED_PARTY }}
+          CANTON_SMOKE_ASSET_ID: ${{ secrets.CANTON_SMOKE_ASSET_ID }}
+          CANTON_PARTY_PUBLIC_KEYS_JSON: ${{ secrets.CANTON_PARTY_PUBLIC_KEYS_JSON }}
+          CANTON_PARTY_PRIVATE_KEYS_JSON: ${{ secrets.CANTON_PARTY_PRIVATE_KEYS_JSON }}
+        run: node canton/scripts/canton-participant-smoke.mjs

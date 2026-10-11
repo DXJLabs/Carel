@@ -40,7 +40,7 @@ function fakeFetch(responseBody = {updateId: 'update-1'}, status = 200) {
 
 const mandateTemplateId = '#confidential-agent-network:ConfidentialAgentNetwork:Mandate';
 const proposalTemplateId = '#confidential-agent-network:ConfidentialAgentNetwork:Proposal';
-const transactionWithCreated = (...events) => ({transaction: {events: events.map(event => ({CreatedEvent: {value: event}}))}});
+const transactionWithCreated = (...events) => ({transaction: {events: events.map(event => ({CreatedEvent: event}))}});
 
 test('submits a real JSON Ledger API command shape', async () => {
   const fake = fakeFetch(transactionWithCreated(
@@ -118,6 +118,21 @@ test('checks livez without inventing a network endpoint', async () => {
   const client = createCantonLedgerApiClient({baseUrl: 'https://participant.example.invalid/', fetchImpl: fake.fetchImpl});
   await client.health();
   assert.equal(fake.calls[0].url, 'https://participant.example.invalid/livez');
+});
+
+test('queries active contracts using the documented HTTP request shape', async () => {
+  const fake = fakeFetch({activeContracts: []});
+  const client = createCantonLedgerApiClient({baseUrl: 'http://127.0.0.1:7575', fetchImpl: fake.fetchImpl});
+  await client.activeContracts({
+    filter: {filtersByParty: {'bob::party': {cumulative: [{identifierFilter: {WildcardFilter: {value: {}}}}]}}},
+    activeAtOffset: 12
+  });
+  const body = JSON.parse(fake.calls[0].init.body);
+  assert.equal(fake.calls[0].url, 'http://127.0.0.1:7575/v2/state/active-contracts');
+  assert.equal(body.activeAtOffset, 12);
+  assert.equal(body.filter.filtersByParty['bob::party'].cumulative[0].identifierFilter.WildcardFilter.value.includeCreatedEventBlob, undefined);
+  assert.equal(body.userId, undefined);
+  assert.equal(body.actAs, undefined);
 });
 
 test('requires explicit ledger URL and template id', async () => {
