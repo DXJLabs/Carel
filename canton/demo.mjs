@@ -8,10 +8,12 @@ const bob = {...common,id:'bob-mandate',owner:'bob::party',agentId:'bob-agent',a
 const book = new InMemoryProposalBook();
 const proposal = book.create({mandate:alice,assetId:'canton:CBTC',amountUnits:'120000',counterparty:'bob::party',nonce:'demo-1',now});
 const agreement = book.accept({proposal,mandate:bob,now});
-const authorization = {status:'verified-by-wallet-or-participant',userId:'carel-demo',commandId:'demo-command-1',actAs:[alice.owner,bob.owner],readAs:[alice.owner,bob.owner]};
 const config = cantonLedgerConfigFromEnv();
 const client = config.baseUrl ? createCantonLedgerApiClient(config) : null;
-const authorizedAgreement = book.authorize({agreement,authorization,now});
-console.log(JSON.stringify({proposal,agreement:authorizedAgreement,ledgerConfigured:Boolean(client)},null,2));
-try { await submitAgreementToCanton({client,agreement:authorizedAgreement,authorization}); }
-catch(err) { console.log('SAFE STOP:',err.message); }
+const authorization = process.env.CANTON_AUTHORIZATION_JSON ? JSON.parse(process.env.CANTON_AUTHORIZATION_JSON) : null;
+try {
+  if (!client) throw new Error('Canton Ledger API URL is not configured; no on-ledger submission occurred');
+  const authorizedAgreement = book.authorize({agreement,authorization,trustedPublicKeys:config.partyPublicKeys,now});
+  console.log(JSON.stringify({proposal,agreement:authorizedAgreement,ledgerConfigured:true},null,2));
+  await submitAgreementToCanton({client,agreement:authorizedAgreement,authorization});
+} catch(err) { console.log('SAFE STOP:',err.message); }

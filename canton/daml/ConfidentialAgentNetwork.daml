@@ -15,7 +15,7 @@ template Mandate
     observer agent, counterparty
     ensure maxAmountUnits > 0 && maxTransactions > 0 && transactionsUsed >= 0 && transactionsUsed <= maxTransactions
 
-    choice Propose : (ContractId Mandate, ContractId Proposal)
+    choice Propose : ContractId Proposal
       with
         proposerAgent : Party
         amountUnits : Int64
@@ -26,9 +26,9 @@ template Mandate
         assertMsg "mandate expired" (now < expiresAt)
         assertMsg "amount must be positive" (amountUnits > 0)
         assertMsg "amount exceeds mandate limit" (amountUnits <= maxAmountUnits)
-        assertMsg "transaction limit reached" (transactionsUsed < maxTransactions)
-        nextMandate <- create this with transactionsUsed = transactionsUsed + 1
+        assertMsg "proposal nonce required" (nonce /= "")
         proposal <- create Proposal with
+          mandateId = self
           owner
           counterparty
           proposerAgent
@@ -37,10 +37,22 @@ template Mandate
           amountUnits
           expiresAt
           nonce
-        return (nextMandate, proposal)
+        return proposal
+
+    choice CommitAcceptance : ContractId Mandate
+      with
+        proposalNonce : Text
+      controller owner, counterparty
+      do
+        now <- getTime
+        assertMsg "mandate expired" (now < expiresAt)
+        assertMsg "transaction limit reached" (transactionsUsed < maxTransactions)
+        assertMsg "proposal nonce required" (proposalNonce /= "")
+        create this with transactionsUsed = transactionsUsed + 1
 
 template Proposal
   with
+    mandateId : ContractId Mandate
     owner : Party
     counterparty : Party
     proposerAgent : Party
@@ -58,7 +70,10 @@ template Proposal
       do
         now <- getTime
         assertMsg "proposal expired" (now < expiresAt)
+        updatedMandate <- exercise mandateId CommitAcceptance with proposalNonce = nonce
         create SettlementAuthorization with
+          mandateId = updatedMandate
+          proposalId = self
           owner
           counterparty
           proposerAgent
@@ -69,6 +84,8 @@ template Proposal
 
 template SettlementAuthorization
   with
+    mandateId : ContractId Mandate
+    proposalId : ContractId Proposal
     owner : Party
     counterparty : Party
     proposerAgent : Party

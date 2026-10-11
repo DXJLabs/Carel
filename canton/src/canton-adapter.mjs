@@ -1,16 +1,26 @@
-import {validateUserAuthorization} from './mandate.mjs';
+function requireClient(client) {
+  if (!client || typeof client.verifyAuthorization !== 'function')
+    throw new Error('Canton adapter not configured; cryptographic verifier required');
+}
 
-/**
- * Submit only an already accepted agreement with explicit participant approval.
- * The client is the real JSON Ledger API client from canton-ledger-api.mjs.
- */
+export async function submitProposalToCanton({client, proposal, authorization}) {
+  if (!authorization) throw new Error('participant authorization required');
+  requireClient(client);
+  if (!client || typeof client.submitProposal !== 'function')
+    throw new Error('Canton adapter not configured; proposal command unavailable');
+  if (!proposal || proposal.status !== 'proposed') throw new Error('invalid proposal state');
+  const verified = client.verifyAuthorization({agreement: proposal, operation: 'propose', requiredParties: [proposal.proposer], authorization});
+  return client.submitProposal({proposal, authorization: verified});
+}
+
+/** Submit only the Daml Proposal.Accept choice; never create SettlementAuthorization directly. */
 export async function submitAgreementToCanton({client, agreement, authorization}) {
-  if (!authorization || authorization.status !== 'verified-by-wallet-or-participant')
-    throw new Error('participant authorization required');
+  if (!authorization) throw new Error('participant authorization required');
+  requireClient(client);
   if (!client || typeof client.submitAgreement !== 'function')
-    throw new Error('Canton adapter not configured; no on-chain submission occurred');
-  if (!agreement || !['awaiting-ledger-authorization', 'authorized-for-ledger'].includes(agreement.status))
+    throw new Error('Canton adapter not configured; acceptance command unavailable');
+  if (!agreement || !['awaiting-ledger-authorization', 'authorized-for-ledger'].includes(agreement.status) || !agreement.proposalContractId)
     throw new Error('invalid agreement state');
-  validateUserAuthorization(authorization, [agreement.proposer, agreement.counterparty]);
-  return client.submitAgreement({agreement, authorization});
+  const verified = client.verifyAuthorization({agreement, operation: 'accept', requiredParties: [agreement.proposer, agreement.counterparty], authorization});
+  return client.submitAgreement({agreement, authorization: verified});
 }

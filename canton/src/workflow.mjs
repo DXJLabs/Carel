@@ -7,7 +7,7 @@ export class InMemoryProposalBook {
   #mandates = new Map();
   #transactions = new Map();
   #authorizedCommands = new Set();
-  create({mandate, assetId, amountUnits, counterparty, nonce, now = Date.now()}) {
+  create({mandate, assetId, amountUnits, counterparty, nonce, mandateContractId, mandateTemplateId, now = Date.now()}) {
     const m = assertAllowed({mandate, action:'propose', assetId, amountUnits, counterparty, now});
     requireNonempty(nonce, 'nonce');
     const key = `${m.owner}:${nonce}`;
@@ -21,6 +21,8 @@ export class InMemoryProposalBook {
       proposer:m.owner,
       proposerAgent:m.agentId,
       counterparty,
+      mandateContractId,
+      mandateTemplateId,
       assetId,
       amountUnits,
       nonce,
@@ -50,14 +52,20 @@ export class InMemoryProposalBook {
     return Object.freeze({proposalId:proposal.id, proposer:proposal.proposer, counterparty:proposal.counterparty,
       proposerAgent:proposal.proposerAgent, assetId:proposal.assetId, amountUnits:proposal.amountUnits,
       nonce:proposal.nonce, expiresAt:proposal.expiresAt, proposerMandateId:proposal.mandateId,
-      acceptorMandateId:m.id, status:'awaiting-ledger-authorization'});
+      acceptorMandateId:m.id, proposalContractId:proposal.proposalContractId,
+      proposalTemplateId:proposal.proposalTemplateId, status:'awaiting-ledger-authorization'});
   }
-  authorize({agreement, authorization, now = Date.now()}) {
+  authorize({agreement, authorization, trustedPublicKeys, now = Date.now()}) {
     if (!agreement || !['awaiting-ledger-authorization', 'authorized-for-ledger'].includes(agreement.status))
       throw new Error('agreement invalid or already authorized');
     if (Number.isSafeInteger(agreement.expiresAt) && now >= agreement.expiresAt)
       throw new Error('agreement expired');
-    const proof = validateUserAuthorization(authorization, [agreement.proposer, agreement.counterparty]);
+    const proof = validateUserAuthorization(authorization, {
+      agreement,
+      operation: 'accept',
+      requiredParties: [agreement.proposer, agreement.counterparty],
+      trustedPublicKeys
+    });
     if (this.#authorizedCommands.has(proof.commandId)) throw new Error('duplicate authorization command');
     this.#authorizedCommands.add(proof.commandId);
     return Object.freeze({...agreement, status:'authorized-for-ledger', authorization:proof});

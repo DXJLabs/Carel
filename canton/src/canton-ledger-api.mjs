@@ -8,8 +8,8 @@ function requiredUrl(value) {
 }
 
 function requiredTemplateId(value) {
-  requireNonempty(value, 'Canton settlement templateId');
-  if (!/^#[^:]+:[^:]+:[^:]+$/.test(value)) throw new Error('Canton settlement templateId must be a fully-qualified #package:Module:Template id');
+  requireNonempty(value, 'Canton templateId');
+  if (!/^#[^:]+:[^:]+:[^:]+$/.test(value)) throw new Error('Canton templateId must be a fully-qualified #package:Module:Template id');
   return value;
 }
 
@@ -33,10 +33,11 @@ async function readResponse(response) {
   return body;
 }
 
-export function createCantonLedgerApiClient({baseUrl, token, templateId, fetchImpl = globalThis.fetch, timeoutMs = 10000} = {}) {
+export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, proposalTemplateId, partyPublicKeys, fetchImpl = globalThis.fetch, timeoutMs = 10000} = {}) {
   const origin = requiredUrl(baseUrl);
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation required');
-  const configuredTemplateId = templateId ? requiredTemplateId(templateId) : undefined;
+  const configuredMandateTemplateId = mandateTemplateId ? requiredTemplateId(mandateTemplateId) : undefined;
+  const configuredProposalTemplateId = proposalTemplateId ? requiredTemplateId(proposalTemplateId) : undefined;
 
   async function request(path, {method = 'GET', body} = {}) {
     const controller = new AbortController();
@@ -58,31 +59,46 @@ export function createCantonLedgerApiClient({baseUrl, token, templateId, fetchIm
   }
 
   return Object.freeze({
+    verifyAuthorization({agreement, authorization, operation, requiredParties} = {}) {
+      return validateUserAuthorization(authorization, {agreement, operation, requiredParties, trustedPublicKeys: partyPublicKeys});
+    },
     async health() { return request('/livez'); },
     async activeContracts({userId, actAs, readAs = [], filter = [], activeAt} = {}) {
       requireNonempty(userId, 'userId');
       if (!Array.isArray(actAs) || actAs.length === 0) throw new Error('actAs required for active contract query');
       return request('/v2/state/active-contracts', {method: 'POST', body: {userId, actAs, readAs, filter, ...(activeAt === undefined ? {} : {activeAt})}});
     },
+    async submitProposal({proposal, authorization} = {}) {
+      const proof = this.verifyAuthorization({agreement: proposal, authorization, operation: 'propose', requiredParties: [proposal?.proposer]});
+      const resolvedTemplateId = requiredTemplateId(configuredMandateTemplateId);
+      requireNonempty(proposal?.mandateContractId, 'mandateContractId');
+      const command = {ExerciseCommand: {
+        templateId: resolvedTemplateId,
+        contractId: proposal.mandateContractId,
+        choice: 'Propose',
+        choiceArgument: {
+          proposerAgent: proposal.proposerAgent,
+          amountUnits: int64(proposal.amountUnits, 'amountUnits'),
+          nonce: proposal.nonce
+        }
+      }};
+      return request('/v2/commands/submit-and-wait-for-transaction-tree', {
+        method: 'POST',
+        body: {userId: proof.userId, commandId: proof.commandId, commands: [command], actAs: proof.actAs, readAs: proof.readAs}
+      });
+    },
     async submitAgreement({agreement, authorization} = {}) {
       if (!agreement || !['awaiting-ledger-authorization', 'authorized-for-ledger'].includes(agreement.status))
         throw new Error('invalid agreement state');
-      const proof = validateUserAuthorization(authorization, [agreement.proposer, agreement.counterparty]);
-      const resolvedTemplateId = requiredTemplateId(proof.templateId ?? configuredTemplateId);
-      const command = {
-        CreateCommand: {
-          templateId: resolvedTemplateId,
-          createArguments: {
-            owner: agreement.proposer,
-            counterparty: agreement.counterparty,
-            proposerAgent: agreement.proposerAgent ?? agreement.proposer,
-            acceptorAgent: agreement.acceptorAgent ?? agreement.counterparty,
-            assetId: agreement.assetId,
-            amountUnits: int64(agreement.amountUnits, 'amountUnits'),
-            proposalNonce: agreement.nonce ?? agreement.proposalId
-          }
-        }
-      };
+      const proof = this.verifyAuthorization({agreement, authorization, operation: 'accept', requiredParties: [agreement.proposer, agreement.counterparty]});
+      const resolvedTemplateId = requiredTemplateId(configuredProposalTemplateId);
+      requireNonempty(agreement.proposalContractId, 'proposalContractId');
+      const command = {ExerciseCommand: {
+        templateId: resolvedTemplateId,
+        contractId: agreement.proposalContractId,
+        choice: 'Accept',
+        choiceArgument: {}
+      }};
       return request('/v2/commands/submit-and-wait', {
         method: 'POST',
         body: {userId: proof.userId, commandId: proof.commandId, commands: [command], actAs: proof.actAs, readAs: proof.readAs}
@@ -92,9 +108,16 @@ export function createCantonLedgerApiClient({baseUrl, token, templateId, fetchIm
 }
 
 export function cantonLedgerConfigFromEnv(env = process.env) {
+  let partyPublicKeys = {};
+  if (env.CANTON_PARTY_PUBLIC_KEYS_JSON) {
+    try { partyPublicKeys = JSON.parse(env.CANTON_PARTY_PUBLIC_KEYS_JSON); }
+    catch { throw new Error('CANTON_PARTY_PUBLIC_KEYS_JSON must be valid JSON'); }
+  }
   return {
     baseUrl: env.CANTON_LEDGER_API_URL,
     token: env.CANTON_LEDGER_API_TOKEN,
-    templateId: env.CANTON_SETTLEMENT_TEMPLATE_ID
+    mandateTemplateId: env.CANTON_MANDATE_TEMPLATE_ID,
+    proposalTemplateId: env.CANTON_PROPOSAL_TEMPLATE_ID,
+    partyPublicKeys
   };
 }

@@ -1,3 +1,5 @@
+import {createPublicKey, verify as verifySignature} from 'node:crypto';
+
 /** Prototype ONLY: off-chain mandate policy. Does not authorize on-chain transfers. */
 export function requireNonempty(value, name) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} required`);
@@ -51,28 +53,83 @@ export function assertAllowed({mandate, action, assetId, amountUnits, counterpar
   return m;
 }
 
-export function validateUserAuthorization(authorization, requiredParties = []) {
-  if (!authorization || authorization.status !== 'verified-by-wallet-or-participant')
-    throw new Error('participant authorization required');
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+export function authorizationMessage({authorization, agreement, operation, requiredParties}) {
+  requireNonempty(operation, 'authorization operation');
+  if (!agreement || typeof agreement !== 'object') throw new Error('agreement required for authorization');
+  return canonicalize({
+    domain: 'carel-canton-authorization-v1',
+    operation,
+    userId: authorization.userId,
+    commandId: authorization.commandId,
+    requiredParties: [...requiredParties].sort(),
+    agreement: {
+      proposalId: agreement.proposalId ?? null,
+      proposalContractId: agreement.proposalContractId ?? null,
+      mandateContractId: agreement.mandateContractId ?? null,
+      proposer: agreement.proposer ?? null,
+      counterparty: agreement.counterparty ?? null,
+      assetId: agreement.assetId ?? null,
+      amountUnits: agreement.amountUnits ?? null,
+      nonce: agreement.nonce ?? null,
+      expiresAt: agreement.expiresAt ?? null
+    }
+  });
+}
+
+function trustedKeyFor(trustedPublicKeys, party) {
+  const encoded = trustedPublicKeys && typeof trustedPublicKeys === 'object' ? trustedPublicKeys[party] : undefined;
+  if (typeof encoded !== 'string' || !encoded) throw new Error(`trusted public key required for party: ${party}`);
+  try {
+    return createPublicKey({key: Buffer.from(encoded, 'base64'), format: 'der', type: 'spki'});
+  } catch {
+    throw new Error(`invalid trusted public key for party: ${party}`);
+  }
+}
+
+export function validateUserAuthorization(authorization, {agreement, operation, requiredParties, trustedPublicKeys} = {}) {
+  if (!authorization || typeof authorization !== 'object') throw new Error('participant authorization required');
+  if (!Array.isArray(requiredParties) || requiredParties.length === 0)
+    throw new Error('required authorization parties missing');
   for (const field of ['userId', 'commandId']) requireNonempty(authorization[field], field);
-  if (!Array.isArray(authorization.actAs) || authorization.actAs.length === 0)
-    throw new Error('participant authorization must include actAs parties');
-  if (new Set(authorization.actAs).size !== authorization.actAs.length)
-    throw new Error('participant authorization contains duplicate actAs party');
-  for (const party of requiredParties) {
-    if (!authorization.actAs.includes(party))
-      throw new Error(`participant authorization missing required party: ${party}`);
+  const parties = [...new Set(requiredParties)];
+  if (parties.length !== requiredParties.length) throw new Error('duplicate required authorization party');
+  if (!Array.isArray(authorization.approvals) || authorization.approvals.length !== parties.length)
+    throw new Error('cryptographic approvals required for every party');
+  if (authorization.actAs !== undefined &&
+      (new Set(authorization.actAs).size !== parties.length || authorization.actAs.some(party => !parties.includes(party))))
+    throw new Error('actAs must match cryptographically approved parties');
+  if (authorization.status !== undefined && authorization.status !== 'verified-by-wallet-or-participant')
+    throw new Error('unsupported authorization status');
+  const message = Buffer.from(authorizationMessage({authorization, agreement, operation, requiredParties: parties}));
+  const approvals = new Map();
+  for (const approval of authorization.approvals) {
+    requireNonempty(approval?.party, 'approval.party');
+    requireNonempty(approval?.signature, 'approval.signature');
+    if (!parties.includes(approval.party) || approvals.has(approval.party))
+      throw new Error('cryptographic approvals do not match required parties');
+    let valid = false;
+    try {
+      valid = verifySignature(null, message, trustedKeyFor(trustedPublicKeys, approval.party), Buffer.from(approval.signature, 'base64'));
+    } catch (error) {
+      if (error.message.startsWith('trusted public key') || error.message.startsWith('invalid trusted public key')) throw error;
+    }
+    if (!valid) throw new Error(`invalid authorization signature for party: ${approval.party}`);
+    approvals.set(approval.party, approval.signature);
   }
-  for (const forbidden of ['privateKey', 'private_key', 'mnemonic', 'seed', 'secretKey']) {
-    if (Object.hasOwn(authorization, forbidden))
-      throw new Error('private-key material is not accepted by the agent');
-  }
+  if (approvals.size !== parties.length) throw new Error('cryptographic approvals do not match required parties');
   return Object.freeze({
-    status: authorization.status,
     userId: authorization.userId.trim(),
     commandId: authorization.commandId.trim(),
-    actAs: [...authorization.actAs],
-    readAs: Array.isArray(authorization.readAs) ? [...authorization.readAs] : [],
-    templateId: typeof authorization.templateId === 'string' ? authorization.templateId.trim() : undefined
+    actAs: parties,
+    readAs: parties,
+    approvals: parties.map(party => ({party, signature: approvals.get(party)})),
+    operation
   });
 }
