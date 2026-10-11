@@ -6,9 +6,9 @@ template Mandate
     agent : Party
     counterparty : Party
     assetId : Text
-    maxAmountUnits : Int64
-    maxTransactions : Int64
-    transactionsUsed : Int64
+    maxAmountUnits : Int
+    maxTransactions : Int
+    transactionsUsed : Int
     expiresAt : Time
   where
     signatory owner
@@ -18,7 +18,7 @@ template Mandate
     nonconsuming choice Propose : ContractId Proposal
       with
         proposerAgent : Party
-        amountUnits : Int64
+        amountUnits : Int
         nonce : Text
       controller owner
       do
@@ -49,7 +49,7 @@ template Proposal
     proposerAgent : Party
     acceptorAgent : Party
     assetId : Text
-    amountUnits : Int64
+    amountUnits : Int
     expiresAt : Time
     nonce : Text
   where
@@ -92,7 +92,7 @@ template SettlementAuthorization
     proposerAgent : Party
     acceptorAgent : Party
     assetId : Text
-    amountUnits : Int64
+    amountUnits : Int
     proposalNonce : Text
   where
     signatory owner, counterparty
