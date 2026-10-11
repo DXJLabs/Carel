@@ -1,0 +1,81 @@
+module ConfidentialAgentNetworkTest where
+
+import Daml.Script
+import DA.Time
+import DA.Date
+import ConfidentialAgentNetwork
+
+-- The Mandate CID is intentionally linear: Propose leaves it active, while
+-- Accept consumes it and returns a new Mandate CID with updated usage.
+testSequentialMandateAcceptance : Script ()
+testSequentialMandateAcceptance = script do
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob"
+  aliceAgent <- allocateParty "AliceAgent"
+
+  let expiresAt = time (date 2030 Jan 1) 00 00 00
+
+  mandateCid <- submit alice do
+    createCmd Mandate with
+      owner = alice
+      agent = aliceAgent
+      counterparty = bob
+      assetId = "canton:CBTC"
+      maxAmountUnits = 100
+      maxTransactions = 2
+      transactionsUsed = 0
+      expiresAt
+
+  submitMustFail alice do
+    exerciseCmd mandateCid Propose with
+      proposerAgent = bob
+      amountUnits = 1
+      nonce = "nonce-wrong-agent"
+
+  proposal1Cid <- submit alice do
+    exerciseCmd mandateCid Propose with
+      proposerAgent = aliceAgent
+      amountUnits = 40
+      nonce = "nonce-1"
+
+  staleProposalCid <- submit alice do
+    exerciseCmd mandateCid Propose with
+      proposerAgent = aliceAgent
+      amountUnits = 30
+      nonce = "nonce-stale"
+
+  settlement1Cid <- submit [alice, bob] do
+    exerciseCmd proposal1Cid Accept
+
+  activeAfterFirst <- query @Mandate alice
+  let [(mandateAfterFirst, currentAfterFirst)] = activeAfterFirst
+  assert (currentAfterFirst.transactionsUsed == 1)
+  settlementsAfterFirst <- query @SettlementAuthorization alice
+  let [(settlement1CidFromQuery, settlement1)] = settlementsAfterFirst
+  assert (settlement1CidFromQuery == settlement1Cid)
+  assert (settlement1.mandateId == mandateAfterFirst)
+
+  -- The first acceptance consumed the old Mandate CID. A concurrent proposal
+  -- that points at that old CID must not be able to spend the quota again.
+  submitMustFail [alice, bob] do
+    exerciseCmd staleProposalCid Accept
+
+  proposal2Cid <- submit alice do
+    exerciseCmd mandateAfterFirst Propose with
+      proposerAgent = aliceAgent
+      amountUnits = 50
+      nonce = "nonce-2"
+
+  submit [alice, bob] do
+    exerciseCmd proposal2Cid Accept
+
+  activeAfterSecond <- query @Mandate alice
+  let [(mandateAfterSecond, currentAfterSecond)] = activeAfterSecond
+  assert (currentAfterSecond.transactionsUsed == 2)
+
+  -- Quota is checked at proposal time but is not consumed there.
+  submitMustFail alice do
+    exerciseCmd mandateAfterSecond Propose with
+      proposerAgent = aliceAgent
+      amountUnits = 1
+      nonce = "nonce-over-cap"

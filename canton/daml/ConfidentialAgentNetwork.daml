@@ -15,7 +15,7 @@ template Mandate
     observer agent, counterparty
     ensure maxAmountUnits > 0 && maxTransactions > 0 && transactionsUsed >= 0 && transactionsUsed <= maxTransactions
 
-    choice Propose : ContractId Proposal
+    nonconsuming choice Propose : ContractId Proposal
       with
         proposerAgent : Party
         amountUnits : Int64
@@ -26,7 +26,9 @@ template Mandate
         assertMsg "mandate expired" (now < expiresAt)
         assertMsg "amount must be positive" (amountUnits > 0)
         assertMsg "amount exceeds mandate limit" (amountUnits <= maxAmountUnits)
+        assertMsg "transaction limit reached" (transactionsUsed < maxTransactions)
         assertMsg "proposal nonce required" (nonce /= "")
+        assertMsg "proposer agent mismatch" (proposerAgent == agent)
         proposal <- create Proposal with
           mandateId = self
           owner
@@ -38,17 +40,6 @@ template Mandate
           expiresAt
           nonce
         return proposal
-
-    choice CommitAcceptance : ContractId Mandate
-      with
-        proposalNonce : Text
-      controller owner, counterparty
-      do
-        now <- getTime
-        assertMsg "mandate expired" (now < expiresAt)
-        assertMsg "transaction limit reached" (transactionsUsed < maxTransactions)
-        assertMsg "proposal nonce required" (proposalNonce /= "")
-        create this with transactionsUsed = transactionsUsed + 1
 
 template Proposal
   with
@@ -70,7 +61,17 @@ template Proposal
       do
         now <- getTime
         assertMsg "proposal expired" (now < expiresAt)
-        updatedMandate <- exercise mandateId CommitAcceptance with proposalNonce = nonce
+        assertMsg "proposal nonce required" (nonce /= "")
+        mandate <- fetch mandateId
+        assertMsg "mandate owner mismatch" (mandate.owner == owner)
+        assertMsg "mandate counterparty mismatch" (mandate.counterparty == counterparty)
+        assertMsg "mandate asset mismatch" (mandate.assetId == assetId)
+        assertMsg "proposal expiry mismatch" (mandate.expiresAt == expiresAt)
+        assertMsg "mandate amount limit changed" (amountUnits <= mandate.maxAmountUnits)
+        assertMsg "mandate expired" (now < mandate.expiresAt)
+        assertMsg "transaction limit reached" (mandate.transactionsUsed < mandate.maxTransactions)
+        archive mandateId
+        updatedMandate <- create mandate with transactionsUsed = mandate.transactionsUsed + 1
         create SettlementAuthorization with
           mandateId = updatedMandate
           proposalId = self

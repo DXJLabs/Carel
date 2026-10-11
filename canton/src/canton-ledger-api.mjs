@@ -15,9 +15,7 @@ function requiredTemplateId(value) {
 
 function int64(value, name) {
   if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new Error(`${name} must be an unsigned integer string`);
-  const parsed = BigInt(value);
-  if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(`${name} exceeds JSON-safe Int64 adapter range`);
-  return Number(parsed);
+  return value;
 }
 
 async function readResponse(response) {
@@ -31,6 +29,44 @@ async function readResponse(response) {
     throw new Error(`Canton Ledger API ${response.status}: ${detail}`);
   }
   return body;
+}
+
+function createdContracts(response, templateId) {
+  const events = response?.transaction?.events;
+  if (!Array.isArray(events))
+    throw new Error('Canton Ledger API response missing transaction.events; contract ID lifecycle cannot be continued safely');
+  return events
+    .map(event => event?.CreatedEvent?.value)
+    .filter(event => event && event.templateId === templateId && typeof event.contractId === 'string');
+}
+
+function requireCreatedContract(response, templateId, name) {
+  const matches = createdContracts(response, templateId);
+  if (matches.length !== 1)
+    throw new Error(`Canton Ledger API response must contain exactly one created ${name} contract; found ${matches.length}`);
+  return matches[0];
+}
+
+function requireArgumentFields(contract, expected, name) {
+  const actual = contract?.createArgument;
+  if (!actual || typeof actual !== 'object') throw new Error(`Canton ${name} response missing createArgument`);
+  for (const [field, expectedValue] of Object.entries(expected)) {
+    if (String(actual[field]) !== String(expectedValue))
+      throw new Error(`Canton ${name} createArgument ${field} does not match the submitted command`);
+  }
+}
+
+function validateReplacementMandate(contract, agreement) {
+  if (agreement.mandateContractId && contract.contractId === agreement.mandateContractId)
+    throw new Error('Canton acceptance returned the original Mandate CID instead of a replacement');
+  requireArgumentFields(contract, {
+    owner: agreement.proposer,
+    counterparty: agreement.counterparty,
+    assetId: agreement.assetId
+  }, 'replacement Mandate');
+  const usage = contract.createArgument?.transactionsUsed;
+  if (!/^[0-9]+$/.test(String(usage)) || BigInt(String(usage)) < 1n)
+    throw new Error('Canton replacement Mandate has invalid transactionsUsed');
 }
 
 export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, proposalTemplateId, partyPublicKeys, fetchImpl = globalThis.fetch, timeoutMs = 10000} = {}) {
@@ -71,6 +107,7 @@ export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, 
     async submitProposal({proposal, authorization} = {}) {
       const proof = this.verifyAuthorization({agreement: proposal, authorization, operation: 'propose', requiredParties: [proposal?.proposer]});
       const resolvedTemplateId = requiredTemplateId(configuredMandateTemplateId);
+      const resolvedProposalTemplateId = requiredTemplateId(configuredProposalTemplateId);
       requireNonempty(proposal?.mandateContractId, 'mandateContractId');
       const command = {ExerciseCommand: {
         templateId: resolvedTemplateId,
@@ -82,10 +119,21 @@ export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, 
           nonce: proposal.nonce
         }
       }};
-      return request('/v2/commands/submit-and-wait-for-transaction-tree', {
+      const response = await request('/v2/commands/submit-and-wait-for-transaction', {
         method: 'POST',
         body: {userId: proof.userId, commandId: proof.commandId, commands: [command], actAs: proof.actAs, readAs: proof.readAs}
       });
+      const createdProposal = requireCreatedContract(response, resolvedProposalTemplateId, 'Proposal');
+      requireArgumentFields(createdProposal, {
+        mandateId: proposal.mandateContractId,
+        owner: proposal.proposer,
+        counterparty: proposal.counterparty,
+        proposerAgent: proposal.proposerAgent,
+        assetId: proposal.assetId,
+        amountUnits: proposal.amountUnits,
+        nonce: proposal.nonce
+      }, 'Proposal');
+      return {...response, proposalContractId: createdProposal.contractId, proposalTemplateId: createdProposal.templateId};
     },
     async submitAgreement({agreement, authorization} = {}) {
       if (!agreement || !['awaiting-ledger-authorization', 'authorized-for-ledger'].includes(agreement.status))
@@ -99,10 +147,13 @@ export function createCantonLedgerApiClient({baseUrl, token, mandateTemplateId, 
         choice: 'Accept',
         choiceArgument: {}
       }};
-      return request('/v2/commands/submit-and-wait', {
+      const response = await request('/v2/commands/submit-and-wait-for-transaction', {
         method: 'POST',
         body: {userId: proof.userId, commandId: proof.commandId, commands: [command], actAs: proof.actAs, readAs: proof.readAs}
       });
+      const replacementMandate = requireCreatedContract(response, requiredTemplateId(configuredMandateTemplateId), 'replacement Mandate');
+      validateReplacementMandate(replacementMandate, agreement);
+      return {...response, nextMandateContractId: replacementMandate.contractId, nextMandateTemplateId: replacementMandate.templateId};
     }
   });
 }

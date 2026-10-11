@@ -52,6 +52,7 @@ export class InMemoryProposalBook {
     return Object.freeze({proposalId:proposal.id, proposer:proposal.proposer, counterparty:proposal.counterparty,
       proposerAgent:proposal.proposerAgent, assetId:proposal.assetId, amountUnits:proposal.amountUnits,
       nonce:proposal.nonce, expiresAt:proposal.expiresAt, proposerMandateId:proposal.mandateId,
+      mandateContractId:proposal.mandateContractId, mandateTemplateId:proposal.mandateTemplateId,
       acceptorMandateId:m.id, proposalContractId:proposal.proposalContractId,
       proposalTemplateId:proposal.proposalTemplateId, status:'awaiting-ledger-authorization'});
   }

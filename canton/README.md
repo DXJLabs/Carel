@@ -13,7 +13,7 @@ CAREL is a user-facing DeFi execution interface. This project experiments with b
 - Per-mandate expiry, token allowlist, action allowlist, counterparty allowlist, maximum notional in units.
 - Proposal IDs, in-memory nonce and acceptance replay checks, expired-proposal checks and per-mandate transaction caps.
 - A non-custodial authorization gate: each required Canton party must provide an Ed25519 signature over the exact operation, command, parties and proposal terms; the agent never accepts private keys.
-- A real HTTP client for Canton JSON Ledger API v2 endpoints (`/livez`, `/v2/commands/submit-and-wait`, and `/v2/state/active-contracts`).
+- A real HTTP client for Canton JSON Ledger API v2 endpoints (`/livez`, `/v2/commands/submit-and-wait-for-transaction`, and `/v2/state/active-contracts`).
 - Daml templates for mandates, bilateral proposals and user-authorized settlement records, with signatories, observers and controllers explicitly defined.
 - Deterministic adapter tests that verify the exact `ExerciseCommand` body without pretending that a fake response is an on-ledger settlement.
 - Node built-in tests, zero dependencies.
@@ -42,7 +42,7 @@ The two template IDs must come from the DAR/package deployed to the participant.
 
 ## Daml package
 
-`daml/ConfidentialAgentNetwork.daml` defines the contract visibility and authorization boundary. The owner controls proposal creation, both parties control acceptance and cancellation, and agents are observers only. `daml.yaml` pins the Daml SDK toolchain but a local `dpm`/Daml SDK installation is required to build a DAR; this repository does not claim that a DAR has been deployed.
+`daml/ConfidentialAgentNetwork.daml` defines the contract visibility and authorization boundary. The owner controls proposal creation, both parties control acceptance and cancellation, and agents are observers only. `Mandate.Propose` is non-consuming so the current mandate remains available while a proposal is reviewed. `Proposal.Accept` consumes that mandate, increments usage, and creates a new mandate with a new contract ID; the next proposal must use that returned/current ID. A stale proposal therefore cannot spend the same mandate after another acceptance. `ConfidentialAgentNetworkTest.daml` covers this sequential lifecycle and the transaction cap. `daml.yaml` pins the Daml SDK toolchain but a local `dpm`/Daml SDK installation is required to build a DAR; this repository does not claim that a DAR has been deployed.
 
 ## Run on Termux (Node >=20)
 
@@ -66,7 +66,7 @@ npm run demo
 5. **End-to-end test**: create two real Canton parties on dev/test environment, compile/deploy the DAR, sign/accept terms, exercise the ledger choices, settle a supported asset, inspect visibility from a third unrelated party.
 6. **Multichain adapters** later: maintain typed provider-neutral intents, but do not assume privacy properties transport across chains. **The current code remains Canton-specific at the ledger boundary.**
 
-The Ledger API request shape follows Digital Asset's JSON Ledger API v2 documentation: `POST /v2/commands/submit-and-wait` for commands, `POST /v2/state/active-contracts` for queries, and `/livez` for health. A successful command response means the participant accepted the command; it is not proof that a token transfer settled until the returned update is inspected and the asset provider's real contract is integrated.
+The Ledger API request shape follows Digital Asset's JSON Ledger API v2 documentation: `POST /v2/commands/submit-and-wait-for-transaction` for workflow commands, `POST /v2/state/active-contracts` for queries, and `/livez` for health. The adapter requires the returned transaction events after proposal and acceptance so it can return the created Proposal CID and replacement Mandate CID. A successful command response means the participant accepted the command; it is not proof that a token transfer settled until the returned update is inspected and the asset provider's real contract is integrated.
 
 Documentation: https://github.com/canton-network/cf-docs/blob/main/docs-main/appdev/deep-dives/privacy-model.mdx and https://github.com/canton-foundation/cips/blob/main/cip-0056/cip-0056.md
 
