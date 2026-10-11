@@ -2,6 +2,10 @@ import type {
   AgentPlan,
 } from "@/lib/agent/plan";
 
+import type {
+  AgentFeeExecutionQuote,
+} from "@/lib/agent/fee-runtime";
+
 import {
   agentFeePlanDigest,
   agentFeePlanFingerprint,
@@ -9,6 +13,7 @@ import {
   quoteAgentPlanFee,
   settleAgentPlanFee,
   submitAgentPlanFee,
+  submitAgentPlanFeeTransaction,
   type AgentFeeClientSession,
   type AgentFeeHttpClient,
   type AgentFeeWalletExecutor,
@@ -19,6 +24,10 @@ import {
 export type AgentFeeGateStatus =
   | "disabled"
   | "settled";
+
+export type AgentFeeAuthorizationStatus =
+  | AgentFeeGateStatus
+  | "quoted";
 
 
 /**
@@ -34,9 +43,12 @@ export type AgentExecutionFeeAuthorization =
       string;
 
     status:
-      AgentFeeGateStatus;
+      AgentFeeAuthorizationStatus;
 
     planFingerprint:
+      string;
+
+    atomicStageId?:
       string;
   }>;
 
@@ -97,7 +109,10 @@ function issueAuthorization(
     string,
 
   status:
-    AgentFeeGateStatus,
+    AgentFeeAuthorizationStatus,
+
+  atomicStageId?:
+    string,
 ): AgentExecutionFeeAuthorization {
   const authorization =
     Object.freeze({
@@ -109,6 +124,12 @@ function issueAuthorization(
         planFingerprint(
           plan,
         ),
+
+      ...(atomicStageId
+        ? {
+            atomicStageId,
+          }
+        : {}),
     });
 
 
@@ -133,6 +154,9 @@ export function assertAgentExecutionFeeAuthorization(
     AgentPlan,
 
   runId:
+    string,
+
+  stageId?:
     string,
 ): void {
   if (
@@ -173,13 +197,61 @@ export function assertAgentExecutionFeeAuthorization(
     authorization.status !==
       "disabled" &&
     authorization.status !==
+      "quoted" &&
+    authorization.status !==
       "settled"
   ) {
     throw new Error(
       "Agent fee authorization is not executable.",
     );
   }
+
+  if (
+    authorization.status ===
+      "quoted" &&
+    (
+      !authorization.atomicStageId ||
+      (
+        stageId &&
+        authorization.atomicStageId !==
+          stageId
+      )
+    )
+  ) {
+    throw new Error(
+      "Quoted Agent fee authorization is only valid for its atomic protocol stage.",
+    );
+  }
 }
+
+
+export type AtomicAgentFeeGateResult =
+  | Readonly<{
+      runId:
+        string;
+
+      status:
+        "disabled";
+
+      feeQuote:
+        null;
+
+      authorization:
+        AgentExecutionFeeAuthorization;
+    }>
+  | Readonly<{
+      runId:
+        string;
+
+      status:
+        "quoted";
+
+      feeQuote:
+        AgentFeeExecutionQuote;
+
+      authorization:
+        AgentExecutionFeeAuthorization;
+    }>;
 
 
 type PersistedAgentFeeSettlement =
@@ -531,6 +603,161 @@ export function createAgentFeeGateCoordinator({
   }
 
 
+  async function prepareAtomic(
+    plan:
+      AgentPlan,
+
+    {
+      prefix,
+      chainId,
+      payer,
+    }:
+      Readonly<{
+        prefix:
+          string;
+
+        chainId:
+          string;
+
+        payer:
+          string;
+      }>,
+  ): Promise<
+    AtomicAgentFeeGateResult
+  > {
+    if (
+      plan.stages.length !==
+        1 ||
+      plan.stages[0]
+        ?.action !==
+        "swap"
+    ) {
+      throw new Error(
+        "Atomic Agent fee currently supports single-stage public Swap only.",
+      );
+    }
+
+    const current =
+      ensureActive(
+        plan,
+        {
+          prefix,
+          chainId,
+          payer,
+        },
+      );
+
+    if (
+      current.policyEnabled ===
+        null
+    ) {
+      current.policyEnabled =
+        await readPolicy(
+          httpClient,
+        );
+    }
+
+    if (
+      !current.policyEnabled
+    ) {
+      return {
+        runId:
+          current.runId,
+
+        status:
+          "disabled",
+
+        feeQuote:
+          null,
+
+        authorization:
+          issueAuthorization(
+            plan,
+            current.runId,
+            "disabled",
+          ),
+      };
+    }
+
+    if (
+      !current.feeSession
+    ) {
+      current.feeSession =
+        createAgentFeeClientSession(
+          plan,
+          current.runId,
+        );
+    }
+
+    if (
+      current.feeSession
+        .state.status ===
+        "quoted" &&
+      current.feeSession
+        .state.quote
+        .expiresAt <=
+        Date.now()
+    ) {
+      current.feeSession =
+        createAgentFeeClientSession(
+          plan,
+          current.runId,
+        );
+    }
+
+    if (
+      current.feeSession
+        .state.status ===
+        "pending-policy"
+    ) {
+      current.feeSession =
+        await quoteAgentPlanFee(
+          current.feeSession,
+          {
+            planDigest:
+              await agentFeePlanDigest(
+                plan,
+              ),
+
+            chainId,
+            payer,
+            httpClient,
+          },
+        );
+    }
+
+    if (
+      current.feeSession
+        .state.status !==
+        "quoted"
+    ) {
+      throw new Error(
+        "CAREL could not prepare an atomic Agent fee quote.",
+      );
+    }
+
+    return {
+      runId:
+        current.runId,
+
+      status:
+        "quoted",
+
+      feeQuote:
+        current.feeSession
+          .state.quote,
+
+      authorization:
+        issueAuthorization(
+          plan,
+          current.runId,
+          "quoted",
+          plan.stages[0].id,
+        ),
+    };
+  }
+
+
   async function prepare(
     plan:
       AgentPlan,
@@ -730,6 +957,132 @@ export function createAgentFeeGateCoordinator({
         issueAuthorization(
           plan,
           current.runId,
+          "settled",
+        ),
+    };
+  }
+
+
+  async function settleAtomic(
+    plan:
+      AgentPlan,
+
+    {
+      runId,
+      transactionHash,
+    }:
+      Readonly<{
+        runId:
+          string;
+
+        transactionHash:
+          string;
+      }>,
+  ): Promise<
+    AgentFeeGateResult
+  > {
+    if (
+      !active ||
+      active.runId !==
+        runId ||
+      active.fingerprint !==
+        planFingerprint(
+          plan,
+        )
+    ) {
+      throw new Error(
+        "Atomic Agent fee settlement does not match the active Agent run.",
+      );
+    }
+
+    if (
+      active.policyEnabled ===
+        false
+    ) {
+      return {
+        runId,
+
+        status:
+          "disabled",
+
+        authorization:
+          issueAuthorization(
+            plan,
+            runId,
+            "disabled",
+          ),
+      };
+    }
+
+    if (
+      !active.feeSession ||
+      active.feeSession
+        .state.status !==
+        "quoted"
+    ) {
+      throw new Error(
+        "Atomic Agent fee has no reviewed quote waiting for settlement.",
+      );
+    }
+
+    active.feeSession =
+      submitAgentPlanFeeTransaction(
+        active.feeSession,
+        transactionHash,
+      );
+
+    active.feeSession =
+      await settleAgentPlanFee(
+        active.feeSession,
+        httpClient,
+      );
+
+    if (
+      active.feeSession
+        .state.status !==
+        "settled"
+    ) {
+      throw new Error(
+        "CAREL Agent fee is not settled.",
+      );
+    }
+
+    if (
+      active.feeSession
+        .settlementReceipt
+    ) {
+      saveSettlementEvidence({
+        version:
+          1,
+
+        runId,
+
+        chainId:
+          active.feeSession
+            .state.quote
+            .chainId,
+
+        payer:
+          active.feeSession
+            .state.quote
+            .payer,
+
+        settlementReceipt:
+          active.feeSession
+            .settlementReceipt,
+      });
+    }
+
+    return {
+      runId,
+
+      status:
+        "settled",
+
+      authorization:
+        issueAuthorization(
+          plan,
+          runId,
           "settled",
         ),
     };
@@ -1106,6 +1459,8 @@ export function createAgentFeeGateCoordinator({
 
   return {
     prepare,
+    prepareAtomic,
+    settleAtomic,
     resume,
     markProtocolStarted,
     reset,

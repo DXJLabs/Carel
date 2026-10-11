@@ -446,6 +446,52 @@ export async function submitAgentPlanFee(
 }
 
 
+export function submitAgentPlanFeeTransaction(
+  session:
+    AgentFeeClientSession,
+
+  transactionHash:
+    string,
+): AgentFeeClientSession {
+  if (
+    session.state.status !==
+      "quoted" ||
+    !session.signedQuote
+  ) {
+    throw new Error(
+      "CAREL Agent fee must have a reviewed signed quote before atomic settlement.",
+    );
+  }
+
+  if (
+    !/^0x[0-9a-f]{1,64}$/i.test(
+      transactionHash,
+    )
+  ) {
+    throw new Error(
+      "Atomic Agent execution returned an invalid transaction hash.",
+    );
+  }
+
+  return {
+    state:
+      submitAgentFee(
+        session.state,
+        {
+          kind:
+            "transaction",
+
+          id:
+            transactionHash,
+        },
+      ),
+
+    signedQuote:
+      session.signedQuote,
+  };
+}
+
+
 export async function settleAgentPlanFee(
   session:
     AgentFeeClientSession,

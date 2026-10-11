@@ -1087,6 +1087,15 @@ export function CarelApp() {
         </div>
       </div>
       <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
+      <button
+        type="button"
+        className={styles.primary}
+        disabled={busy || !goalText.trim()}
+        onClick={previewPlan}
+      >
+        Preview agent plan
+        <ArrowRight size={17}/>
+      </button>
 
       {agentPlan && (
         <section
@@ -1223,14 +1232,7 @@ export function CarelApp() {
             <span>Network</span>
             <strong>{activeNetwork?.label ?? "Starknet"}</strong>
           </div>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={previewPlan}
-          >
-            Preview plan
-            <ArrowRight size={17}/>
-          </button>
+          
         </>
       )}
       {goalError && <div className={styles.notice} role="alert"><p>{goalError}</p><button type="button" className={styles.textButton} onClick={() => chooseBalanceGoal()}>Use a STRK balance target<ArrowRight size={14}/></button></div>}

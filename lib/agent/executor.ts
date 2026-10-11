@@ -808,6 +808,7 @@ export async function executeAgentStage(
       session.feeAuthorization,
       plan,
       session.runId,
+      stageId,
     );
   } else if (
     session.feeAuthorization
@@ -816,6 +817,7 @@ export async function executeAgentStage(
       session.feeAuthorization,
       plan,
       session.runId,
+      stageId,
     );
   }
 
