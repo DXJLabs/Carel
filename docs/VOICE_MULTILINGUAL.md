@@ -1,3 +1,33 @@
+# CAREL Agent compact voice experience
+
+The Agent goal composer now contains an orange microphone action. Tap it to
+open an on-demand, dark voice sheet. There is no always-visible Voice card.
+
+The sheet attempts push-to-talk recognition, shows recognized text, allows
+editing that text in the goal field, controls read-aloud replies and holds the
+searchable 17-language selector. Closing the sheet stops recognition and speech
+synthesis. Microphone permission is still controlled by Android Chrome;
+client-side UI changes cannot override a denied permission.
+
+The Agent summary is rendered from actual planner stages, without invented
+exchange rates, fees or transfer estimates. The route-specific execution
+components remain responsible for their real quote and wallet confirmation.
+Recent goals are in-memory for the current page session only, not persisted.
+
+## Validation before merging
+
+```bash
+npx tsc --noEmit
+npm test
+```
+
+Then deploy through Vercel rather than running a Termux production build.
+Verify Chrome Android at a narrow viewport: mic inside goal composer, listening
+sheet above navigation, permission-denied state, Close/Escape behavior, language
+search, recognized transcript, plan stages and review links.
+
+---
+
 # CAREL Voice — multilingual browser input
 
 This is an experimental browser-language selector, not an Alexa+ integration or a general translation model.
