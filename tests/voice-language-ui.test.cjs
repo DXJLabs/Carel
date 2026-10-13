@@ -39,8 +39,8 @@ test("multilingual picker is inline, searchable and avoids native Android select
   const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
   assert.match(html, /aria-label="Choose speech language"/);
   assert.match(html, /aria-expanded="false"/);
-  assert.doesNotMatch(html, /<select\\b/i);
-  assert.match(html, />English<\\/span>/);
+  assert.ok(!html.includes("<select"), "Native select must not appear");
+  assert.ok(html.includes(">English</span>"), "Selected language must be readable");
 });
 
 test("language catalogue contains at least 15 unique browser locales", () => {
