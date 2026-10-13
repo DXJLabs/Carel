@@ -1046,10 +1046,14 @@ export function CarelApp() {
   }
 
   function renderAgent() {
-    return <div className={styles.narrowPage}>
-      <div className={styles.intro}><p className={styles.eyebrow}>CAREL AGENT</p><h1>What’s your<br/>next move?</h1><p>Set a goal. Review every step.</p></div>
-      <div className={styles.composer}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setAgentPlan(null); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
-        <div className={styles.modeRow}>
+    return <div className={`${styles.narrowPage} ${styles.agentPage}`}>
+      <div className={`${styles.intro} ${styles.agentIntro}`}>
+        <p className={styles.eyebrow}>CAREL AGENT</p>
+        <h1>What’s your <span>next move?</span></h1>
+        <p>Set a goal. CAREL previews every step before you sign.</p>
+      </div>
+      <div className={`${styles.composer} ${styles.agentComposer}`}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" className={styles.agentGoalInput} value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setAgentPlan(null); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
+        <div className={`${styles.modeRow} ${styles.agentModeRow}`}>
           <button
             type="button"
             className={styles.modeButton}
@@ -1080,7 +1084,8 @@ export function CarelApp() {
             <ArrowLeftRight size={14}/>
           </button>
 
-          <span className={styles.helper}>
+          <span className={`${styles.helper} ${styles.agentRouteHint}`}>
+            <ArrowLeftRight size={15} aria-hidden="true"/>
             {mode === "normal"
               ? "Public → public"
               : mode === "shield"
@@ -1103,15 +1108,16 @@ export function CarelApp() {
           return describeVoicePlan(voicePlan, language);
         }}
       />
-      <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
+      <div className={`${styles.tools} ${styles.agentTools}`} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
       <button
         type="button"
-        className={styles.primary}
+        className={`${styles.primary} ${styles.agentPrimary}`}
         disabled={busy || !goalText.trim()}
         onClick={() => previewPlan()}
       >
-        Preview agent plan
-        <ArrowRight size={17}/>
+        <Sparkles size={19} aria-hidden="true"/>
+        <span>Preview agent plan</span>
+        <ArrowRight size={18} aria-hidden="true"/>
       </button>
 
       {agentPlan && (
@@ -1548,7 +1554,7 @@ export function CarelApp() {
     </div>;
   }
 
-  return <div className={styles.app} data-reduced-motion={reduceMotion ? "true" : undefined}>
+  return <div className={styles.app} data-reduced-motion={reduceMotion ? "true" : undefined} data-current-tab={pointsOpen ? "points" : tab}>
     <header className={styles.header}><div className={styles.headerInner}>
       {pointsOpen ? <button type="button" className={styles.backButton} onClick={() => setPointsOpen(false)}><ArrowLeft size={19}/><span>Points</span></button> : <button type="button" className={styles.brand} onClick={() => navigate("home")} aria-label="CAREL Home"><Orbit size={24}/><span>CAREL</span></button>}
       <div className={styles.headerActions}>{!pointsOpen && <button type="button" className={styles.pointsBadge} onClick={openPoints} aria-label="Open Points detail"><Sparkles size={14}/><span>{pointsSummary.seasonTotal.toLocaleString()}</span><small>PTS</small></button>}
