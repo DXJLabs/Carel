@@ -118,6 +118,34 @@ function SectionHeading({ title, children }: { title: string; children?: ReactNo
 function EmptyState({ children, title }: { children: ReactNode; title: string }) {
   return <div className={styles.emptyState}><strong>{title}</strong><p>{children}</p></div>;
 }
+const LOCAL_TOKEN_ICON: Readonly<Record<string, string>> = {
+  STRK: "strk",
+  USDC: "usdc",
+  ETH: "eth",
+  USDT: "usdt",
+  WBTC: "wbtc",
+  BTC: "btc",
+  XSTRK: "strk",
+  STRKBTC: "btc",
+};
+
+function AssetLogo({ symbol }: { symbol: string }) {
+  const key = symbol.toUpperCase();
+  const icon = LOCAL_TOKEN_ICON[key];
+  const [failed, setFailed] = useState(false);
+  const derivative = key === "XSTRK" ? "x" : key === "STRKBTC" ? "s" : null;
+  return (
+    <span className={`${styles.assetLogo} ${key === "STRK" || key === "XSTRK" ? styles.assetLogoStarknet : ""}`} role="img" aria-label={`${symbol} asset icon`}>
+      {icon && !failed ? (
+        <img src={`/token-icons/${icon}.svg`} alt="" loading="lazy" decoding="async" width="36" height="36" onError={() => setFailed(true)}/>
+      ) : (
+        <span className={styles.assetLogoFallback}>{symbol.slice(0, 1).toUpperCase()}</span>
+      )}
+      {derivative && <span className={styles.assetLogoDerivative} aria-hidden="true">{derivative}</span>}
+    </span>
+  );
+}
+
 function PerformanceChart({ points, hidden }: { points: Observation[]; hidden: boolean }) {
   if (hidden) return <EmptyState title="Balances hidden">Turn off “Hide portfolio amounts” in Settings to see performance.</EmptyState>;
   if (points.length < 2) return <EmptyState title="Your history starts here">Refresh your balances over time to see changes in your observed STRK balance.</EmptyState>;
@@ -134,8 +162,9 @@ function PerformanceChart({ points, hidden }: { points: Observation[]; hidden: b
     <p className={styles.change}>{delta >= 0 ? "+" : ""}{delta.toFixed(4)} STRK {pct !== null && `(${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`}<span>Balance change · not investment return</span></p>
     <svg className={styles.chart} viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="Observed STRK balance changes during this visit">
       <defs><linearGradient id="carel-orbit-chart-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity=".18"/><stop offset="100%" stopColor="currentColor" stopOpacity="0"/></linearGradient></defs>
-      <path d={`${path} L${coords[coords.length - 1].x} 180 L${coords[0].x} 180 Z`} fill="url(#carel-orbit-chart-fill)"/>
-      <path d={path} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+      <path className={styles.chartAnimatedFill} d={`${path} L${coords[coords.length - 1].x} 180 L${coords[0].x} 180 Z`} fill="url(#carel-orbit-chart-fill)"/>
+      <path className={styles.chartAnimatedLine} d={path} fill="none" stroke="currentColor" strokeWidth="2.5" vectorEffect="non-scaling-stroke" pathLength={100} strokeDasharray={100}/>
+      <circle className={styles.chartLivePoint} cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="4" fill="currentColor"/>
     </svg>
     <div className={styles.chartAxis}><span>{txDate(points[0].ts)}</span><span>{txDate(points[points.length - 1].ts)}</span></div>
   </div>;
@@ -1323,7 +1352,26 @@ export function CarelApp() {
         <div className={styles.balanceCard}><span><WalletCards size={15}/>Public</span><strong>{amount(wallet.publicStrk, hideAmounts)} <small>STRK</small></strong><button disabled={!publicReady || busy} onClick={() => void refreshBalances()}>{wallet.publicStrk === null ? "Load" : "Refresh"}<RefreshCw size={13}/></button></div>
         <div className={styles.balanceCard}><span><EyeOff size={15}/>Private</span><strong>{amount(privateBalance, hideAmounts || !wallet.privateRevealed)} <small>STRK</small></strong><button disabled={!ready || !wallet.strk20Capable || busy} onClick={() => void run(() => wallet.revealPrivateBalance())}>{wallet.privateRevealed ? "Refresh" : "Reveal"}<Eye size={13}/></button></div>
       </div>
-      {privateShare !== null && !hideAmounts && <><div className={styles.allocation} role="img" aria-label={`Private ${privateShare}%, public ${(100 - privateShare).toFixed(2)}%`}><span style={{ width: `${privateShare}%` }}/><span style={{ width: `${100 - privateShare}%` }}/></div><div className={styles.allocationLegend}><span>Private {privateShare.toFixed(1)}%</span><span>Public {(100 - privateShare).toFixed(1)}%</span></div></>}
+      {privateShare !== null && !hideAmounts && (
+        <div className={styles.portfolioAllocationDetail}>
+          <svg className={styles.portfolioDonut} viewBox="0 0 120 120" role="img"
+            aria-label={`Private ${privateShare.toFixed(1)}%, public ${(100 - privateShare).toFixed(1)}%`}>
+            <circle className={styles.portfolioDonutBase} cx="60" cy="60" r="45" fill="none" strokeWidth="12"/>
+            <circle className={styles.portfolioDonutSegment} cx="60" cy="60" r="45"
+              fill="none" strokeWidth="12" strokeLinecap="round"
+              pathLength={100} strokeDasharray={`${privateShare} ${100 - privateShare}`}
+              transform="rotate(-90 60 60)"/>
+            <text x="60" y="55" textAnchor="middle" className={styles.portfolioDonutCaption}>Private</text>
+            <text x="60" y="74" textAnchor="middle" className={styles.portfolioDonutValue}>{privateShare.toFixed(1)}%</text>
+          </svg>
+          <div className={styles.portfolioDonutDetails}>
+            <strong>Privacy allocation</strong>
+            <p>Observed STRK split</p>
+            <div><span className={styles.portfolioLegendOrange}/>Private <strong>{privateShare.toFixed(1)}%</strong></div>
+            <div><span className={styles.portfolioLegendGrey}/>Public <strong>{(100 - privateShare).toFixed(1)}%</strong></div>
+          </div>
+        </div>
+      )}
       <div className={styles.actionPair}><button className={styles.secondary} disabled={!ready || !wallet.strk20Capable || busy} onClick={() => { setQuickAction("shield"); setActionError(null); }}><ArrowDownToLine size={16}/>Shield</button><button className={styles.secondary} disabled={!ready || !wallet.strk20Capable || busy} onClick={() => { setQuickAction("unshield"); setActionError(null); }}><ArrowUpFromLine size={16}/>Unshield</button></div>
       {quickAction && <div className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
@@ -1338,10 +1386,7 @@ export function CarelApp() {
                 className={styles.holdingRow}
                 key={holding.asset.id}
               >
-                <span className={styles.coin}>
-                  {holding.asset.symbol
-                    .slice(0, 1)}
-                </span>
+                <AssetLogo symbol={holding.asset.symbol}/>
 
                 <div className={styles.rowCopy}>
                   <strong>
@@ -1403,10 +1448,7 @@ export function CarelApp() {
                 <div
                   className={styles.holdingRow}
                 >
-                  <span className={styles.coin}>
-                    {position.asset.symbol
-                      .slice(0, 1)}
-                  </span>
+                  <AssetLogo symbol={position.asset.symbol}/>
 
                   <div className={styles.rowCopy}>
                     <strong>
