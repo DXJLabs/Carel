@@ -149,3 +149,48 @@
   .sheet { animation: none; }
   .orbActive .wave span { animation: none; }
 }
+
+/* Compact voice states: keep the Agent screen visible while mic is blocked. */
+.sheet { max-height: min(72dvh, 620px); padding: 10px 18px calc(16px + env(safe-area-inset-bottom)); }
+.sheetError { max-height: min(60dvh, 440px); }
+.grabber { margin-bottom: 8px; }
+.sheetTop { min-height: 32px; }
+.voiceHero { padding: 12px 4px 10px; gap: 6px; }
+.orb { width: 80px; height: 80px; box-shadow: 0 0 20px #ed5d1726; }
+.orbActive { box-shadow: 0 0 28px #fa5c2150, inset 0 0 19px #fa5c212e; }
+.wave { height: 40px; gap: 5px; }
+.wave span { width: 4px; height: 11px; }
+.wave span:nth-child(2), .wave span:nth-child(4) { height: 23px; }
+.wave span:nth-child(3) { height: 33px; }
+.voiceHero h2 { font-size: 19px; }
+.voiceHero p { max-width: 320px; font-size: 12px; }
+.permissionState {
+  display: flex; gap: 12px; align-items: flex-start; margin-top: 17px;
+  padding: 14px; background: #281c18;
+  border: 1px solid #6d3a27; border-radius: 13px;
+}
+.permissionIcon {
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+  display: grid; place-items: center; background: #512819; color: #ff9460;
+}
+.permissionState > div { min-width: 0; }
+.permissionState h2 { font-size: 15px; line-height: 1.4; margin: 0 0 5px; }
+.permissionState p { font-size: 12px; line-height: 1.55; color: #c6bcb5; margin: 0; }
+.transcript { min-height: 0; padding: 12px; }
+.transcript p { font-size: 14px; }
+.sheetControls { margin: 13px 0 11px; }
+.languageTrigger { width: max-content; max-width: 100%; min-height: 38px; padding: 7px 12px; border-radius: 11px; }
+.languageLabel { gap: 5px; }
+.languageMenu { margin-top: 5px; }
+.languageList { max-height: min(150px, 27dvh); }
+.hint { margin: 10px 0 0; font-size: 10px; }
+@media (min-width: 700px) {
+  .sheet { max-height: min(74dvh, 650px); }
+  .sheetError { max-height: min(52dvh, 440px); }
+}
+@media (max-height: 630px) {
+  .sheet { max-height: min(76dvh, 510px); }
+  .sheetError { max-height: min(65dvh, 410px); }
+  .voiceHero { padding: 7px 4px; }
+  .orb { width: 66px; height: 66px; }
+}
