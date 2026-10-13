@@ -980,3 +980,137 @@
   .agentPage .agentIntro h1 { font-size: 32px; }
   .agentPage .agentTools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+
+/* Portfolio refresh — separate wallet onboarding from observed on-chain data. */
+.portfolioRefresh { padding: 0 0 25px; }
+.portfolioIntro { margin: 6px 0 22px; }
+.portfolioIntro .eyebrow { color: #a69a94; letter-spacing: .19em; }
+.portfolioIntro h1 {
+  margin: 4px 0 0; font-size: clamp(37px, 8.5vw, 48px);
+  letter-spacing: -.051em; line-height: 1.07;
+  font-family: var(--font-carel-display), sans-serif;
+  font-weight: 700;
+}
+.portfolioTitleDot { color: #fb6d2b; }
+.portfolioIntro > p:last-child { margin: 11px 0 0; font-size: 13px; line-height: 1.6; color: #aea5a0; }
+.portfolioWelcome {
+  position: relative; overflow: hidden; isolation: isolate;
+  padding: 25px 22px 21px;
+  border-radius: 21px; border: 1px solid #613b2a;
+  background:
+    radial-gradient(ellipse 90% 82% at 5% 0%, #74341c45, transparent 70%),
+    linear-gradient(145deg, #231b19, #151617 75%);
+  box-shadow: 0 9px 32px #0004, inset 0 1px 0 #fff1;
+}
+.portfolioWelcomeIcon {
+  display: grid; place-items: center;
+  width: 57px; height: 57px; margin-bottom: 24px;
+  color: #ff995e; border: 1px solid #964728; border-radius: 18px;
+  background: linear-gradient(145deg, #542616, #2b1a14);
+  box-shadow: 0 4px 28px #f45a1f2b;
+}
+.portfolioEyebrow { color: #e7966f; font-size: 10px; font-weight: 650; letter-spacing: .17em; }
+.portfolioWelcome h2 { font-size: clamp(24px, 6vw, 29px); font-weight: 700; letter-spacing: -.033em; margin: 9px 0; line-height: 1.15; }
+.portfolioWelcome > p { color: #c1b6af; max-width: 470px; font-size: 13px; line-height: 1.65; margin: 0 0 23px; }
+.portfolioWelcome .portfolioConnect {
+  display: flex; align-items: center; gap: 11px; justify-content: center;
+  min-height: 55px; border: 1px solid #ff9b58; border-radius: 13px;
+  background: linear-gradient(115deg, #ff7a22, #ed480e);
+  color: #fff; font-size: 15px !important; font-weight: 680 !important;
+  box-shadow: 0 6px 23px #e94b1231;
+}
+.portfolioConnect span { min-width: 0; }
+.portfolioConnect svg:last-child { margin-left: auto; }
+.portfolioConnect svg:first-child { margin-left: auto; }
+.portfolioConnect:disabled { opacity: .55; }
+.portfolioSafety { display: flex; align-items: flex-start; gap: 9px; margin: 16px 0 0; color: #b0a6a0; font-size: 11px; line-height: 1.55; }
+.portfolioSafety svg { flex-shrink: 0; margin-top: 1px; color: #f18a55; }
+.portfolioFeatures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 16px 0 0; }
+.portfolioFeatures > div {
+  min-width: 0; display: flex; align-items: center; justify-content: center;
+  gap: 8px; min-height: 52px; padding: 11px 6px;
+  border: 1px solid #323235; border-radius: 12px;
+  background: #171819; color: #bbb6b2; font-size: 11px; font-weight: 600;
+}
+.portfolioFeatures svg { color: #f67f41; flex-shrink: 0; }
+.portfolioIdentity {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 9px; margin: -1px 0 14px;
+  color: #afa29b; font-size: 11px;
+}
+.portfolioIdentity > span:first-child {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: #d4c8c1; padding: 9px 11px; border: 1px solid #43352f;
+  background: #1d1a1a; border-radius: 11px;
+}
+.portfolioIdentity svg { color: #fa8a4c; }
+.portfolioSummary {
+  padding: 23px 20px 18px;
+  border: 1px solid #55372a; border-radius: 21px;
+  background: radial-gradient(ellipse 85% 95% at 4% 1%, #7d361c30, transparent 69%),
+    linear-gradient(138deg, #201b1a, #131516 84%);
+  box-shadow: 0 8px 30px #0003, inset 0 1px 0 #ffffff0b;
+}
+.portfolioSummary .label { font-size: 12px; color: #b5a7a0; }
+.portfolioSummary .money { margin: 5px 0 4px; padding: 0; font-size: clamp(32px, 9vw, 43px); font-weight: 650; }
+.portfolioSummary .money span { color: #b6aca6; }
+.portfolioSummary .iconButton { border-color: #654332; background: #2d211c; color: #ff9e69; }
+.portfolioSummary > .helper { max-width: 480px; color: #afa49e; font-size: 11px; margin-top: 8px; line-height: 1.55; }
+.portfolioHistory { padding: 10px 0 0; margin-top: 16px; border-top: 1px solid #46332e; }
+.portfolioHistory .sectionHeading { margin-top: 10px; }
+.portfolioHistory .sectionHeading h2 { font-size: 15px; }
+.portfolioHistoryHint {
+  display: flex; align-items: center; gap: 9px;
+  border-top: 1px solid #493731; margin-top: 18px; padding-top: 13px;
+  color: #a9a09b; font-size: 11px; line-height: 1.5;
+}
+.portfolioHistoryHint svg { color: #d0754a; flex-shrink: 0; }
+.portfolioRefresh .portfolioSection { margin-top: 24px; }
+.portfolioRefresh .portfolioSection > .sectionHeading { margin: 0 0 12px; }
+.portfolioRefresh .portfolioSection > .sectionHeading h2 { font-size: 19px; font-weight: 650; }
+.portfolioRefresh .balanceCards { gap: 11px; }
+.portfolioRefresh .balanceCard {
+  padding: 17px 15px 8px; border-color: #353237;
+  border-radius: 17px; background: linear-gradient(145deg, #1b1b1e, #151617);
+}
+.portfolioRefresh .balanceCard > span { font-size: 12px; }
+.portfolioRefresh .balanceCard > span svg { color: #b2aaa5; }
+.portfolioRefresh .balanceCard > strong { min-height: 39px; font-size: clamp(19px, 5.7vw, 25px); font-weight: 620; }
+.portfolioRefresh .balanceCard button { color: #f59157; font-size: 12px !important; min-height: 38px; }
+.portfolioRefresh .balanceCard button:disabled { opacity: .45; }
+.portfolioRefresh .allocation { height: 7px; border-radius: 100px; margin-top: 18px; }
+.portfolioRefresh .allocation span:first-child { background: #e96221; }
+.portfolioRefresh .allocation span:last-child { background: #797475; }
+.portfolioRefresh .actionPair { margin-top: 12px; }
+.portfolioRefresh .actionPair button {
+  min-height: 48px; border-color: #493b36; border-radius: 12px;
+  background: #1c1c1e;
+}
+.portfolioRefresh .actionPair button:disabled { opacity: .45; }
+.portfolioRefresh .quickPanel { background: #1b1716; padding: 16px; border-radius: 15px; }
+.portfolioRefresh .holdingRow { min-height: 66px; padding: 12px 6px; }
+.portfolioRefresh .coin { background: #39241b; color: #f59968; }
+.portfolioRefresh .holdingAmount { font-variant-numeric: tabular-nums; }
+.portfolioEmptyLine {
+  display: flex; gap: 12px; align-items: flex-start;
+  min-height: 76px; padding: 17px 15px;
+  border: 1px solid #343237; border-radius: 15px;
+  background: linear-gradient(150deg,#191a1c,#131516);
+}
+.portfolioEmptyLine > svg { flex-shrink: 0; color: #e7824b; margin-top: 1px; }
+.portfolioEmptyLine > div { min-width: 0; }
+.portfolioEmptyLine strong { display: block; font-size: 13px; font-weight: 620; }
+.portfolioEmptyLine p { color: #a9a19d; font-size: 11px; line-height: 1.55; margin-top: 4px; }
+@media (max-width: 580px) {
+  .portfolioIntro { margin-bottom: 20px; }
+  .portfolioWelcome { padding: 21px 18px 19px; }
+  .portfolioWelcomeIcon { margin-bottom: 21px; }
+  .portfolioSummary { padding: 21px 17px 17px; }
+}
+@media (max-width: 359px) {
+  .portfolioWelcome { padding: 18px 15px; }
+  .portfolioFeatures > div { gap: 4px; font-size: 10px; }
+  .portfolioFeatures svg { width: 15px; }
+  .portfolioRefresh .balanceCard { padding: 13px 11px 6px; }
+}
