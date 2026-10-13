@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Globe2, Info, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { normalizeVoiceGoal } from "@/lib/voice/voice-goal";
 import styles from "./CarelVoiceAssistant.module.css";
 
@@ -109,7 +109,7 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
       setListening(false);
       if (event.error === "aborted") return;
       const friendly = event.error === "not-allowed" || event.error === "service-not-allowed"
-        ? "Microphone permission was denied. Allow access in browser settings."
+        ? "Microphone blocked. In Chrome, open site settings next to the address bar, allow Microphone, then try again."
         : event.error === "no-speech"
           ? "No speech detected. Try again."
           : "Speech input failed (" + event.error + "). You can type your goal instead.";
@@ -134,11 +134,19 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
   return (
     <section className={styles.panel} aria-label="CAREL voice assistant">
       <div className={styles.head}>
-        <div>
-          <strong>Voice assistant</strong>
-          <p>Speak a goal. CAREL previews it, never signs.</p>
+        <div className={styles.identity}>
+          <span className={styles.symbol} aria-hidden="true"><Mic size={22}/></span>
+          <div className={styles.headingCopy}>
+            <div className={styles.headingRow}>
+              <strong>Voice assistant</strong>
+              <span className={styles.marker}>BETA</span>
+            </div>
+            <p>Speak a goal. CAREL previews it, never signs.</p>
+          </div>
         </div>
-        <span className={styles.marker}>BETA</span>
+        <div className={styles.wave + (listening ? " " + styles.waveActive : "")} aria-hidden="true">
+          <span/><span/><span/><span/><span/>
+        </div>
       </div>
       <div className={styles.controls}>
         <button
@@ -152,13 +160,6 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
           {listening ? <MicOff size={19} /> : <Mic size={19} />}
           {listening ? "Stop" : "Speak"}
         </button>
-        <label className={styles.languageLabel}>
-          <span>Language</span>
-          <select disabled={listening} value={language} onChange={event => setLanguage(event.target.value)}>
-            <option value="en-US">English</option>
-            <option value="id-ID">Indonesia</option>
-          </select>
-        </label>
         <button
           type="button"
           className={styles.secondary}
@@ -169,15 +170,42 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
           {talkBack ? <Volume2 size={18} /> : <VolumeX size={18} />}
           <span>Reply</span>
         </button>
+        <div className={styles.languageLabel}>
+          <div className={styles.languageTitle}>
+            <Globe2 size={15} aria-hidden="true"/>
+            <span>Language</span>
+          </div>
+          <div className={styles.languageOptions} role="group" aria-label="Voice recognition language">
+            <button
+              type="button"
+              className={styles.languageOption}
+              aria-pressed={language === "en-US"}
+              disabled={listening}
+              onClick={() => setLanguage("en-US")}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              className={styles.languageOption}
+              aria-pressed={language === "id-ID"}
+              disabled={listening}
+              onClick={() => setLanguage("id-ID")}
+            >
+              Indonesia
+            </button>
+          </div>
+        </div>
       </div>
       <p className={styles.status} role="status" aria-live="polite">
-        {supported === false ? "Voice recognition unsupported here. Type your goal instead." : message}
+        <Info size={15} aria-hidden="true"/>
+        <span>{supported === false ? "Voice recognition unsupported here. Type your goal instead." : message}</span>
       </p>
       {reply && <div className={styles.response}>
         <p>{reply}</p>
         <button type="button" onClick={() => readAloud(reply)} disabled={typeof window !== "undefined" && !window.speechSynthesis}>Read aloud</button>
       </div>}
-      <p className={styles.hint}>Push to talk · Browser microphone permission needed · No always-on listening</p>
+      <p className={styles.hint}>Push to talk · No always-on listening</p>
     </section>
   );
 }
