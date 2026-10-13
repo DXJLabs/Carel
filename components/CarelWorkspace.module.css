@@ -1060,6 +1060,11 @@
 .portfolioHistory { padding: 10px 0 0; margin-top: 16px; border-top: 1px solid #46332e; }
 .portfolioHistory .sectionHeading { margin-top: 10px; }
 .portfolioHistory .sectionHeading h2 { font-size: 15px; }
+.portfolioHistoryNoData {
+  border-radius: 11px; background: #201d1c; border: 1px solid #393132;
+  padding: 13px; color: #b8aaa2; font-size: 12px; line-height: 1.55;
+  margin: 12px 0;
+}
 .portfolioHistoryHint {
   display: flex; align-items: center; gap: 9px;
   border-top: 1px solid #493731; margin-top: 18px; padding-top: 13px;
