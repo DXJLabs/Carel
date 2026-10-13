@@ -1,0 +1,26 @@
+.panel {
+  border: 1px solid var(--border, rgba(140, 160, 178, 0.24));
+  border-radius: 18px;
+  padding: 18px;
+  background: var(--card, rgba(120, 140, 160, 0.045));
+  margin: 18px 0;
+}
+.head, .controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.head strong { font-size: 15px; font-weight: 650; }
+.head p, .hint, .status { margin: 6px 0 0; font-size: 12px; line-height: 1.5; opacity: .74; }
+.marker { font-size: 10px; letter-spacing: .08em; padding: 5px 8px; border: 1px solid currentColor; border-radius: 7px; opacity: .6; }
+.controls { justify-content: flex-start; flex-wrap: wrap; margin-top: 16px; }
+.mic, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(128, 150, 170, .42); border-radius: 12px; color: inherit; background: transparent; min-height: 42px; padding: 8px 14px; font: inherit; cursor: pointer; }
+.mic { background: #2866ed; color: #fff; border-color: #2866ed; font-weight: 650; }
+.active { background: #dc394e; border-color: #dc394e; }
+.mic:disabled { opacity: .45; cursor: not-allowed; }
+.secondary[aria-pressed="false"] { opacity: .65; }
+.languageLabel { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.languageLabel select { color: inherit; background: var(--card, transparent); border: 1px solid rgba(128, 150, 170, .42); padding: 9px 10px; border-radius: 10px; min-height: 42px; }
+.languageLabel select option { color: #111; }
+.status { min-height: 18px; margin-top: 12px; overflow-wrap: anywhere; }
+.response { margin-top: 12px; border-radius: 12px; background: rgba(128, 150, 170, .12); padding: 12px; }
+.response p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
+.response button { background: none; border: 0; padding: 0; color: inherit; opacity: .8; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.hint { font-size: 11px; }
+@media (max-width: 420px) { .panel { padding: 14px; } .controls { gap: 9px; } }
