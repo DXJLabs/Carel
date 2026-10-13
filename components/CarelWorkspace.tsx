@@ -156,6 +156,7 @@ export function CarelApp() {
       null,
     );
   const [goalText, setGoalText] = useState("Swap 1 STRK for USDC.");
+  const [recentGoals, setRecentGoals] = useState<string[]>([]);
   const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
   const [agentPlan, setAgentPlan] =
@@ -608,6 +609,8 @@ export function CarelApp() {
         decision.kind ===
           "plan"
       ) {
+        // Session-only history: never fabricate goals or store them remotely.
+        setRecentGoals(current => [inputGoal.trim(), ...current.filter(value => value !== inputGoal.trim())].slice(0, 3));
         setAgentPlan(
           structuredPlan,
         );
@@ -1052,7 +1055,38 @@ export function CarelApp() {
         <h1>What’s your <span>next move?</span></h1>
         <p>Set a goal. CAREL previews every step before you sign.</p>
       </div>
-      <div className={`${styles.composer} ${styles.agentComposer}`}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" className={styles.agentGoalInput} value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setAgentPlan(null); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
+      <div className={`${styles.composer} ${styles.agentComposer}`}>
+        <label htmlFor="carel-goal">Your goal</label>
+        <div className={styles.agentInputRow}>
+          <textarea
+            id="carel-goal"
+            className={styles.agentGoalInput}
+            value={goalText}
+            onChange={event => {
+              setGoalText(event.target.value);
+              setPlanned(false);
+              setAgentPlan(null);
+              setGoalError(null);
+              setSelectedTool(null);
+              setSelectedAdapterId(null);
+            }}
+            spellCheck={false}
+          />
+                <CarelVoiceAssistant
+        disabled={busy}
+        onCommand={(spokenGoal, language) => {
+          setGoalText(spokenGoal);
+          setSelectedAdapterId(null);
+          previewPlan(spokenGoal);
+          const voicePlan = buildStarknetAgentPlan({
+            goal: spokenGoal,
+            chainId: wallet.chainId,
+            mode,
+          });
+          return describeVoicePlan(voicePlan, language);
+        }}
+      />
+        </div>
         <div className={`${styles.modeRow} ${styles.agentModeRow}`}>
           <button
             type="button"
@@ -1094,20 +1128,6 @@ export function CarelApp() {
           </span>
         </div>
       </div>
-      <CarelVoiceAssistant
-        disabled={busy}
-        onCommand={(spokenGoal, language) => {
-          setGoalText(spokenGoal);
-          setSelectedAdapterId(null);
-          previewPlan(spokenGoal);
-          const voicePlan = buildStarknetAgentPlan({
-            goal: spokenGoal,
-            chainId: wallet.chainId,
-            mode,
-          });
-          return describeVoicePlan(voicePlan, language);
-        }}
-      />
       <div className={`${styles.tools} ${styles.agentTools}`} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
       <button
         type="button"
@@ -1121,104 +1141,66 @@ export function CarelApp() {
       </button>
 
       {agentPlan && (
-        <section
-          className={styles.plan}
-          aria-live="polite"
-        >
-          <SectionHeading title="Agent plan">
-            <span className={styles.status}>
-              {agentPlan.objective.mode}
-            </span>
-          </SectionHeading>
-
-          <div className={styles.panel}>
-            <div className={styles.rule}>
-              <span>Objective</span>
-              <strong>
-                {agentPlan.objective.tool}
-              </strong>
-            </div>
-
-            <div className={styles.rule}>
-              <span>Network</span>
-              <strong>
-                {activeNetwork?.label ?? "Starknet"}
-              </strong>
-            </div>
-
-            {agentPlan.stages.map(
-              (stage, index) => (
-                <div
-                  key={stage.id}
-                >
-                  <div className={styles.rule}>
-                    <span>
-                      Stage {index + 1}
-                      {" · "}
-                      {stage.action
-                        .slice(0, 1)
-                        .toUpperCase() +
-                        stage.action.slice(1)}
-                    </span>
-
-                    <strong>
-                      {stage.privacyBefore}
-                      {" → "}
-                      {stage.privacyAfter}
-                    </strong>
-                  </div>
-
-                  {(stage.inputAssetSymbol ||
-                    stage.outputAssetSymbol) && (
-                    <p className={styles.helper}>
-                      {stage.inputAssetSymbol ?? "Asset"}
-                      {stage.outputAssetSymbol &&
-                        stage.outputAssetSymbol !==
-                          stage.inputAssetSymbol
-                        ? ` → ${stage.outputAssetSymbol}`
-                        : ""}
-                    </p>
-                  )}
-
-                  {stage.dependsOn.length > 0 && (
-                    <p className={styles.helper}>
-                      Runs after{" "}
-                      {stage.dependsOn.join(", ")}
-                      {" "}is confirmed.
-                    </p>
-                  )}
-
-                  {stage.note && (
-                    <p className={styles.privacyNote}>
-                      {stage.note}
-                    </p>
-                  )}
-                </div>
-              ),
-            )}
-
-            <div className={styles.rule}>
-              <span>CAREL Agent fee</span>
-              <strong>
-                Quoted before execution
-              </strong>
-            </div>
-
-            <p className={styles.helper}>
-              One Agent fee boundary applies to this plan.
-              Protocol and network fees remain separate.
-            </p>
-
-            <div className={styles.rule}>
-              <span>Authorization</span>
-              <strong>
-                Wallet approval required
-              </strong>
-            </div>
+        <section className={styles.agentPlanSummary} aria-live="polite">
+          <div className={styles.agentSummaryTitle}>
+            <h2>Plan summary</h2>
+            <span>{agentPlan.stages.length} {agentPlan.stages.length === 1 ? "step" : "steps"}</span>
           </div>
+          <div className={styles.agentSummaryGoal}>
+            <strong>{goalText}</strong>
+            <span>{agentPlan.objective.mode} · {activeNetwork?.label ?? "Starknet"}</span>
+          </div>
+          <div className={styles.agentStages}>
+            {agentPlan.stages.map((stage, index) => (
+              <div className={styles.agentStage} key={stage.id}>
+                <span className={styles.agentStageNumber}>{index + 1}</span>
+                <div>
+                  <strong>{stage.action.slice(0, 1).toUpperCase() + stage.action.slice(1)}</strong>
+                  {(stage.inputAssetSymbol || stage.outputAssetSymbol) && (
+                    <p>{stage.inputAssetSymbol ?? "Asset"}{stage.outputAssetSymbol && stage.outputAssetSymbol !== stage.inputAssetSymbol ? ` → ${stage.outputAssetSymbol}` : ""}</p>
+                  )}
+                  <p>{stage.privacyBefore} → {stage.privacyAfter}</p>
+                  {stage.dependsOn.length > 0 && <p>After {stage.dependsOn.join(", ")} is confirmed</p>}
+                  {stage.note && <p>{stage.note}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className={styles.agentApprovalNote}>
+            <ShieldCheck size={18} aria-hidden="true"/>
+            <span>Review each action and all fees. CAREL never signs for you.</span>
+          </div>
+          <button
+            type="button"
+            className={`${styles.primary} ${styles.agentReviewButton}`}
+            onClick={() => document.getElementById("carel-agent-execution")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            Review available route <ArrowRight size={17}/>
+          </button>
         </section>
       )}
 
+      {recentGoals.length > 0 && !agentPlan && (
+        <section className={styles.agentRecents}>
+          <h2>Recent goals <span>this session</span></h2>
+          {recentGoals.map(value => (
+            <button
+              type="button"
+              key={value}
+              onClick={() => {
+                setGoalText(value);
+                setSelectedAdapterId(null);
+                previewPlan(value);
+              }}
+            >
+              <span>{value}</span>
+              <ChevronRight size={16} aria-hidden="true"/>
+            </button>
+          ))}
+        </section>
+      )}
+
+      <div id="carel-agent-execution" className={styles.agentExecutionSurface}>
       {selectedRuntimeSurface === "bridge" ? (
         <GardenBridge
           mode={mode}
@@ -1258,6 +1240,7 @@ export function CarelApp() {
           
         </>
       )}
+      </div>
       {goalError && <div className={styles.notice} role="alert"><p>{goalError}</p><button type="button" className={styles.textButton} onClick={() => chooseBalanceGoal()}>Use a STRK balance target<ArrowRight size={14}/></button></div>}
       {planned && <section className={styles.plan} aria-live="polite"><SectionHeading title="Your plan"><span className={styles.status}>{plan.status.replaceAll("-", " ")}</span></SectionHeading><div className={styles.panel}><h3>{plan.title}</h3><p className={styles.helper}>{plan.reason}</p>
         {plan.status === "ready" && <><div className={styles.route}><span>{plan.action === "shield" ? "Public wallet" : "Privacy pool"}</span><ArrowRight size={16}/><span>{plan.action === "shield" ? "Privacy pool" : "Public wallet"}</span></div><div className={styles.rule}><span>Amount to move</span><strong>{formatUnits18(plan.delta)} STRK</strong></div><p className={styles.privacyNote}>{plan.action === "shield" ? "The deposit is public. Funds become private after the pool’s maturity period." : "This withdrawal makes the amount and destination public."}</p><button type="button" className={styles.primary} disabled={busy} onClick={() => void executePlan()}>{busy ? <LoaderCircle size={16}/> : <ShieldCheck size={16}/>} {busy ? "Waiting for wallet…" : `Review & ${plan.action === "shield" ? "Shield" : "Unshield"}`}</button></>}
