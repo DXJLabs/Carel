@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Globe2, Info, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Check, ChevronDown, Globe2, Info, Mic, MicOff, Search, Volume2, VolumeX } from "lucide-react";
+import { getVoiceLanguage, VOICE_LANGUAGES, voiceLanguageHint } from "@/lib/voice/voice-languages";
 import { normalizeVoiceGoal } from "@/lib/voice/voice-goal";
 import styles from "./CarelVoiceAssistant.module.css";
 
@@ -31,6 +32,8 @@ type Props = {
 export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [language, setLanguage] = useState("en-US");
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [languageSearch, setLanguageSearch] = useState("");
   const [listening, setListening] = useState(false);
   const [talkBack, setTalkBack] = useState(true);
   const [message, setMessage] = useState("Tap the microphone to dictate a goal.");
@@ -57,7 +60,8 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
     if (!text || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = locale;
+    // Spoken summaries are currently localized only to English and Indonesian.
+    utterance.lang = locale === "id-ID" ? "id-ID" : "en-US";
     utterance.rate = 0.98;
     window.speechSynthesis.speak(utterance);
   }
@@ -173,28 +177,70 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
         <div className={styles.languageLabel}>
           <div className={styles.languageTitle}>
             <Globe2 size={15} aria-hidden="true"/>
-            <span>Language</span>
+            <span>Speech language</span>
+            <span className={styles.languageCount}>{VOICE_LANGUAGES.length}</span>
           </div>
-          <div className={styles.languageOptions} role="group" aria-label="Voice recognition language">
-            <button
-              type="button"
-              className={styles.languageOption}
-              aria-pressed={language === "en-US"}
-              disabled={listening}
-              onClick={() => setLanguage("en-US")}
-            >
-              English
-            </button>
-            <button
-              type="button"
-              className={styles.languageOption}
-              aria-pressed={language === "id-ID"}
-              disabled={listening}
-              onClick={() => setLanguage("id-ID")}
-            >
-              Indonesia
-            </button>
-          </div>
+          <button
+            type="button"
+            className={styles.languageTrigger}
+            aria-label="Choose speech language"
+            aria-expanded={languageOpen}
+            aria-controls="carel-voice-languages"
+            disabled={listening}
+            onClick={() => { setLanguageOpen(current => !current); setLanguageSearch(""); }}
+          >
+            <Globe2 size={16} aria-hidden="true"/>
+            <span className={styles.selectedLanguage}>{getVoiceLanguage(language).label}</span>
+            <ChevronDown size={17} className={languageOpen ? styles.chevronUp : undefined} aria-hidden="true"/>
+          </button>
+          {languageOpen && (
+            <div className={styles.languageMenu} id="carel-voice-languages">
+              <div className={styles.languageSearch}>
+                <Search size={16} aria-hidden="true"/>
+                <input
+                  type="search"
+                  value={languageSearch}
+                  onChange={event => setLanguageSearch(event.target.value)}
+                  placeholder="Find a language..."
+                  aria-label="Search speech languages"
+                  autoComplete="off"
+                />
+              </div>
+              <div className={styles.languageList} role="group" aria-label="Available speech languages">
+                {VOICE_LANGUAGES
+                  .filter(item => `${item.label} ${item.nativeName} ${item.code}`
+                    .toLocaleLowerCase().includes(languageSearch.trim().toLocaleLowerCase()))
+                  .map(item => (
+                    <button
+                      key={item.code}
+                      type="button"
+                      className={styles.languageOption}
+                      aria-pressed={language === item.code}
+                      disabled={listening}
+                      onClick={() => {
+                        setLanguage(item.code);
+                        setLanguageOpen(false);
+                        setLanguageSearch("");
+                        setReply("");
+                        setMessage("Language selected. Tap Speak to dictate a goal.");
+                        window.speechSynthesis?.cancel();
+                      }}
+                    >
+                      <span className={styles.languageNames}>
+                        <span>{item.label}</span>
+                        <small>{item.nativeName}</small>
+                      </span>
+                      {language === item.code && <Check size={17} aria-hidden="true"/>}
+                    </button>
+                  ))}
+                {!VOICE_LANGUAGES.some(item =>
+                  `${item.label} ${item.nativeName} ${item.code}`
+                    .toLocaleLowerCase().includes(languageSearch.trim().toLocaleLowerCase())
+                ) && <p className={styles.noLanguage}>No matching language.</p>}
+              </div>
+            </div>
+          )}
+          <p className={styles.languageHint}>{voiceLanguageHint(language)}</p>
         </div>
       </div>
       <p className={styles.status} role="status" aria-live="polite">
