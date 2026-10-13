@@ -39,3 +39,40 @@ test("Blocked feedback never implies execution", () => {
   assert.match(result, /belum siap/);
   assert.match(result, /Tidak ada transaksi/);
 });
+
+
+test("Malay voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Tukar 10 STRK ke USDC", "ms-MY"), "Swap 10 STRK for USDC");
+});
+
+test("Spanish voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Cambiar 10 STRK por USDC", "es-ES"), "Swap 10 STRK for USDC");
+});
+
+test("French voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Échanger 10 STRK contre USDC", "fr-FR"), "Swap 10 STRK for USDC");
+});
+
+test("German voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Tausche 10 STRK gegen USDC", "de-DE"), "Swap 10 STRK for USDC");
+});
+
+test("Portuguese voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Trocar 10 STRK por USDC", "pt-BR"), "Swap 10 STRK for USDC");
+});
+
+test("Italian voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Scambia 10 STRK con USDC", "it-IT"), "Swap 10 STRK for USDC");
+});
+
+test("Dutch voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Wissel 10 STRK voor USDC", "nl-NL"), "Swap 10 STRK for USDC");
+});
+
+test("Vietnamese voice goal maps to CAREL Swap intent", () => {
+  assert.equal(normalizeVoiceGoal("Đổi 10 STRK sang USDC", "vi-VN"), "Swap 10 STRK for USDC");
+});
+
+test("Unsupported natural-language command does not invent executable intent", () => {
+  assert.equal(normalizeVoiceGoal("明天的天气怎么样", "zh-CN"), "明天的天气怎么样");
+});
