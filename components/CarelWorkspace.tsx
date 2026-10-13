@@ -1253,6 +1253,7 @@ export function CarelApp() {
   }
   function renderPortfolio() {
     const privateShare = total !== null && total > ZERO && privateBalance !== null ? Number(privateBalance * BigInt(10000) / total) / 100 : null;
+    const hasRecordedHistory = observations.owner === sessionKey && observations.points.filter(point => point.ts >= Date.now() - 30 * 86400000).length >= 2;
     if (!wallet.connected) {
       return (
         <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
@@ -1303,10 +1304,10 @@ export function CarelApp() {
           <button type="button" className={styles.iconButton} disabled={!publicReady || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button>
         </div>
         <p className={styles.helper}>{balanceHelp}</p>
-        {chartPoints.length >= 2 && !hideAmounts ? (
+        {hasRecordedHistory && !hideAmounts ? (
           <div className={styles.portfolioHistory}>
             <SectionHeading title="Balance history"/>
-            <PerformanceChart points={chartPoints} hidden={false}/>
+            {chartPoints.length >= 2 ? <PerformanceChart points={chartPoints} hidden={false}/> : <p className={styles.portfolioHistoryNoData}>No balance observations in this period. Try 7D or 30D.</p>}
             <div className={styles.segment} aria-label="Balance history period">{(["1D", "7D", "30D"] as const).map(value => (
               <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{value}</button>
             ))}</div>
