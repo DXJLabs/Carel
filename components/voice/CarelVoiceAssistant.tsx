@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Globe2, Info, Mic, Pencil, Search, Square, Volume2, VolumeX, X } from "lucide-react";
+import { Check, ChevronDown, Globe2, Info, Mic, MicOff, Pencil, Search, Square, Volume2, VolumeX, X } from "lucide-react";
 import { getVoiceLanguage, VOICE_LANGUAGES, voiceLanguageHint } from "@/lib/voice/voice-languages";
 import { normalizeVoiceGoal } from "@/lib/voice/voice-goal";
 import styles from "./CarelVoiceAssistant.module.css";
@@ -40,6 +40,7 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
   const [reply, setReply] = useState("");
   const [open, setOpen] = useState(false);
   const [lastHeard, setLastHeard] = useState("");
+  const [voiceIssue, setVoiceIssue] = useState<"permission" | "unavailable" | null>(null);
   const launchButton = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const recognition = useRef<Recognition | null>(null);
@@ -82,7 +83,8 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
     const Constructor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!Constructor) {
       setSupported(false);
-      setMessage("Speech input isn't available in this browser. Use the text box instead.");
+      setVoiceIssue("unavailable");
+      setMessage("Speech recognition is unavailable in this browser.");
       return;
     }
     window.speechSynthesis?.cancel();
@@ -117,6 +119,7 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
     session.onerror = (event) => {
       setListening(false);
       if (event.error === "aborted") return;
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") setVoiceIssue("permission");
       const friendly = event.error === "not-allowed" || event.error === "service-not-allowed"
         ? "Microphone blocked. In Chrome, open site settings next to the address bar, allow Microphone, then try again."
         : event.error === "no-speech"
@@ -130,13 +133,15 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
     };
     try {
       session.start();
+      setVoiceIssue(null);
       setListening(true);
       setReply("");
       setMessage(language === "id-ID" ? "Mendengarkan..." : "Listening...");
-    } catch {
+    } catch (error) {
       recognition.current = null;
       setListening(false);
-      setMessage("Could not start the microphone. Use the text box instead.");
+      setVoiceIssue(error instanceof Error && error.name === "NotAllowedError" ? "permission" : "unavailable");
+      setMessage("Could not start speech recognition.");
     }
   }
 
@@ -155,6 +160,7 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
     setOpen(true);
     setLastHeard("");
     setReply("");
+    setVoiceIssue(null);
     setLanguageOpen(false);
     setMessage("Tap the microphone to dictate a goal.");
     // This is a direct user interaction, so browser permission may be requested.
@@ -202,7 +208,7 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
           />
           <div
             ref={dialogRef}
-            className={styles.sheet}
+            className={styles.sheet + (voiceIssue ? " " + styles.sheetError : "")}
             role="dialog"
             aria-modal="true"
             aria-label="Voice assistant"
@@ -216,45 +222,66 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
                 <X size={19}/>
               </button>
             </div>
-            <div className={styles.voiceHero}>
-              <div className={styles.orb + (listening ? " " + styles.orbActive : "")}>
-                <div className={styles.wave} aria-hidden="true">
-                  <span/><span/><span/><span/><span/>
+            {voiceIssue ? (
+              <div className={styles.permissionState} role="alert">
+                <span className={styles.permissionIcon}><MicOff size={23} aria-hidden="true"/></span>
+                <div>
+                  <h2>{voiceIssue === "permission" ? "Microphone access blocked" : "Voice unavailable"}</h2>
+                  <p>{voiceIssue === "permission"
+                    ? "In Chrome, open site settings beside the address bar, set Microphone to Allow, then retry."
+                    : "This browser could not start speech recognition. You can still type your goal."}</p>
                 </div>
               </div>
-              <h2>{listening ? "Listening..." : lastHeard ? "Goal captured" : "Speak your goal"}</h2>
-              <p>{listening ? "Speak naturally. CAREL will turn your words into a plan." : "CAREL prepares a preview. Your wallet never signs by voice."}</p>
-            </div>
-            <div className={styles.transcript} aria-live="polite">
-              <span>Detected text</span>
-              <p>{lastHeard || "Your spoken goal will appear here."}</p>
-              {lastHeard && <button type="button" className={styles.edit} onClick={() => {
-                closeAssistant();
-                document.getElementById("carel-goal")?.focus();
-              }}>Edit in goal field <Pencil size={14}/></button>}
-            </div>
+            ) : (
+              <>
+                <div className={styles.voiceHero}>
+                  <div className={styles.orb + (listening ? " " + styles.orbActive : "")} aria-hidden="true">
+                    {listening ? <div className={styles.wave}><span/><span/><span/><span/><span/></div> : <Mic size={30}/>}
+                  </div>
+                  <h2>{listening ? "Listening..." : lastHeard ? "Goal captured" : "Ready to listen"}</h2>
+                  <p>{listening ? "Speak your goal naturally." : lastHeard ? "Review your goal in the input before any wallet action." : "Tap Speak to prepare a plan."}</p>
+                </div>
+                {lastHeard && <div className={styles.transcript} aria-live="polite">
+                  <span>Detected text</span>
+                  <p>{lastHeard}</p>
+                  <button type="button" className={styles.edit} onClick={() => {
+                    closeAssistant();
+                    document.getElementById("carel-goal")?.focus();
+                  }}>Edit in goal field <Pencil size={14}/></button>
+                </div>}
+              </>
+            )}
             <div className={styles.sheetControls}>
               <button
                 type="button"
                 className={styles.mic + (listening ? " " + styles.active : "")}
-                aria-label={listening ? "Stop listening" : "Start voice input"}
+                aria-label={listening ? "Stop listening" : voiceIssue ? "Retry microphone" : "Start voice input"}
                 aria-pressed={listening}
-                disabled={supported !== true || (disabled && !listening)}
+                disabled={disabled || (supported === false && voiceIssue !== "permission")}
                 onClick={toggleListening}
               >
                 {listening ? <Square size={17} fill="currentColor"/> : <Mic size={18}/>}
-                <span>{listening ? "Stop" : "Speak again"}</span>
+                <span>{listening ? "Stop" : voiceIssue ? "Retry microphone" : lastHeard ? "Speak again" : "Start speaking"}</span>
               </button>
-              <button
-                type="button"
-                className={styles.secondary}
-                aria-label={talkBack ? "Turn off spoken replies" : "Turn on spoken replies"}
-                aria-pressed={talkBack}
-                onClick={() => { setTalkBack(current => !current); window.speechSynthesis?.cancel(); }}
-              >
-                {talkBack ? <Volume2 size={19}/> : <VolumeX size={19}/>}
-                <span>Reply</span>
-              </button>
+              {voiceIssue ? (
+                <button type="button" className={styles.secondary} onClick={() => {
+                  closeAssistant();
+                  document.getElementById("carel-goal")?.focus();
+                }}>
+                  Use text
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  aria-label={talkBack ? "Turn off spoken replies" : "Turn on spoken replies"}
+                  aria-pressed={talkBack}
+                  onClick={() => { setTalkBack(current => !current); window.speechSynthesis?.cancel(); }}
+                >
+                  {talkBack ? <Volume2 size={19}/> : <VolumeX size={19}/>}
+                  <span>Reply</span>
+                </button>
+              )}
             </div>
             <div className={styles.languageLabel}>
               <button
@@ -317,17 +344,19 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
                   </div>
                 </div>
               )}
-              <p className={styles.languageHint}>{voiceLanguageHint(language)}</p>
+              {languageOpen && <p className={styles.languageHint}>{voiceLanguageHint(language)}</p>}
             </div>
-            <p className={styles.status} role="status" aria-live="polite">
-              <Info size={15} aria-hidden="true"/>
-              <span>{supported === false ? "Voice recognition unavailable here. Type your goal instead." : message}</span>
-            </p>
+            {!voiceIssue && message && !lastHeard && !listening && message !== "Tap the microphone to dictate a goal." && (
+              <p className={styles.status} role="status" aria-live="polite">
+                <Info size={15} aria-hidden="true"/>
+                <span>{message}</span>
+              </p>
+            )}
             {reply && <div className={styles.response}>
               <p>{reply}</p>
               <button type="button" onClick={() => readAloud(reply)}>Read aloud</button>
             </div>}
-            <p className={styles.hint}>Push to talk · No always-on listening · No automatic wallet approvals</p>
+            <p className={styles.hint}>Plan preview only · Wallet approval required</p>
           </div>
         </div>
       )}
