@@ -40,6 +40,6 @@ export function voiceLanguageHint(code: string): string {
   switch (getVoiceLanguage(code).commandSupport) {
     case "agent": return "Supported CAREL goals can be previewed. Wallet approval remains required.";
     case "swap": return "Basic Swap phrases are supported. For other goals, use an English command.";
-    default: return "Voice dictation only. Rewrite the goal in English before previewing.";
+    default: return "Dictation only. Edit the transcript into English to get a valid CAREL plan.";
   }
 }
