@@ -38,7 +38,7 @@
 .waveActive span:nth-child(4) { animation-delay: -490ms; }
 .waveActive span:nth-child(5) { animation-delay: -280ms; }
 @keyframes speakWave { to { height: 5px; } }
-.controls { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: end; gap: 12px; margin-top: 21px; }
+.controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, .55fr); align-items: stretch; gap: 12px; margin-top: 21px; }
 .mic, .secondary {
   display: flex; align-items: center; justify-content: center; gap: 9px;
   min-height: 49px; padding: 10px 14px; border-radius: 13px;
@@ -53,15 +53,35 @@
 .active { background: linear-gradient(130deg, #c33126, #99201c); border-color: #ef796a; }
 .mic:disabled { opacity: .48; cursor: not-allowed; filter: grayscale(.6); }
 .secondary {
-  width: max-content; min-width: 111px; max-width: 100%;
+  width: 100%; min-width: 0;
   color: #f1eee9; background: #17191a; border: 1px solid #404244; font-weight: 500;
 }
 .secondary[aria-pressed="false"] { color: #9e9d9d; }
-.languageLabel { min-width: 0; display: flex; flex-direction: column; gap: 7px; color: #b7b1ad; font-size: 11px; line-height: 1.3; }
-.selectWrap { min-width: 0; min-height: 49px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #444548; border-radius: 13px; background: #17191a; color: #eee; }
-.selectWrap > svg { flex-shrink: 0; color: #a5a2a0; }
-.languageLabel select { appearance: none; min-width: 0; width: 100%; min-height: 47px; border: 0; outline-offset: -3px; color: #fff; background: transparent; font: inherit; font-size: 13px; cursor: pointer; }
-.languageLabel select option { color: #141414; }
+.languageLabel { grid-column: 1 / -1; min-width: 0; display: flex; flex-direction: column; gap: 9px; color: #b7b1ad; font-size: 12px; line-height: 1.3; }
+.languageTitle { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 550; color: #beb6b1; }
+.languageTitle svg { color: #f58a55; }
+.languageOptions {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px;
+  width: 100%; min-width: 0; padding: 4px;
+  border: 1px solid #45322e; border-radius: 14px;
+  background: linear-gradient(160deg, #111314, #191719);
+  box-shadow: inset 0 2px 5px #0003;
+}
+.languageOption {
+  width: 100%; min-width: 0; min-height: 42px; border: 1px solid transparent;
+  border-radius: 10px; background: transparent; color: #bcb4af;
+  font-size: 13px; font-weight: 600; font-family: inherit;
+  letter-spacing: .005em; cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease;
+}
+.languageOption[aria-pressed="true"] {
+  background: linear-gradient(125deg, #542518, #301a15);
+  border-color: #c55a31; color: #fff4ee;
+  box-shadow: inset 0 1px 0 #ff965520, 0 3px 12px #0003;
+}
+.languageOption:focus-visible { outline: 2px solid #ff905b; outline-offset: 2px; }
+.languageOption:disabled { opacity: .55; cursor: not-allowed; }
+@media (hover: hover) { .languageOption:hover:not(:disabled):not([aria-pressed="true"]) { color: #fff; background: #282224; } }
 .status {
   display: flex; align-items: flex-start; gap: 9px; margin: 16px 0 0;
   padding: 11px 12px; border-radius: 12px; background: #ffffff07;
@@ -76,6 +96,6 @@
 .response p { font-size: 13px; line-height: 1.6; margin: 0 0 8px; }
 .response button { color: #ffb08b; padding: 2px 0; border: 0; background: transparent; font-size: 12px; text-decoration: underline; cursor: pointer; }
 .hint { color: #928c89; font-size: 11px; margin: 9px 2px 0; line-height: 1.5; }
-@media (min-width: 600px) { .controls { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; } .secondary { min-height: 49px; } }
-@media (max-width: 360px) { .panel { padding: 15px; } .symbol { width: 38px; height: 38px; } .wave { display: none; } .controls { gap: 9px; } .mic, .secondary { padding: 9px; } .headingRow strong { font-size: 15px; } }
+@media (min-width: 600px) { .controls { grid-template-columns: minmax(0, 1fr) minmax(120px, .5fr); } .secondary { min-height: 49px; } }
+@media (max-width: 360px) { .panel { padding: 15px; } .symbol { width: 38px; height: 38px; } .wave { display: none; } .controls { grid-template-columns: minmax(0, 1fr) minmax(93px, .55fr); gap: 9px; } .mic, .secondary { padding: 9px; } .headingRow strong { font-size: 15px; } .languageOption { font-size: 12px; } }
 @media (prefers-reduced-motion: reduce) { .waveActive span { animation: none; } }
