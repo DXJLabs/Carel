@@ -1253,13 +1253,72 @@ export function CarelApp() {
   }
   function renderPortfolio() {
     const privateShare = total !== null && total > ZERO && privateBalance !== null ? Number(privateBalance * BigInt(10000) / total) / 100 : null;
-    return <div className={styles.portfolioPage}>
-      <div className={styles.intro}><h1>Portfolio</h1><p>Your capital, at a glance.</p></div>
-      <section className={styles.portfolioOverview}><div className={styles.overviewTop}><div><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p></div><button type="button" className={styles.iconButton} disabled={!publicReady || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button></div><p className={styles.helper}>{balanceHelp}</p>
-        {!wallet.connected && connectButton}<SectionHeading title="Performance"/><PerformanceChart points={chartPoints} hidden={hideAmounts}/>
-        <div className={styles.segment} aria-label="Performance period">{(["1D", "7D", "30D"] as const).map(value => <button key={value} aria-pressed={period === value} onClick={() => setPeriod(value)}>{value}</button>)}</div>
+    if (!wallet.connected) {
+      return (
+        <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
+          <div className={`${styles.intro} ${styles.portfolioIntro}`}>
+            <p className={styles.eyebrow}>CAREL PORTFOLIO</p>
+            <h1>Portfolio<span className={styles.portfolioTitleDot}>.</span></h1>
+            <p>Your assets, with clarity.</p>
+          </div>
+          <section className={styles.portfolioWelcome}>
+            <div className={styles.portfolioWelcomeIcon}><WalletCards size={29} aria-hidden="true"/></div>
+            <span className={styles.portfolioEyebrow}>YOUR WALLET, YOUR CONTROL</span>
+            <h2>See what you own.</h2>
+            <p>Connect a supported Starknet wallet to view observed balances, privacy allocation, and available DeFi positions.</p>
+            <button type="button" className={`${styles.primary} ${styles.portfolioConnect}`} disabled={wallet.connecting}
+              onClick={() => void run(() => wallet.connect())}>
+              {wallet.connecting ? <LoaderCircle size={19} aria-hidden="true"/> : <WalletCards size={19} aria-hidden="true"/>}
+              <span>{wallet.connecting ? "Connecting…" : "Connect wallet"}</span>
+              <ArrowRight size={18} aria-hidden="true"/>
+            </button>
+            <div className={styles.portfolioSafety}><ShieldCheck size={15} aria-hidden="true"/>
+              <span>Viewing balances does not authorize transactions.</span>
+            </div>
+          </section>
+          <div className={styles.portfolioFeatures} aria-label="Portfolio features">
+            <div><WalletCards size={17} aria-hidden="true"/><span>Assets</span></div>
+            <div><EyeOff size={17} aria-hidden="true"/><span>Privacy</span></div>
+            <div><Layers3 size={17} aria-hidden="true"/><span>Positions</span></div>
+          </div>
+        </div>
+      );
+    }
+    return <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
+      <div className={`${styles.intro} ${styles.portfolioIntro}`}>
+        <p className={styles.eyebrow}>CAREL PORTFOLIO</p>
+        <h1>Portfolio<span className={styles.portfolioTitleDot}>.</span></h1>
+        <p>Your assets, with clarity.</p>
+      </div>
+      <div className={styles.portfolioIdentity}>
+        <span><WalletCards size={16} aria-hidden="true"/>{shortAddress(wallet.address)}</span>
+        <span>{activeNetwork?.label ?? "Unsupported network"}</span>
+      </div>
+      <section className={`${styles.portfolioOverview} ${styles.portfolioSummary}`}>
+        <div className={styles.overviewTop}>
+          <div>
+            <p className={styles.label}>Observed STRK balance</p>
+            <p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p>
+          </div>
+          <button type="button" className={styles.iconButton} disabled={!publicReady || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button>
+        </div>
+        <p className={styles.helper}>{balanceHelp}</p>
+        {chartPoints.length >= 2 && !hideAmounts ? (
+          <div className={styles.portfolioHistory}>
+            <SectionHeading title="Balance history"/>
+            <PerformanceChart points={chartPoints} hidden={false}/>
+            <div className={styles.segment} aria-label="Balance history period">{(["1D", "7D", "30D"] as const).map(value => (
+              <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{value}</button>
+            ))}</div>
+          </div>
+        ) : (
+          <div className={styles.portfolioHistoryHint}>
+            <Activity size={16} aria-hidden="true"/>
+            <span>{hideAmounts ? "Amounts are hidden in Settings." : "Balance history starts after multiple observations."}</span>
+          </div>
+        )}
       </section>
-      <section><SectionHeading title="Allocation"/><div className={styles.balanceCards}>
+      <section className={styles.portfolioSection}><SectionHeading title="Allocation"/><div className={styles.balanceCards}>
         <div className={styles.balanceCard}><span><WalletCards size={15}/>Public</span><strong>{amount(wallet.publicStrk, hideAmounts)} <small>STRK</small></strong><button disabled={!publicReady || busy} onClick={() => void refreshBalances()}>{wallet.publicStrk === null ? "Load" : "Refresh"}<RefreshCw size={13}/></button></div>
         <div className={styles.balanceCard}><span><EyeOff size={15}/>Private</span><strong>{amount(privateBalance, hideAmounts || !wallet.privateRevealed)} <small>STRK</small></strong><button disabled={!ready || !wallet.strk20Capable || busy} onClick={() => void run(() => wallet.revealPrivateBalance())}>{wallet.privateRevealed ? "Refresh" : "Reveal"}<Eye size={13}/></button></div>
       </div>
@@ -1268,7 +1327,7 @@ export function CarelApp() {
       {quickAction && <div className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
       </section>
-      <section>
+      <section className={styles.portfolioSection}>
         <SectionHeading title="Holdings"/>
 
         {portfolioHoldings.length ? (
@@ -1315,16 +1374,16 @@ export function CarelApp() {
             ),
           )
         ) : (
-          <EmptyState title="No holdings loaded">
-            Connect a supported network to load
-            registered CAREL assets.
-          </EmptyState>
+          <div className={styles.portfolioEmptyLine}>
+            <WalletCards size={19} aria-hidden="true"/>
+            <div><strong>No balances available yet</strong><p>Refresh your wallet or check the supported network.</p></div>
+          </div>
         )}
       </section>
 
       <GardenBalances hidden={hideAmounts}/>
 
-      <section>
+      <section className={styles.portfolioSection}>
         <SectionHeading title="Positions">
           {portfolioPositionsLoading && (
             <span className={styles.status}>
@@ -1504,10 +1563,10 @@ export function CarelApp() {
             Loading protocol positions…
           </p>
         ) : (
-          <EmptyState title="No visible positions">
-            Staking, lending, and borrowing
-            positions will appear here.
-          </EmptyState>
+          <div className={styles.portfolioEmptyLine}>
+            <Layers3 size={19} aria-hidden="true"/>
+            <div><strong>No visible positions</strong><p>Supported staking, lending and borrowing positions appear here when detected.</p></div>
+          </div>
         )}
 
         {portfolioPositionWarning && (
