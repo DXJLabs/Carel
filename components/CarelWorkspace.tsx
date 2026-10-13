@@ -1072,20 +1072,20 @@ export function CarelApp() {
             }}
             spellCheck={false}
           />
-                <CarelVoiceAssistant
-        disabled={busy}
-        onCommand={(spokenGoal, language) => {
-          setGoalText(spokenGoal);
-          setSelectedAdapterId(null);
-          previewPlan(spokenGoal);
-          const voicePlan = buildStarknetAgentPlan({
-            goal: spokenGoal,
-            chainId: wallet.chainId,
-            mode,
-          });
-          return describeVoicePlan(voicePlan, language);
-        }}
-      />
+          <CarelVoiceAssistant
+            disabled={busy}
+            onCommand={(spokenGoal, language) => {
+              setGoalText(spokenGoal);
+              setSelectedAdapterId(null);
+              previewPlan(spokenGoal);
+              const voicePlan = buildStarknetAgentPlan({
+                goal: spokenGoal,
+                chainId: wallet.chainId,
+                mode,
+              });
+              return describeVoicePlan(voicePlan, language);
+            }}
+          />
         </div>
         <div className={`${styles.modeRow} ${styles.agentModeRow}`}>
           <button
@@ -1175,7 +1175,7 @@ export function CarelApp() {
             className={`${styles.primary} ${styles.agentReviewButton}`}
             onClick={() => document.getElementById("carel-agent-execution")?.scrollIntoView({ behavior: "smooth", block: "start" })}
           >
-            Review available route <ArrowRight size={17}/>
+            Review execution details <ArrowRight size={17}/>
           </button>
         </section>
       )}
@@ -1201,7 +1201,7 @@ export function CarelApp() {
       )}
 
       <div id="carel-agent-execution" className={styles.agentExecutionSurface}>
-      {selectedRuntimeSurface === "bridge" ? (
+        {selectedRuntimeSurface === "bridge" ? (
         <GardenBridge
           mode={mode}
           intent={bridgeIntent}
