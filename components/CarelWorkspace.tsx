@@ -11,6 +11,8 @@ import {
 import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
 import { buildLivePlan } from "@/lib/agent/livePlanner";
+import { describeVoicePlan } from "@/lib/voice/voice-goal";
+import { CarelVoiceAssistant } from "./voice/CarelVoiceAssistant";
 import {
   buildStarknetAgentPlan,
 } from "@/lib/agent/starknet-planner";
@@ -498,7 +500,8 @@ export function CarelApp() {
       chooseBalanceGoal(next);
     }
   }
-  function previewPlan() {
+  function previewPlan(goalOverride?: string) {
+    const inputGoal = goalOverride ?? goalText;
     setPlanned(false);
     setAgentPlan(null);
     setGoalError(null);
@@ -512,7 +515,7 @@ export function CarelApp() {
     const structuredPlan =
       buildStarknetAgentPlan({
         goal:
-          goalText,
+          inputGoal,
 
         chainId:
           wallet.chainId,
@@ -582,7 +585,7 @@ export function CarelApp() {
       const decision =
         resolveWorkspaceAgentGoal({
           goal:
-            goalText,
+            inputGoal,
 
           chainId:
             wallet.chainId,
@@ -666,7 +669,7 @@ export function CarelApp() {
     const decision =
       resolveWorkspaceAgentGoal({
         goal:
-          goalText,
+          inputGoal,
 
         chainId:
           wallet.chainId,
@@ -720,10 +723,10 @@ export function CarelApp() {
 
     if (
       !/\bSTRK\b/i.test(
-        goalText,
+        inputGoal,
       ) ||
       /\b(USDC|USDT|ETH|BTC)\b/i.test(
-        goalText,
+        inputGoal,
       )
     ) {
       setGoalError(
@@ -734,7 +737,7 @@ export function CarelApp() {
 
     const quantities =
       Array.from(
-        goalText.matchAll(
+        inputGoal.matchAll(
           /(?:^|\s)(\S+)\s+STRK\b/gi,
         ),
       );
@@ -770,12 +773,12 @@ export function CarelApp() {
 
     const asksPublic =
       /\b(public|withdraw|unshield)\b/i.test(
-        goalText,
+        inputGoal,
       );
 
     const asksPrivate =
       /\b(private|shield|privacy)\b/i.test(
-        goalText,
+        inputGoal,
       );
 
     if (
@@ -1086,12 +1089,26 @@ export function CarelApp() {
           </span>
         </div>
       </div>
+      <CarelVoiceAssistant
+        disabled={busy}
+        onCommand={(spokenGoal, language) => {
+          setGoalText(spokenGoal);
+          setSelectedAdapterId(null);
+          previewPlan(spokenGoal);
+          const voicePlan = buildStarknetAgentPlan({
+            goal: spokenGoal,
+            chainId: wallet.chainId,
+            mode,
+          });
+          return describeVoicePlan(voicePlan, language);
+        }}
+      />
       <div className={styles.tools} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
       <button
         type="button"
         className={styles.primary}
         disabled={busy || !goalText.trim()}
-        onClick={previewPlan}
+        onClick={() => previewPlan()}
       >
         Preview agent plan
         <ArrowRight size={17}/>
