@@ -35,12 +35,19 @@ const { CarelVoiceAssistant } = require("../components/voice/CarelVoiceAssistant
 
 const { VOICE_LANGUAGES } = require("../lib/voice/voice-languages.ts");
 
-test("multilingual picker is inline, searchable and avoids native Android selector", () => {
+test("voice assistant starts as a compact goal microphone, not a large language card", () => {
   const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
-  assert.match(html, /aria-label="Choose speech language"/);
-  assert.match(html, /aria-expanded="false"/);
-  assert.ok(!html.includes("<select"), "Native select must not appear");
-  assert.ok(html.includes(">English</span>"), "Selected language must be readable");
+  assert.match(html, /aria-label="Open voice assistant"/);
+  assert.ok(!html.includes("Voice assistant</strong>"), "Voice card must be hidden until requested");
+  assert.ok(!html.includes("<select"), "Never render a native Android language selector");
+  assert.ok(!html.includes("Speech language"), "Settings belong inside the on-demand sheet");
+});
+
+test("microphone entry stays a safe user action without transaction approval", () => {
+  const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
+  assert.match(html, /type="button"/);
+  assert.match(html, /aria-label="Open voice assistant"/);
+  assert.doesNotMatch(html, /Execute transaction|Confirm transfer/);
 });
 
 test("language catalogue contains at least 15 unique browser locales", () => {
@@ -53,9 +60,9 @@ test("language catalogue contains at least 15 unique browser locales", () => {
   }
 });
 
-test("default English language shows command support and no wallet approval action", () => {
-  const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
-  assert.match(html, /English/);
-  assert.match(html, /Speak/);
-  assert.match(html, /never signs/);
+test("language catalogue remains available for compact speech sheet", () => {
+  const english = VOICE_LANGUAGES.find(item => item.code === "en-US");
+  const indonesia = VOICE_LANGUAGES.find(item => item.code === "id-ID");
+  assert.equal(english.label, "English");
+  assert.equal(indonesia.label, "Indonesia");
 });
