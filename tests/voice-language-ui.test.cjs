@@ -33,18 +33,29 @@ Module._resolveFilename = function (request, parent, isMain, options) {
 };
 const { CarelVoiceAssistant } = require("../components/voice/CarelVoiceAssistant.tsx");
 
-test("voice language chooser is inline and never opens Android native select", () => {
+const { VOICE_LANGUAGES } = require("../lib/voice/voice-languages.ts");
+
+test("multilingual picker is inline, searchable and avoids native Android selector", () => {
   const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
-  assert.match(html, /role="group" aria-label="Voice recognition language"/);
-  assert.doesNotMatch(html, /<select\b/i);
-  assert.match(html, />English<\/button>/);
-  assert.match(html, />Indonesia<\/button>/);
+  assert.match(html, /aria-label="Choose speech language"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /<select\\b/i);
+  assert.match(html, />English<\\/span>/);
 });
 
-test("English is selected by default, Indonesian remains available", () => {
+test("language catalogue contains at least 15 unique browser locales", () => {
+  assert.ok(VOICE_LANGUAGES.length >= 15);
+  assert.equal(new Set(VOICE_LANGUAGES.map(entry => entry.code)).size, VOICE_LANGUAGES.length);
+  for (const entry of VOICE_LANGUAGES) {
+    assert.match(entry.code, /^[a-z]{2}-[A-Z]{2}$/);
+    assert.ok(entry.label.length > 0);
+    assert.ok(entry.nativeName.length > 0);
+  }
+});
+
+test("default English language shows command support and no wallet approval action", () => {
   const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
-  const chooser = html.split('aria-label="Voice recognition language"')[1].split("</div>")[0];
-  assert.match(chooser, /aria-pressed="true"[^>]*>English<\/button>/);
-  assert.match(chooser, /aria-pressed="false"[^>]*>Indonesia<\/button>/);
-  assert.match(chooser, /type="button"/);
+  assert.match(html, /English/);
+  assert.match(html, /Speak/);
+  assert.match(html, /never signs/);
 });
