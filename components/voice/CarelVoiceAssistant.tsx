@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, Globe2, Info, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { normalizeVoiceGoal } from "@/lib/voice/voice-goal";
 import styles from "./CarelVoiceAssistant.module.css";
 
@@ -134,11 +134,19 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
   return (
     <section className={styles.panel} aria-label="CAREL voice assistant">
       <div className={styles.head}>
-        <div>
-          <strong>Voice assistant</strong>
-          <p>Speak a goal. CAREL previews it, never signs.</p>
+        <div className={styles.identity}>
+          <span className={styles.symbol} aria-hidden="true"><Mic size={22}/></span>
+          <div className={styles.headingCopy}>
+            <div className={styles.headingRow}>
+              <strong>Voice assistant</strong>
+              <span className={styles.marker}>BETA</span>
+            </div>
+            <p>Speak a goal. CAREL previews it, never signs.</p>
+          </div>
         </div>
-        <span className={styles.marker}>BETA</span>
+        <div className={styles.wave + (listening ? " " + styles.waveActive : "")} aria-hidden="true">
+          <span/><span/><span/><span/><span/>
+        </div>
       </div>
       <div className={styles.controls}>
         <button
@@ -154,10 +162,14 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
         </button>
         <label className={styles.languageLabel}>
           <span>Language</span>
-          <select disabled={listening} value={language} onChange={event => setLanguage(event.target.value)}>
-            <option value="en-US">English</option>
-            <option value="id-ID">Indonesia</option>
-          </select>
+          <span className={styles.selectWrap}>
+            <Globe2 size={16} aria-hidden="true"/>
+            <select disabled={listening} value={language} onChange={event => setLanguage(event.target.value)}>
+              <option value="en-US">English</option>
+              <option value="id-ID">Indonesia</option>
+            </select>
+            <ChevronDown size={15} aria-hidden="true"/>
+          </span>
         </label>
         <button
           type="button"
@@ -171,13 +183,14 @@ export function CarelVoiceAssistant({ disabled = false, onCommand }: Props) {
         </button>
       </div>
       <p className={styles.status} role="status" aria-live="polite">
-        {supported === false ? "Voice recognition unsupported here. Type your goal instead." : message}
+        <Info size={15} aria-hidden="true"/>
+        <span>{supported === false ? "Voice recognition unsupported here. Type your goal instead." : message}</span>
       </p>
       {reply && <div className={styles.response}>
         <p>{reply}</p>
         <button type="button" onClick={() => readAloud(reply)} disabled={typeof window !== "undefined" && !window.speechSynthesis}>Read aloud</button>
       </div>}
-      <p className={styles.hint}>Push to talk · Browser microphone permission needed · No always-on listening</p>
+      <p className={styles.hint}>Push to talk · No always-on listening</p>
     </section>
   );
 }
