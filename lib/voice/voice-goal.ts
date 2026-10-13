@@ -7,7 +7,7 @@ const SWAP_RULES: Readonly<Record<string, Readonly<{ action: RegExp; destination
   "pt-BR": { action: /^(?:trocar|troque|converta|converter)\b/i, destination: /\b(?:por|para)\s+(USDC|USDT|ETH|BTC|STRK)\b/gi },
   "it-IT": { action: /^(?:scambia|scambiare|converti|convertire)\b/i, destination: /\b(?:con|in|per)\s+(USDC|USDT|ETH|BTC|STRK)\b/gi },
   "nl-NL": { action: /^(?:wissel|wisselen|ruil|ruilen)\b/i, destination: /\b(?:voor|naar)\s+(USDC|USDT|ETH|BTC|STRK)\b/gi },
-  "vi-VN": { action: /^(?:[đĐ]ổi|chuyển)\s+/i, destination: /\b(?:sang|thành)\s+(USDC|USDT|ETH|BTC|STRK)\b/gi },
+  "vi-VN": { action: /^(?:[đĐ]ổi|chuyển)(?=\s)/i, destination: /\b(?:sang|thành)\s+(USDC|USDT|ETH|BTC|STRK)\b/gi },
 };
 
 /** Limited, deterministic speech normalization. Not a general translation engine. */
