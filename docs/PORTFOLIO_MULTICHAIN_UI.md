@@ -33,3 +33,12 @@ npm test
 ```
 
 No local `next build` is needed: deploy through Vercel after these checks pass. In Android Ready Wallet verify All Networks, unsupported-chain placeholders, tapping assets, opening Starknet Detail, Shield/Unshield review, Vesu position management and the Return links.
+
+
+## Agentic Private DeFi UI revision (October 2026)
+
+Portfolio Overview now prioritizes the connected wallet's observed STRK balance, privacy allocation only after explicit private reveal, and factual detected DeFi positions. The valuation unavailable notice is deliberately secondary. Shield and Unshield shortcut buttons switch into the original Starknet review form; they never initiate transfers directly. Ask CAREL opens the existing Agent without silently generating a trade.
+
+Both Overview and Starknet Detail show positive observed token balances first, with a Show all assets control for known zero or unknown values. Issuer token artwork for xSTRK and strkBTC is sourced from Endur's own frontend and attribution appears in PORTFOLIO_VISUALS.md. Token rows no longer repeat chain names. Receipt holdings and protocol positions are separate *views*, not additively counted balances.
+
+CAREL Insights currently summarizes observed position counts only; it is NOT generative financial advice, yield prediction, or execution. When amounts are hidden, privacy percentages, private position counts and LTV details are not displayed. Wallet and chain scope remain Starknet-first until verified chain collectors and prices exist.
