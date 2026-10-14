@@ -61,7 +61,7 @@ export function PortfolioOverview({
   return <div className={styles.page}>
     <div className={styles.hero}>
       <div><p className={styles.eyebrow}>CAREL · PRIVATE DEFI</p><h1>Portfolio<span>.</span></h1><p>Your assets. Your privacy. Your control.</p></div>
-      <button type="button" className={styles.scope} onClick={() => onNetwork("starknet")} aria-label="Open connected network">
+      <button type="button" className={styles.scope} onClick={() => document.getElementById("carel-network-options")?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-label="Choose portfolio network">
         All networks <ChevronRight size={14}/>
       </button>
     </div>
@@ -169,7 +169,7 @@ export function PortfolioOverview({
       <small>Read-only insight · No automatic transactions or return predictions</small>
     </section>
 
-    <section className={styles.section}>
+    <section className={styles.section} id="carel-network-options">
       <h2>Networks</h2>
       <div className={styles.networks}>
         {PORTFOLIO_NETWORKS.map(network =>
@@ -223,7 +223,7 @@ export function PortfolioAssetDetail({
     <button type="button" className={styles.back} onClick={onBack}><ArrowLeft size={17}/> Starknet assets</button>
     <div className={styles.assetHero}>
       <TokenIcon symbol={holding.asset.symbol}/>
-      <div><p className={styles.eyebrow}>{holding.asset.chain.name}</p><h1>{holding.asset.symbol}</h1><span>{holding.asset.name}</span></div>
+      <div><p className={styles.eyebrow}>ASSET OVERVIEW</p><h1>{holding.asset.symbol}</h1><span>{holding.asset.name}</span></div>
     </div>
     <section className={styles.valueCard}>
       <p>Observed balance</p>
