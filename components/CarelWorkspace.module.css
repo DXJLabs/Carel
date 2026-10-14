@@ -1133,7 +1133,7 @@
   display: block; width: 35px; height: 35px;
   border-radius: 50%; object-fit: contain;
 }
-.assetLogoStarknet { background: #4331a4 !important; border-color: #5142bb !important; }
+.assetLogoStarknet { background: #0c0c4f !important; border-color: #262650 !important; }
 .assetLogoFallback {
   display: grid; place-items: center;
   width: 100%; height: 100%; border-radius: 50%;
