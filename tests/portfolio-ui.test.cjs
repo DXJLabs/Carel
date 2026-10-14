@@ -82,33 +82,53 @@ test("Portfolio animations honor reduced-motion preference", () => {
   assert.match(css, /\.chartAnimatedLine/);
 });
 
-test("multichain portfolio has overview, real network drilldown and asset details", () => {
+const multichainComponentPath = path.join(__dirname, "..", "components", "portfolio", "PortfolioViews.tsx");
+const multichainSource = fs.readFileSync(multichainComponentPath, "utf8");
+const multiCSS = fs.readFileSync(path.join(__dirname, "..", "components", "portfolio", "PortfolioViews.module.css"), "utf8");
+
+test("Portfolio offers navigable All Networks, network detail and per-asset detail", () => {
   assert.match(source, /portfolioView, setPortfolioView/);
   assert.match(source, /function renderPortfolioOverview\(/);
   assert.match(source, /function renderPortfolioAssetDetail\(/);
   assert.match(source, /portfolioNetworkFocus/);
   assert.match(source, /setPortfolioView\("asset"\)/);
   assert.match(source, /setPortfolioView\("network"\)/);
+  assert.match(multichainSource, /export function PortfolioOverview/);
+  assert.match(multichainSource, /export function PortfolioAssetDetail/);
 });
 
-test("All Networks does not fake USD valuation or connected cross-chain holdings", () => {
-  assert.match(source, /Valuation unavailable/);
-  assert.match(source, /Not connected to CAREL Portfolio/);
-  assert.match(source, /Only observed assets from the connected Starknet wallet are listed/);
-  assert.doesNotMatch(source, /2,845\.32|1,658\.42|538\.12/);
+test("All Networks cannot fabricate prices, APR or unsupported balances", () => {
+  assert.match(multichainSource, /Valuation unavailable/);
+  assert.match(multichainSource, /Not connected to CAREL Portfolio/);
+  assert.match(multichainSource, /Only observed assets from the connected Starknet wallet are listed/);
+  assert.match(multichainSource, /No verified multi-asset price feed/);
+  assert.doesNotMatch(multichainSource, /2,845\.32|1,658\.42|538\.12|7\.2%/);
+  assert.ok(multichainSource.indexOf('PORTFOLIO_NETWORKS') >= 0);
 });
 
-test("asset drilldown uses chain-scoped AssetRef id and retains wallet review", () => {
+test("asset detail routes by scoped AssetRef.id and avoids double-counting receipts", () => {
   assert.match(source, /portfolioSelectedAssetId/);
   assert.match(source, /holding\.asset\.id === portfolioSelectedAssetId/);
-  assert.match(source, /position\.asset\.id === portfolioSelectedAssetId/);
-  assert.match(source, /Positions also describe receipt tokens; they are not additional holdings/);
-  assert.match(source, /Viewing assets does not approve transactions/);
+  assert.match(multichainSource, /position\.asset\.id === holding\.asset\.id/);
+  assert.match(multichainSource, /Positions also describe receipt tokens; they are not additional holdings/);
+  assert.match(multichainSource, /Viewing assets does not approve transactions/);
 });
 
-test("registered ecosystems are not marked as active wallet connections", () => {
-  assert.match(source, /Ethereum/);
-  assert.match(source, /Bitcoin/);
-  assert.match(source, /Solana/);
-  assert.match(source, /Starknet wallet only/);
+test("registered ecosystems are not advertised as connected wallets", () => {
+  assert.match(multichainSource, /Ethereum/);
+  assert.match(multichainSource, /Bitcoin/);
+  assert.match(multichainSource, /Solana/);
+  assert.match(multichainSource, /Starknet wallet only/);
+  assert.match(multichainSource, /Testnet balances are excluded/);
+});
+
+test("Portfolio views have scoped mobile styles and valid TSX syntax", () => {
+  const transpiled = ts.transpileModule(multichainSource, {
+    fileName: multichainComponentPath,
+    reportDiagnostics: true,
+    compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
+  });
+  const errors = (transpiled.diagnostics ?? []).filter(error => error.category === ts.DiagnosticCategory.Error);
+  assert.deepEqual(errors.map(error => ts.flattenDiagnosticMessageText(error.messageText, "\n")), []);
+  assert.match(multiCSS, /@media\(max-width:360px\)/);
 });
