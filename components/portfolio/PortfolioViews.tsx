@@ -96,7 +96,7 @@ export function PortfolioOverview({
           </button>
         )}
       </div>
-      <p className={styles.disclosure}>Other networks are not yet connected to CAREL Portfolio. Bitcoin support currently uses the Testnet4 registry.</p>
+      <p className={styles.disclosure}>Other networks are not yet connected to CAREL Portfolio. Bitcoin support currently uses the Testnet4 registry. {chain?.network === "testnet" ? "Testnet balances are excluded from production valuation." : ""}</p>
     </section>}
 
     <section className={styles.valueCard} aria-label="Observed wallet balance">
