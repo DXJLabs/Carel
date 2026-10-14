@@ -16,7 +16,7 @@ export const PORTFOLIO_NETWORKS: readonly { id: PortfolioNetworkFocus; label: st
 
 const LOCAL_ICONS: Readonly<Record<string, string>> = {
   STRK: "strk", USDC: "usdc", ETH: "eth", USDT: "usdt",
-  WBTC: "wbtc", BTC: "btc",
+  WBTC: "wbtc", BTC: "btc", XSTRK: "xstrk", STRKBTC: "strkbtc",
 };
 
 function TokenIcon({ symbol }: { symbol: string }) {
