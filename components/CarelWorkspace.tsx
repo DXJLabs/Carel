@@ -1097,9 +1097,9 @@ export function CarelApp() {
   function renderAgent() {
     return <div className={`${styles.narrowPage} ${styles.agentPage}`}>
       <div className={`${styles.intro} ${styles.agentIntro}`}>
-        <p className={styles.eyebrow}>CAREL AGENT</p>
+        <p className={styles.eyebrow}>CAREL · YOUR DEFI AGENT</p>
         <h1>What’s your <span>next move?</span></h1>
-        <p>Set a goal. CAREL previews every step before you sign.</p>
+        <p>Set a goal. CAREL prepares a route; you approve every transaction.</p>
       </div>
       <div className={`${styles.composer} ${styles.agentComposer}`}>
         <label htmlFor="carel-goal">Your goal</label>
@@ -1175,18 +1175,25 @@ export function CarelApp() {
         </div>
       </div>
       <div className={`${styles.tools} ${styles.agentTools}`} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
-      <button
+      {!agentPlan && <button
         type="button"
         className={`${styles.primary} ${styles.agentPrimary}`}
         disabled={busy || !goalText.trim()}
         onClick={() => previewPlan()}
       >
         <Sparkles size={19} aria-hidden="true"/>
-        <span>Preview agent plan</span>
+        <span>Prepare Agent plan</span>
         <ArrowRight size={18} aria-hidden="true"/>
-      </button>
+      </button>}
 
-      {agentPlan && (
+      {agentPlan && selectedRuntimeSurface === "swap" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Swap</strong><span>AVNU quote and wallet review below · No transaction submitted yet</span></div>
+        </div>
+      )}
+
+      {agentPlan && !(selectedRuntimeSurface === "swap" && mode === "normal" && agentPlan.stages.length === 1) && (
         <section className={styles.agentPlanSummary} aria-live="polite">
           <div className={styles.agentSummaryTitle}>
             <h2>Plan summary</h2>
