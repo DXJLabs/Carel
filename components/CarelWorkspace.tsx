@@ -1340,6 +1340,12 @@ export function CarelApp() {
           ? Number(privateBalance * 10000n / total) / 100
           : null
       }
+      privateRevealed={wallet.privateRevealed}
+      canRevealPrivate={privacyReady && wallet.strk20Capable && !busy && !hideAmounts}
+      onRevealPrivate={() => void run(() => wallet.revealPrivateBalance())}
+      positionsLoading={portfolioPositionsLoading}
+      positionsWarning={portfolioPositionWarning}
+      onRetryPositions={() => setSample(value => value + 1)}
       canPrivacyAction={privacyReady && wallet.strk20Capable && !busy}
       onShield={() => openPortfolioPrivacyAction("shield")}
       onUnshield={() => openPortfolioPrivacyAction("unshield")}
@@ -1752,11 +1758,11 @@ export function CarelApp() {
       <button type="button" className={styles.walletButton} disabled={wallet.connecting} onClick={wallet.connected ? openWallet : () => void run(() => wallet.connect())} aria-label={wallet.connected ? "Open wallet settings" : "Connect wallet"}>{wallet.connecting ? <LoaderCircle size={18}/> : <WalletCards size={18}/>}<span>{wallet.connected ? shortAddress(wallet.address) : wallet.connecting ? "Connecting…" : "Connect"}</span></button></div>
     </div></header>
     <main className={styles.main}>
-      <div className={styles.networkLine}>
+      {tab !== "portfolio" && <div className={styles.networkLine}>
         <span className={styles.dot}/>
-        {tab === "portfolio" && portfolioView === "overview" && wallet.connected ? "ALL NETWORKS · STARKNET WALLET ONLY" : activeNetwork?.label ?? "Starknet"}
-        <span>{tab === "portfolio" && portfolioView === "overview" && wallet.connected ? "Overview" : activeNetwork?.tag ?? "Network"}</span>
-      </div>
+        {activeNetwork?.label ?? "Starknet"}
+        <span>{activeNetwork?.tag ?? "Network"}</span>
+      </div>}
       {wallet.connected && !activeNetwork && (
         <div className={styles.notice} role="status">
           CAREL supports Starknet Sepolia and Starknet Mainnet.
