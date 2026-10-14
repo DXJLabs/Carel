@@ -201,6 +201,7 @@ export function CarelApp() {
   const [portfolioView, setPortfolioView] = useState<PortfolioView>("overview");
   const [portfolioNetworkFocus, setPortfolioNetworkFocus] = useState<PortfolioNetworkFocus>("starknet");
   const [portfolioSelectedAssetId, setPortfolioSelectedAssetId] = useState<string | null>(null);
+  const [portfolioShowAllAssets, setPortfolioShowAllAssets] = useState(false);
   const [sample, setSample] = useState(0);
   const [observations, setObservations] = useState<{ owner: string; points: Observation[] }>({ owner: "", points: [] });
   const [executions, setExecutions] = useState<{ owner: string; records: Execution[] }>({ owner: "", records: [] });
@@ -450,6 +451,7 @@ export function CarelApp() {
       setPortfolioView("overview");
       setPortfolioNetworkFocus("starknet");
       setPortfolioSelectedAssetId(null);
+      setPortfolioShowAllAssets(false);
     }
     setTab(next);
     setPointsOpen(false);
@@ -1312,6 +1314,17 @@ export function CarelApp() {
     setPortfolioView("overview");
     window.scrollTo({ top: 0, behavior: "instant" });
   }
+  function openPortfolioPrivacyAction(action: "shield" | "unshield") {
+    if (!privacyReady || !wallet.strk20Capable || busy) return;
+    setPortfolioNetworkFocus("starknet");
+    setPortfolioView("network");
+    setQuickAction(action);
+    setActionError(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById("carel-portfolio-quick")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
   function renderPortfolioOverview() {
     const historyReady = observations.owner === sessionKey && chartPoints.length >= 2 && !hideAmounts;
     return <PortfolioOverview
@@ -1322,6 +1335,16 @@ export function CarelApp() {
       positions={portfolioPositions}
       hideAmounts={hideAmounts}
       chart={historyReady ? <PerformanceChart points={chartPoints} hidden={false}/> : undefined}
+      privacyShare={
+        !hideAmounts && wallet.privateRevealed &&
+        wallet.publicStrk !== null && privateBalance !== null && total !== null && total > ZERO
+          ? Number(privateBalance * 10000n / total) / 100
+          : null
+      }
+      canPrivacyAction={privacyReady && wallet.strk20Capable && !busy}
+      onShield={() => openPortfolioPrivacyAction("shield")}
+      onUnshield={() => openPortfolioPrivacyAction("unshield")}
+      onAgent={() => navigate("agent")}
       onNetwork={openPortfolioNetwork}
       onAsset={openPortfolioAsset}
     />;
@@ -1382,11 +1405,10 @@ export function CarelApp() {
       <div className={`${styles.intro} ${styles.portfolioIntro}`}>
         <p className={styles.eyebrow}>CAREL PORTFOLIO</p>
         <h1>Starknet<span className={styles.portfolioTitleDot}>.</span></h1>
-        <p>Observed assets and positions · {activeNetwork?.label ?? "Starknet"}</p>
+        <p>Private DeFi assets and positions.</p>
       </div>
       <div className={styles.portfolioIdentity}>
         <span><WalletCards size={16} aria-hidden="true"/>{shortAddress(wallet.address)}</span>
-        <span>{activeNetwork?.label ?? "Unsupported network"}</span>
       </div>
       <div className={styles.portfolioNetworkTabs}>
         <button type="button" onClick={() => document.getElementById("carel-portfolio-holdings")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Assets</button>
@@ -1442,14 +1464,21 @@ export function CarelApp() {
         </div>
       )}
       <div className={styles.actionPair}><button className={styles.secondary} disabled={!ready || !wallet.strk20Capable || busy} onClick={() => { setQuickAction("shield"); setActionError(null); }}><ArrowDownToLine size={16}/>Shield</button><button className={styles.secondary} disabled={!ready || !wallet.strk20Capable || busy} onClick={() => { setQuickAction("unshield"); setActionError(null); }}><ArrowUpFromLine size={16}/>Unshield</button></div>
-      {quickAction && <div className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
+      {quickAction && <div id="carel-portfolio-quick" className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
       </section>
       <section id="carel-portfolio-holdings" className={styles.portfolioSection}>
-        <SectionHeading title="Holdings"/>
+        <SectionHeading title="Holdings">
+          <button type="button" className={styles.portfolioDetailLink} onClick={() => setPortfolioShowAllAssets(show => !show)}>
+            {portfolioShowAllAssets ? "Active only" : "Show all assets"} <ChevronRight size={13}/>
+          </button>
+        </SectionHeading>
 
         {portfolioHoldings.length ? (
-          portfolioHoldings.map(
+          (portfolioShowAllAssets
+            ? [...portfolioHoldings].sort((a, b) => Number((b.observedAmount ?? 0n) > 0n) - Number((a.observedAmount ?? 0n) > 0n))
+            : portfolioHoldings.filter(holding => holding.observedAmount !== null && holding.observedAmount > 0n)
+          ).map(
             (holding) => (
               <button
                 type="button"
