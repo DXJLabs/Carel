@@ -1322,6 +1322,7 @@ export function CarelApp() {
   }
   function openPortfolioPrivacyAction(action: "shield" | "unshield") {
     if (!privacyReady || !wallet.strk20Capable || busy) return;
+    setPortfolioNetworkTab("assets");
     setPortfolioNetworkFocus("starknet");
     setPortfolioView("network");
     setQuickAction(action);
