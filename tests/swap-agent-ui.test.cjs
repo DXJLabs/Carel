@@ -44,8 +44,18 @@ test("Asset icons identify supported swap assets without altering contracts", ()
 });
 
 test("Original swap execution, recovery and verification actions remain wired", () => {
-  for (const action of ["loadQuote", "startFlow", "executeNextStage", "confirmSubmitted", "resetFlow"]) {
-    assert.match(swap, new RegExp(action + "\\("));
+  // React can wire a handler as a function reference (onClick={resetFlow})
+  // or with an inline call (onClick={() => void loadQuote()}).
+  // Verify the actual button wiring rather than searching for a call anywhere.
+  const actionHandlers = {
+    loadQuote: /onClick=\{\(\) => void loadQuote\(\)\}/,
+    startFlow: /onClick=\{\(\) => void startFlow\(\)\}/,
+    executeNextStage: /onClick=\{\(\) => void executeNextStage\(\)\}/,
+    confirmSubmitted: /onClick=\{\(\) => void confirmSubmitted\(\)\}/,
+    resetFlow: /onClick=\{resetFlow\}/,
+  };
+  for (const [action, pattern] of Object.entries(actionHandlers)) {
+    assert.match(swap, pattern, action + " must remain wired to a button");
   }
   assert.match(swap, /swapAgentSession\.run\.stages\.map/);
   assert.match(swap, /verifiedSwapOutput\.amountText/);
