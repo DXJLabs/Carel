@@ -81,3 +81,34 @@ test("Portfolio animations honor reduced-motion preference", () => {
   assert.match(css, /\.portfolioDonutSegment/);
   assert.match(css, /\.chartAnimatedLine/);
 });
+
+test("multichain portfolio has overview, real network drilldown and asset details", () => {
+  assert.match(source, /portfolioView, setPortfolioView/);
+  assert.match(source, /function renderPortfolioOverview\(/);
+  assert.match(source, /function renderPortfolioAssetDetail\(/);
+  assert.match(source, /portfolioNetworkFocus/);
+  assert.match(source, /setPortfolioView\("asset"\)/);
+  assert.match(source, /setPortfolioView\("network"\)/);
+});
+
+test("All Networks does not fake USD valuation or connected cross-chain holdings", () => {
+  assert.match(source, /Valuation unavailable/);
+  assert.match(source, /Not connected to CAREL Portfolio/);
+  assert.match(source, /Only observed assets from the connected Starknet wallet are listed/);
+  assert.doesNotMatch(source, /2,845\.32|1,658\.42|538\.12/);
+});
+
+test("asset drilldown uses chain-scoped AssetRef id and retains wallet review", () => {
+  assert.match(source, /portfolioSelectedAssetId/);
+  assert.match(source, /holding\.asset\.id === portfolioSelectedAssetId/);
+  assert.match(source, /position\.asset\.id === portfolioSelectedAssetId/);
+  assert.match(source, /Positions also describe receipt tokens; they are not additional holdings/);
+  assert.match(source, /Viewing assets does not approve transactions/);
+});
+
+test("registered ecosystems are not marked as active wallet connections", () => {
+  assert.match(source, /Ethereum/);
+  assert.match(source, /Bitcoin/);
+  assert.match(source, /Solana/);
+  assert.match(source, /Starknet wallet only/);
+});
