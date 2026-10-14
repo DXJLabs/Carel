@@ -84,3 +84,5 @@
 .safety svg{color:#fa783b;flex-shrink:0}
 @media(max-width:360px){.hero{gap:7px}.scope{font-size:10px;padding:7px}.valueCard{padding:18px 14px}.stats{gap:6px}.stats>div{padding:10px 7px}.stats strong{font-size:17px}.networks button{padding:9px}.assetRow{padding:10px 8px;gap:8px}.rowCopy strong,.rowAmount strong{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+.pending{border-color:#39373b;background:#18191b}
