@@ -100,7 +100,7 @@ test("Portfolio offers navigable All Networks, network detail and per-asset deta
 test("All Networks cannot fabricate prices, APR or unsupported balances", () => {
   assert.match(multichainSource, /USD value unavailable/);
   assert.match(multichainSource, /Not connected to CAREL Portfolio/);
-  assert.match(multichainSource, /Only observed assets from the connected Starknet wallet are listed/);
+  assert.match(multichainSource, /Starknet wallet only/);
   assert.match(multichainSource, /USD value unavailable/);
   assert.doesNotMatch(multichainSource, /2,845\.32|1,658\.42|538\.12|7\.2%/);
   assert.ok(multichainSource.indexOf('PORTFOLIO_NETWORKS') >= 0);
