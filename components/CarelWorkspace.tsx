@@ -59,12 +59,14 @@ import { AvnuStaking } from "./staking/AvnuStaking";
 import { VesuBorrow } from "./borrow/VesuBorrow";
 import { VesuRepay } from "./borrow/VesuRepay";
 import { VesuLend } from "./lending/VesuLend";
+import { PortfolioOverview, PortfolioAssetDetail, PortfolioUnavailableNetwork, type PortfolioNetworkFocus } from "./portfolio/PortfolioViews";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
 type Mode = "normal" | "shield" | "unshield";
 type Tool = "Swap" | "Bridge" | "Staking" | "Lend" | "Borrow";
 type Period = "1D" | "7D" | "30D";
+type PortfolioView = "overview" | "network" | "asset";
 type Execution = { hash: string; label: string; status: "pending" | "submitted" | "confirmed"; ts: number };
 type Observation = { ts: number; total: number };
 const ZERO = BigInt(0);
@@ -196,6 +198,9 @@ export function CarelApp() {
   const [hideAmounts, setHideAmounts] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [period, setPeriod] = useState<Period>("7D");
+  const [portfolioView, setPortfolioView] = useState<PortfolioView>("overview");
+  const [portfolioNetworkFocus, setPortfolioNetworkFocus] = useState<PortfolioNetworkFocus>("starknet");
+  const [portfolioSelectedAssetId, setPortfolioSelectedAssetId] = useState<string | null>(null);
   const [sample, setSample] = useState(0);
   const [observations, setObservations] = useState<{ owner: string; points: Observation[] }>({ owner: "", points: [] });
   const [executions, setExecutions] = useState<{ owner: string; records: Execution[] }>({ owner: "", records: [] });
@@ -440,7 +445,16 @@ export function CarelApp() {
     return observations.points.filter(point => point.ts >= Date.now() - days * 86400000);
   }, [observations, sessionKey, period, wallet.connected]);
 
-  function navigate(next: Tab) { setTab(next); setPointsOpen(false); window.scrollTo({ top: 0, behavior: "instant" }); }
+  function navigate(next: Tab) {
+    if (next === "portfolio") {
+      setPortfolioView("overview");
+      setPortfolioNetworkFocus("starknet");
+      setPortfolioSelectedAssetId(null);
+    }
+    setTab(next);
+    setPointsOpen(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
   function openPoints() { setPointsOpen(true); window.scrollTo({ top: 0, behavior: "instant" }); }
   function openWallet() {
     navigate("settings");
@@ -1280,7 +1294,53 @@ export function CarelApp() {
       </div></section>}
     </div>;
   }
+
+  function openPortfolioNetwork(focus: PortfolioNetworkFocus) {
+    setPortfolioNetworkFocus(focus);
+    setPortfolioSelectedAssetId(null);
+    setPortfolioView("network");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function openPortfolioAsset(id: string) {
+    setPortfolioSelectedAssetId(id);
+    setPortfolioNetworkFocus("starknet");
+    setPortfolioView("asset");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function backToPortfolioOverview() {
+    setPortfolioSelectedAssetId(null);
+    setPortfolioView("overview");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function renderPortfolioOverview() {
+    const historyReady = observations.owner === sessionKey && chartPoints.length >= 2 && !hideAmounts;
+    return <PortfolioOverview
+      chain={activeNetwork?.chain ?? null}
+      walletLabel={wallet.address ? shortAddress(wallet.address) : "Starknet"}
+      visibleStrk={amount(visibleBalance, hideAmounts)}
+      holdings={portfolioHoldings}
+      positions={portfolioPositions}
+      hideAmounts={hideAmounts}
+      chart={historyReady ? <PerformanceChart points={chartPoints} hidden={false}/> : undefined}
+      onNetwork={openPortfolioNetwork}
+      onAsset={openPortfolioAsset}
+    />;
+  }
+  function renderPortfolioAssetDetail() {
+    const holding = portfolioHoldings.find(holding => holding.asset.id === portfolioSelectedAssetId) ?? null;
+    return <PortfolioAssetDetail
+      holding={holding}
+      positions={portfolioPositions}
+      hideAmounts={hideAmounts}
+      privateRevealed={wallet.privateRevealed}
+      onBack={() => openPortfolioNetwork("starknet")}
+      onAgent={() => navigate("agent")}
+    />;
+  }
   function renderPortfolio() {
+    if (wallet.connected && portfolioView === "overview") return renderPortfolioOverview();
+    if (wallet.connected && portfolioView === "asset") return renderPortfolioAssetDetail();
+    if (wallet.connected && portfolioView === "network" && portfolioNetworkFocus !== "starknet") return <PortfolioUnavailableNetwork focus={portfolioNetworkFocus} onBack={backToPortfolioOverview}/>;
     const privateShare = total !== null && total > ZERO && privateBalance !== null ? Number(privateBalance * BigInt(10000) / total) / 100 : null;
     const hasRecordedHistory = observations.owner === sessionKey && observations.points.filter(point => point.ts >= Date.now() - 30 * 86400000).length >= 2;
     if (!wallet.connected) {
@@ -1315,14 +1375,23 @@ export function CarelApp() {
       );
     }
     return <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
+      <div className={styles.portfolioNetworkTop}>
+        <button type="button" className={styles.portfolioReturnLink} onClick={backToPortfolioOverview}><ArrowLeft size={17}/> All networks</button>
+        <span>{activeNetwork?.tag ?? "Network"}</span>
+      </div>
       <div className={`${styles.intro} ${styles.portfolioIntro}`}>
         <p className={styles.eyebrow}>CAREL PORTFOLIO</p>
-        <h1>Portfolio<span className={styles.portfolioTitleDot}>.</span></h1>
-        <p>Your assets, with clarity.</p>
+        <h1>Starknet<span className={styles.portfolioTitleDot}>.</span></h1>
+        <p>Observed assets and positions · {activeNetwork?.label ?? "Starknet"}</p>
       </div>
       <div className={styles.portfolioIdentity}>
         <span><WalletCards size={16} aria-hidden="true"/>{shortAddress(wallet.address)}</span>
         <span>{activeNetwork?.label ?? "Unsupported network"}</span>
+      </div>
+      <div className={styles.portfolioNetworkTabs}>
+        <button type="button" onClick={() => document.getElementById("carel-portfolio-holdings")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Assets</button>
+        <button type="button" onClick={() => document.getElementById("carel-portfolio-positions")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Positions</button>
+        <button type="button" onClick={() => navigate("activity")}>Activity</button>
       </div>
       <section className={`${styles.portfolioOverview} ${styles.portfolioSummary}`}>
         <div className={styles.overviewTop}>
@@ -1376,15 +1445,18 @@ export function CarelApp() {
       {quickAction && <div className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
       </section>
-      <section className={styles.portfolioSection}>
+      <section id="carel-portfolio-holdings" className={styles.portfolioSection}>
         <SectionHeading title="Holdings"/>
 
         {portfolioHoldings.length ? (
           portfolioHoldings.map(
             (holding) => (
-              <div
-                className={styles.holdingRow}
+              <button
+                type="button"
+                className={`${styles.holdingRow} ${styles.portfolioHoldingButton}`}
                 key={holding.asset.id}
+                onClick={() => openPortfolioAsset(holding.asset.id)}
+                aria-label={`View ${holding.asset.name} asset details`}
               >
                 <AssetLogo symbol={holding.asset.symbol}/>
 
@@ -1416,7 +1488,8 @@ export function CarelApp() {
                     {holding.asset.symbol}
                   </small>
                 </strong>
-              </div>
+                <ChevronRight size={16} className={styles.portfolioChevron}/>
+              </button>
             ),
           )
         ) : (
@@ -1429,7 +1502,7 @@ export function CarelApp() {
 
       <GardenBalances hidden={hideAmounts}/>
 
-      <section className={styles.portfolioSection}>
+      <section id="carel-portfolio-positions" className={styles.portfolioSection}>
         <SectionHeading title="Positions">
           {portfolioPositionsLoading && (
             <span className={styles.status}>
@@ -1500,6 +1573,9 @@ export function CarelApp() {
                       styles.positionEnd
                     }
                   >
+                    <button type="button" className={styles.portfolioDetailLink}
+                      onClick={() => openPortfolioAsset(position.asset.id)}
+                      aria-label={`View ${position.asset.symbol} asset details`}>Details <ChevronRight size={13}/></button>
                     <strong
                       className={
                         styles.holdingAmount
@@ -1648,8 +1724,8 @@ export function CarelApp() {
     <main className={styles.main}>
       <div className={styles.networkLine}>
         <span className={styles.dot}/>
-        {activeNetwork?.label ?? "Starknet"}
-        <span>{activeNetwork?.tag ?? "Network"}</span>
+        {tab === "portfolio" && portfolioView === "overview" && wallet.connected ? "ALL NETWORKS · STARKNET WALLET ONLY" : activeNetwork?.label ?? "Starknet"}
+        <span>{tab === "portfolio" && portfolioView === "overview" && wallet.connected ? "Overview" : activeNetwork?.tag ?? "Network"}</span>
       </div>
       {wallet.connected && !activeNetwork && (
         <div className={styles.notice} role="status">
