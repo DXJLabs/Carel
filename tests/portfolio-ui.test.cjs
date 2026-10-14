@@ -218,3 +218,31 @@ test("Compact mobile Portfolio retains wallet review and removes feature grid", 
   assert.match(source, /setQuickAction\(action\)/);
   assert.doesNotMatch(source, /aria-label="Portfolio features"/);
 });
+
+test("Portfolio network Assets and Positions switch panels without scrolling", () => {
+  assert.match(source, /portfolioNetworkTab, setPortfolioNetworkTab/);
+  assert.match(portfolio, /aria-pressed=\{portfolioNetworkTab === "assets"\}/);
+  assert.match(portfolio, /aria-pressed=\{portfolioNetworkTab === "positions"\}/);
+  assert.match(portfolio, /onClick=\{\(\) => setPortfolioNetworkTab\("assets"\)\}/);
+  assert.match(portfolio, /onClick=\{\(\) => setPortfolioNetworkTab\("positions"\)\}/);
+  assert.match(portfolio, /portfolioNetworkTab === "assets" && <div className=\{styles\.portfolioTabPanel\}/);
+  assert.match(portfolio, /portfolioNetworkTab === "positions" && <div className=\{styles\.portfolioTabPanel\}/);
+  assert.doesNotMatch(portfolio, /getElementById\("carel-portfolio-(holdings|positions)"\)/);
+  assert.match(source, /setPortfolioNetworkTab\("assets"\)/);
+});
+
+test("Positions tab preserves DeFi management while Activity goes to activity page", () => {
+  assert.match(portfolio, /aria-label="Positions view"/);
+  assert.match(portfolio, /<VesuRepay/);
+  assert.match(portfolio, /position\.protocol ===\s*"Vesu"/);
+  assert.match(portfolio, /navigate\("activity"\)/);
+  assert.match(portfolio, /Retry positions/);
+  assert.match(portfolio, /Private positions may become visible after an explicit balance reveal/);
+});
+
+test("Tab styling follows selected panel rather than permanently highlighting Assets", () => {
+  const networkCss = fs.readFileSync(path.join(__dirname, "..", "components", "CarelWorkspace.module.css"), "utf8");
+  assert.match(networkCss, /\.portfolioNetworkTabs button\[aria-pressed="true"\]/);
+  assert.doesNotMatch(networkCss, /\.portfolioNetworkTabs button:first-child/);
+  assert.match(networkCss, /\.portfolioTabPanel/);
+});
