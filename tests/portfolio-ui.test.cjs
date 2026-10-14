@@ -50,7 +50,7 @@ test("history period selection remains possible when selected period has no poin
 
 test("Portfolio maps token symbols to local SVG assets with derivatives explicitly marked", () => {
   const svgDir = path.join(__dirname, "..", "public", "token-icons");
-  const mapped = ["strk", "usdc", "eth", "usdt", "wbtc", "btc"];
+  const mapped = ["strk", "usdc", "eth", "usdt", "wbtc", "btc", "xstrk", "strkbtc"];
   for (const symbol of mapped) {
     const iconFile = path.join(svgDir, symbol + ".svg");
     assert.ok(fs.existsSync(iconFile), "Missing local icon: " + symbol);
@@ -61,8 +61,8 @@ test("Portfolio maps token symbols to local SVG assets with derivatives explicit
   assert.match(source, /function AssetLogo/);
   assert.match(source, /<AssetLogo symbol={holding\.asset\.symbol}\/>/);
   assert.match(source, /<AssetLogo symbol={position\.asset\.symbol}\/>/);
-  assert.match(source, /key === "XSTRK"/);
-  assert.match(source, /key === "STRKBTC"/);
+  assert.match(source, /XSTRK: "xstrk"/);
+  assert.match(source, /STRKBTC: "strkbtc"/);
 });
 
 test("Portfolio draws actual observed allocation and avoids invented chart history", () => {
@@ -131,4 +131,54 @@ test("Portfolio views have scoped mobile styles and valid TSX syntax", () => {
   const errors = (transpiled.diagnostics ?? []).filter(error => error.category === ts.DiagnosticCategory.Error);
   assert.deepEqual(errors.map(error => ts.flattenDiagnosticMessageText(error.messageText, "\n")), []);
   assert.match(multiCSS, /@media\(max-width:360px\)/);
+});
+
+test("Agentic DeFi overview keeps USD valuation secondary and factual", () => {
+  assert.match(multichainSource, /CAREL · PRIVATE DEFI/);
+  assert.match(multichainSource, /Observed STRK balance/);
+  assert.match(multichainSource, /Valuation unavailable/);
+  assert.match(multichainSource, /CAREL Insights/);
+  assert.match(multichainSource, /Read-only insight/);
+  const overview = multichainSource.slice(multichainSource.indexOf("export function PortfolioOverview("), multichainSource.indexOf("export function PortfolioUnavailableNetwork("));
+  assert.doesNotMatch(overview, /Total portfolio value/);
+  assert.match(overview, /positions\.filter\(position => position\.visibility === "private"\)/);
+  assert.match(overview, /hideAmounts\s*\?\s*"Portfolio amounts are hidden/);
+});
+
+test("Portfolio asset lists default to observed positives, with Show all action", () => {
+  assert.match(multichainSource, /showAllAssets, setShowAllAssets/);
+  assert.match(multichainSource, /observedAmount !== null && holding\.observedAmount > 0n/);
+  assert.match(multichainSource, /Show all assets/);
+  assert.match(multichainSource, /onClick=\{\(\) => setShowAllAssets\(x => !x\)\}/);
+  assert.match(multichainSource, /holding\.asset\.name/);
+  assert.doesNotMatch(multichainSource, /holding\.asset\.chain\.name/);
+});
+
+test("Private allocation cannot be shown without opt-in reveal or when hidden", () => {
+  assert.match(source, /!hideAmounts && wallet\.privateRevealed/);
+  assert.match(source, /wallet\.publicStrk !== null && privateBalance !== null/);
+  assert.match(multichainSource, /privacyShare !== null && Number\.isFinite\(privacyShare\)/);
+  assert.match(multichainSource, /Allocation hidden or not revealed/);
+  assert.match(source, /position\.borrow && !hideAmounts/);
+});
+
+test("Portfolio quick actions open the existing Shield review, never sign immediately", () => {
+  assert.match(source, /function openPortfolioPrivacyAction\(/);
+  assert.match(source, /setQuickAction\(action\)/);
+  assert.match(source, /setPortfolioView\("network"\)/);
+  assert.match(source, /id="carel-portfolio-quick"/);
+  assert.match(source, /wallet\.shield\(quickAmount\)/);
+  assert.match(source, /wallet\.unshield\(quickAmount\)/);
+  assert.match(multichainSource, /disabled=\{!canPrivacyAction\}/);
+});
+
+test("xSTRK and strkBTC use issuer artwork rather than substitute token marks", () => {
+  assert.match(multichainSource, /XSTRK: "xstrk", STRKBTC: "strkbtc"/);
+  assert.match(source, /XSTRK: "xstrk"/);
+  assert.match(source, /STRKBTC: "strkbtc"/);
+  const issuerSvg = fs.readFileSync(path.join(__dirname, "..", "public", "token-icons", "xstrk.svg"), "utf8");
+  const btcSvg = fs.readFileSync(path.join(__dirname, "..", "public", "token-icons", "strkbtc.svg"), "utf8");
+  assert.match(issuerSvg, /<svg/);
+  assert.match(btcSvg, /<svg/);
+  assert.doesNotMatch(issuerSvg + btcSvg, /<script|onload=|<foreignObject/i);
 });
