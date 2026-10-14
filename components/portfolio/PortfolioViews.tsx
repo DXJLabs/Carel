@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Bot, ChevronRight, EyeOff, Layers3, Network, Shield, ShieldCheck, Sparkles, WalletCards } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, ChevronDown, ChevronRight, EyeOff, Network, Shield, ShieldCheck, Sparkles } from "lucide-react";
 import { formatPortfolioAmount, portfolioHoldingDetail, type PortfolioHolding, type PortfolioPosition } from "@/lib/carel/portfolio/model";
 import type { ChainRef } from "@/lib/carel/core/chains";
 import styles from "./PortfolioViews.module.css";
@@ -31,9 +31,12 @@ function TokenIcon({ symbol }: { symbol: string }) {
   </span>;
 }
 
+
 export function PortfolioOverview({
   chain, walletLabel, visibleStrk, holdings, positions, hideAmounts, chart,
-  privacyShare, canPrivacyAction, onShield, onUnshield, onAgent, onNetwork, onAsset,
+  privacyShare, privateRevealed, canRevealPrivate, canPrivacyAction, positionsLoading,
+  positionsWarning, onRevealPrivate, onShield, onUnshield, onAgent, onNetwork, onAsset,
+  onRetryPositions,
 }: {
   chain: ChainRef | null;
   walletLabel: string;
@@ -43,80 +46,98 @@ export function PortfolioOverview({
   hideAmounts: boolean;
   chart?: ReactNode;
   privacyShare: number | null;
+  privateRevealed: boolean;
+  canRevealPrivate: boolean;
   canPrivacyAction: boolean;
+  positionsLoading: boolean;
+  positionsWarning: string | null;
+  onRevealPrivate: () => void;
   onShield: () => void;
   onUnshield: () => void;
   onAgent: () => void;
   onNetwork: (network: PortfolioNetworkFocus) => void;
   onAsset: (assetId: string) => void;
+  onRetryPositions: () => void;
 }) {
   const [showAllAssets, setShowAllAssets] = useState(false);
+  const [showNetworks, setShowNetworks] = useState(false);
   const observed = holdings.filter(holding => holding.observedAmount !== null && holding.observedAmount > 0n);
   const others = holdings.filter(holding => holding.observedAmount === null || holding.observedAmount <= 0n);
   const visibleAssets = showAllAssets ? [...observed, ...others] : observed;
-  const privatePositions = positions.filter(position => position.visibility === "private");
-  const availableShare = !hideAmounts && privacyShare !== null && Number.isFinite(privacyShare)
+  const availableShare = !hideAmounts && privateRevealed && privacyShare !== null && Number.isFinite(privacyShare)
     ? Math.max(0, Math.min(100, privacyShare)) : null;
+  const positionSummary = positionsLoading ? "Checking positions" :
+    positionsWarning ? "Positions partially unavailable" :
+    !privateRevealed ? "Private positions not checked" :
+    `${positions.length} detected positions`;
 
-  return <div className={styles.page}>
+  return <div className={`${styles.page} ${styles.cockpit}`}>
     <div className={styles.hero}>
-      <div><p className={styles.eyebrow}>CAREL · PRIVATE DEFI</p><h1>Portfolio<span>.</span></h1><p>Your assets. Your privacy. Your control.</p></div>
-      <button type="button" className={styles.scope} onClick={() => document.getElementById("carel-network-options")?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-label="Choose portfolio network">
-        All networks <ChevronRight size={14}/>
+      <div>
+        <h1>Portfolio<span>.</span></h1>
+        <p>Private DeFi, in your control.</p>
+      </div>
+      <button type="button" className={styles.scope} aria-expanded={showNetworks}
+        aria-controls="carel-network-options" onClick={() => setShowNetworks(open => !open)}>
+        All networks <ChevronDown size={15}/>
       </button>
     </div>
 
-    <section className={styles.valueCard} aria-label="Portfolio summary">
+    {showNetworks && <section className={styles.networkMenu} id="carel-network-options" aria-label="Networks">
+      <h2>Networks</h2>
+      <div className={styles.networks}>
+        {PORTFOLIO_NETWORKS.map(network =>
+          <button type="button" key={network.id}
+            className={network.id === "starknet" && chain ? styles.live : styles.pending}
+            onClick={() => { setShowNetworks(false); onNetwork(network.id); }}>
+            <strong>{network.label}</strong>
+            <small>{network.id === "starknet" && chain ? "Connected" : network.support}</small>
+            <ChevronRight size={15}/>
+          </button>
+        )}
+      </div>
+      <p className={styles.disclosure}>Other networks are not yet connected to CAREL Portfolio. Bitcoin support currently uses the Testnet4 registry.</p>
+    </section>}
+
+    <section className={styles.valueCard} aria-label="Observed wallet balance">
       <div className={styles.portfolioTopLine}>
-        <span>Observed STRK balance</span>
-        <span className={styles.verifiedNetwork}>Starknet wallet</span>
+        <span>{privateRevealed ? "Observed STRK · public + revealed private" : "Observed public STRK"}</span>
+        <span className={styles.verifiedNetwork}>STRK</span>
       </div>
       <div className={styles.primaryBalance}>
         <strong>{visibleStrk}</strong><span>STRK</span>
       </div>
-      <div className={styles.valuationNotice}>Valuation unavailable · No verified multi-asset price feed connected</div>
+      {!privateRevealed && <div className={styles.privateStatus}>
+        <span><EyeOff size={15}/> Private balance not revealed — total is unknown</span>
+        <button type="button" disabled={!canRevealPrivate} onClick={onRevealPrivate}>
+          {canRevealPrivate ? "Reveal" : "Unavailable"} <ArrowRight size={13}/>
+        </button>
+      </div>}
+      {availableShare !== null && <div className={styles.heroPrivacy}>
+        <div><span>Privacy allocation</span><strong>{availableShare.toFixed(1)}% private</strong></div>
+        <div className={styles.privacyBar} role="img" aria-label={`Private ${availableShare.toFixed(1)}%, public ${(100 - availableShare).toFixed(1)}%`}>
+          <span style={{width: `${availableShare}%`}}/>
+        </div>
+      </div>}
+      {hideAmounts && <p className={styles.privacyHidden}>Balances hidden in Settings</p>}
       {chart && <div className={styles.actualHistory}><p>Observed STRK balance history · not USD returns</p>{chart}</div>}
       <div className={styles.heroBottom}>
-        <span><Shield size={14}/> Private DeFi overview</span>
-        <button type="button" onClick={onAgent}>Ask CAREL <ArrowRight size={15}/></button>
+        <span>USD value unavailable</span>
+        <button type="button" onClick={() => onNetwork("starknet")}>Wallet details <ArrowRight size={14}/></button>
       </div>
     </section>
-
-    <div className={styles.stats}>
-      <div><strong>{chain ? 1 : 0}</strong><span>Connected networks</span></div>
-      <div><strong>{observed.length}</strong><span>Observed assets</span></div>
-      <div><strong>{hideAmounts ? "••" : positions.length}</strong><span>Detected positions</span></div>
-    </div>
 
     <div className={styles.quickActions} aria-label="Private DeFi actions">
       <button type="button" onClick={onShield} disabled={!canPrivacyAction}><Shield size={19}/>Shield</button>
       <button type="button" onClick={onUnshield} disabled={!canPrivacyAction}><EyeOff size={19}/>Unshield</button>
-      <button type="button" onClick={onAgent}><Bot size={19}/>Ask CAREL</button>
+      <button type="button" className={styles.agentAction} onClick={onAgent}><Bot size={19}/>Ask CAREL</button>
     </div>
-
-    <section className={styles.privacyCard}>
-      <div className={styles.sectionTop}><h2>Privacy allocation</h2><span className={styles.privacyScope}>STRK only</span></div>
-      {availableShare === null ? (
-        <div className={styles.privacyUnknown}><EyeOff size={19}/><span>Allocation hidden or not revealed. Open Starknet to review privacy settings.</span></div>
-      ) : (
-        <>
-          <div className={styles.privacyValues}>
-            <strong>{availableShare.toFixed(1)}% <span>Private</span></strong>
-            <span>{(100 - availableShare).toFixed(1)}% Public</span>
-          </div>
-          <div className={styles.privacyBar} role="img" aria-label={`Private ${availableShare.toFixed(1)}%, public ${(100 - availableShare).toFixed(1)}%`}>
-            <span style={{width: `${availableShare}%`}}/>
-          </div>
-        </>
-      )}
-      <button type="button" className={styles.privacyLink} onClick={() => onNetwork("starknet")}>View privacy details <ArrowRight size={15}/></button>
-    </section>
 
     <section className={styles.section}>
       <div className={styles.sectionTop}>
         <h2>Your assets</h2>
         {others.length > 0 && <button type="button" onClick={() => setShowAllAssets(x => !x)}>
-          {showAllAssets ? "Show active only" : `Show all assets (${holdings.length})`} <ArrowRight size={14}/>
+          {showAllAssets ? "Active only" : "Show all assets"} <ArrowRight size={14}/>
         </button>}
       </div>
       <div className={styles.rows}>
@@ -125,7 +146,7 @@ export function PortfolioOverview({
             <TokenIcon symbol={holding.asset.symbol}/>
             <span className={styles.rowCopy}>
               <strong>{holding.asset.symbol}</strong>
-              <small>{holding.asset.symbol.toUpperCase() === "XSTRK" ? "Endur · Liquid staking receipt" : holding.asset.name}</small>
+              <small>{holding.asset.symbol.toUpperCase() === "XSTRK" ? "Endur · liquid staking receipt" : holding.asset.name}</small>
             </span>
             <span className={styles.rowAmount}>
               <strong>{formatPortfolioAmount(holding.observedAmount, holding.asset, hideAmounts)}</strong>
@@ -133,56 +154,42 @@ export function PortfolioOverview({
             </span>
             <ChevronRight size={15} className={styles.chevron}/>
           </button>
-        ) : <p className={styles.empty}>No positive assets currently observed. Unrevealed private balances are not treated as zero.</p>}
+        ) : <p className={styles.empty}>No positive balances observed yet. Unrevealed private assets are not treated as zero.</p>}
       </div>
-      <p className={styles.disclosure}>Only observed assets from the connected Starknet wallet are listed. Other networks are not yet connected.</p>
+      {!privateRevealed && !hideAmounts && <p className={styles.inlineHint}>Private assets may appear after you explicitly reveal their balances.</p>}
     </section>
 
     <section className={styles.section}>
-      <div className={styles.sectionTop}><h2>DeFi positions</h2><span className={styles.privacyScope}>{hideAmounts ? "Hidden" : `${positions.length} detected`}</span></div>
-      {positions.length ? positions.map(position =>
+      <div className={styles.sectionTop}><h2>DeFi positions</h2><span className={styles.privacyScope}>{hideAmounts ? "Hidden" : positionSummary}</span></div>
+      {positionsLoading && <p className={styles.inlineHint} role="status">Checking supported DeFi positions…</p>}
+      {positions.length > 0 ? positions.map(position =>
         <div className={styles.positionCard} key={position.id}>
           <div className={styles.positionCardHead}>
             <TokenIcon symbol={position.asset.symbol}/>
             <div><strong>{position.label}</strong><small>{position.protocol} · {position.kind.replaceAll("-", " ")}</small></div>
-            <span className={styles.positionStatus}>{position.visibility === "private" ? "Private" : position.visibility}</span>
+            {!hideAmounts && <span className={styles.positionStatus}>{position.visibility}</span>}
           </div>
           <div className={styles.positionCardBottom}>
             <span>{formatPortfolioAmount(position.amount, position.asset, hideAmounts)} {position.asset.symbol}</span>
-            <button type="button" onClick={() => onAsset(position.asset.id)}>Details <ChevronRight size={15}/></button>
+            <button type="button" onClick={() => onAsset(position.asset.id)}>Manage details <ChevronRight size={15}/></button>
           </div>
         </div>
-      ) : <p className={styles.empty}>No supported DeFi positions detected yet.</p>}
-      <p className={styles.disclosure}>Positions can represent receipt tokens already held. They are not additional holdings.</p>
+      ) : !positionsLoading && <div className={styles.positionEmpty}>
+        <span>{positionsWarning ? "Some positions could not be loaded." :
+          !privateRevealed ? "Private positions are not yet visible." : "No supported positions detected."}</span>
+        {positionsWarning && <button type="button" onClick={onRetryPositions}>Retry <ArrowRight size={14}/></button>}
+        {!positionsWarning && !privateRevealed && <button type="button" onClick={() => onNetwork("starknet")}>Privacy details <ArrowRight size={14}/></button>}
+      </div>}
+      {positionsWarning && <p className={styles.inlineHint} role="status">Position data incomplete. Retry or review network details.</p>}
+      {positions.length > 0 && <p className={styles.inlineHint}>Receipt tokens in Assets can represent these same positions; they are not additional holdings.</p>}
     </section>
 
-    <section className={styles.insightCard}>
-      <div className={styles.insightTitle}><Sparkles size={18}/><h2>CAREL Insights</h2></div>
-      <p>{hideAmounts
-        ? "Portfolio amounts are hidden. Open Agent for a goal-based review."
-        : privatePositions.length > 0
-          ? `${privatePositions.length} detected private ${privatePositions.length === 1 ? "position" : "positions"} available for review.`
-          : positions.length > 0
-            ? `${positions.length} DeFi ${positions.length === 1 ? "position" : "positions"} detected. Review details before planning actions.`
-            : "Your connected wallet is ready for an Agent plan review."}</p>
-      <button type="button" onClick={onAgent}>Review with CAREL <ArrowRight size={16}/></button>
-      <small>Read-only insight · No automatic transactions or return predictions</small>
-    </section>
-
-    <section className={styles.section} id="carel-network-options">
-      <h2>Networks</h2>
-      <div className={styles.networks}>
-        {PORTFOLIO_NETWORKS.map(network =>
-          <button type="button" className={network.id === "starknet" && chain ? styles.live : styles.pending}
-            key={network.id} onClick={() => onNetwork(network.id)}>
-            <strong>{network.label}</strong>
-            <small>{network.id === "starknet" && chain ? "Connected" : network.support}</small>
-            <ChevronRight size={15} aria-hidden="true"/>
-          </button>
-        )}
-      </div>
-      <p className={styles.disclosure}>{walletLabel} · Starknet wallet only. Registered ecosystems are not wallet connections. {chain?.network === "testnet" ? "Testnet balances are excluded from production valuation." : ""}</p>
-    </section>
+    {positions.length > 0 && !hideAmounts && <section className={styles.insightStrip}>
+      <Sparkles size={16}/>
+      <div><strong>CAREL Insights</strong><span>{positions.length} supported ${positions.length === 1 ? "position" : "positions"} ready for a goal-based review.</span></div>
+      <button type="button" onClick={onAgent} aria-label="Review positions with CAREL"><ArrowRight size={17}/></button>
+    </section>}
+    <p className={styles.footerScope}>{walletLabel} · Starknet wallet only · Other networks not connected · No automatic wallet approvals</p>
   </div>;
 }
 
