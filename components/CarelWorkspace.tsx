@@ -1365,6 +1365,11 @@ export function CarelApp() {
     if (wallet.connected && portfolioView === "network" && portfolioNetworkFocus !== "starknet") return <PortfolioUnavailableNetwork focus={portfolioNetworkFocus} onBack={backToPortfolioOverview}/>;
     const privateShare = total !== null && total > ZERO && privateBalance !== null ? Number(privateBalance * BigInt(10000) / total) / 100 : null;
     const hasRecordedHistory = observations.owner === sessionKey && observations.points.filter(point => point.ts >= Date.now() - 30 * 86400000).length >= 2;
+    const activeHoldings = portfolioHoldings.filter(holding => holding.observedAmount !== null && holding.observedAmount > ZERO);
+    const visibleHoldings = portfolioShowAllAssets ? [
+      ...activeHoldings,
+      ...portfolioHoldings.filter(holding => holding.observedAmount === null || holding.observedAmount <= ZERO),
+    ] : activeHoldings;
     if (!wallet.connected) {
       return (
         <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
@@ -1473,11 +1478,8 @@ export function CarelApp() {
           </button>
         </SectionHeading>
 
-        {portfolioHoldings.length ? (
-          (portfolioShowAllAssets
-            ? [...portfolioHoldings].sort((a, b) => Number((b.observedAmount ?? 0n) > 0n) - Number((a.observedAmount ?? 0n) > 0n))
-            : portfolioHoldings.filter(holding => holding.observedAmount !== null && holding.observedAmount > 0n)
-          ).map(
+        {visibleHoldings.length ? (
+          visibleHoldings.map(
             (holding) => (
               <button
                 type="button"
@@ -1523,7 +1525,7 @@ export function CarelApp() {
         ) : (
           <div className={styles.portfolioEmptyLine}>
             <WalletCards size={19} aria-hidden="true"/>
-            <div><strong>No balances available yet</strong><p>Refresh your wallet or check the supported network.</p></div>
+            <div><strong>No positive holdings currently observed</strong><p>Use Show all assets to view available tokens, or refresh wallet balances. Unrevealed private assets are not assumed to be zero.</p></div>
           </div>
         )}
       </section>
