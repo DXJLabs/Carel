@@ -1239,3 +1239,42 @@
 .portfolioTabPanel .portfolioEmptyLine button{margin-top:10px;min-height:37px}
 @keyframes portfolioPanelIn{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.portfolioTabPanel{animation:none}.portfolioNetworkTabs button{transition:none}}
+
+/* CAREL Agent: keep the goal and real Swap action in one visual flow. */
+.app[data-current-tab="agent"] .main{padding-top:13px;padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+.agentPage .agentIntro{margin:4px 0 13px}
+.agentPage .agentIntro h1{font-size:clamp(27px,7vw,34px);line-height:1.16;max-width:370px;letter-spacing:-.04em}
+.agentPage .agentIntro .eyebrow{font-size:10px;letter-spacing:.13em;margin-bottom:8px}
+.agentPage .agentIntro>p:last-child{font-size:11px;max-width:380px;line-height:1.5;margin-top:7px}
+.agentPage .agentComposer{padding:13px 14px 11px;border-radius:15px;border-color:#433533;box-shadow:none}
+.agentPage .agentComposer>label{font-size:11px}
+.agentPage .agentGoalInput{min-height:62px;max-height:135px;padding-bottom:6px;font-size:15px!important;line-height:1.5}
+.agentInputRow>button{bottom:5px}
+.agentPage .agentModeRow{margin-top:1px;padding-top:8px;gap:7px}
+.agentPage .agentModeRow .modeButton{min-height:36px;padding:6px 10px;font-size:11px!important;gap:6px}
+.agentPage .agentModeRow .modeButton svg{width:14px;height:14px}
+.agentPage .agentRouteHint{font-size:10px;line-height:1.45}
+.agentPage .agentTools{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;gap:7px;margin-top:11px;padding-bottom:5px}
+.agentPage .agentTools::-webkit-scrollbar{display:none}
+.agentPage .agentTools button{min-height:39px;flex:0 0 auto;padding:7px 10px;border-radius:10px;display:flex;flex-direction:row;align-items:center;gap:6px;font-size:11px!important}
+.agentPage .agentTools button svg{width:15px;height:15px;flex-shrink:0}
+.agentPage .agentPrimary{min-height:47px;margin-top:10px;font-size:13px!important;border-radius:12px}
+.agentPage .agentPrimary svg{width:17px;height:17px}
+.agentSwapReady{display:flex;gap:10px;align-items:flex-start;border:1px solid #543d30;background:#2a1e1a;border-radius:12px;padding:10px 12px;margin:11px 0}
+.agentSwapReady>svg{color:#ff914f;flex-shrink:0;margin-top:3px}
+.agentSwapReady strong{display:block;font-size:12px;color:#ffe7d6;font-weight:650}
+.agentSwapReady span{display:block;font-size:10px;line-height:1.5;color:#b8aba2;margin-top:3px}
+.agentPage .agentExecutionSurface{margin-top:10px;scroll-margin-top:87px}
+.agentPage .agentPlanSummary{margin:13px 0}
+@media(max-width:580px){
+ .agentPage .agentIntro h1{font-size:clamp(27px,7vw,33px)}
+ .agentPage .agentComposer{padding:12px 13px}
+ .agentPage .agentGoalInput{min-height:62px;font-size:15px!important}
+ .agentPage .agentTools button{min-height:39px;padding-inline:10px}
+ .agentPage .agentPrimary{min-height:47px}
+}
+@media(max-width:359px){
+ .agentPage .agentTools{display:flex;grid-template-columns:none}
+ .agentPage .agentGoalInput{font-size:14px!important}
+ .agentPage .agentModeRow .modeButton{padding-inline:9px}
+}
