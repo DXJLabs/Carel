@@ -142,3 +142,70 @@
 @media(prefers-reduced-motion:reduce){.privacyBar>span{animation:none}}
 
 #carel-network-options{scroll-margin-top:115px}
+
+/* v3: compact agentic portfolio on narrow mobile wallet webviews. */
+.cockpit{padding:0 0 14px}
+.cockpit .hero{align-items:center;gap:12px;margin:0 0 13px}
+.cockpit .hero h1{font-size:clamp(30px,7vw,37px);line-height:1.15}
+.cockpit .hero p{margin:5px 0 0;font-size:11px}
+.cockpit .scope{display:inline-flex;align-items:center;gap:5px;min-height:39px;font-size:11px;padding:8px 9px;border-radius:11px;background:#211b19;border-color:#4d3931}
+.cockpit .scope svg{color:#f89968}
+.networkMenu{border:1px solid #483830;background:#1c1a1c;border-radius:14px;padding:13px;box-shadow:0 15px 30px #0008;margin:0 0 15px}
+.networkMenu>h2{font-size:13px;font-weight:650;margin:0 0 12px}
+.networkMenu .networks button{min-height:61px;padding:10px}
+.networkMenu .networks strong{font-size:12px}
+.networkMenu .networks small{font-size:10px}
+.cockpit .valueCard{padding:18px 17px 15px;border-radius:18px;box-shadow:none;background:radial-gradient(ellipse at -25% -30%,#8a3f2236,transparent 80%),#1d1a1b}
+.cockpit .portfolioTopLine{font-size:11px;line-height:1.4;color:#beb2ad}
+.cockpit .verifiedNetwork{font-size:10px;color:#9f9896}
+.cockpit .primaryBalance{gap:8px;margin:8px 0 7px}
+.cockpit .primaryBalance strong{font-size:clamp(34px,9vw,41px);line-height:1.15}
+.cockpit .primaryBalance span{font-size:12px}
+.cockpit .heroBottom{margin-top:12px;padding-top:10px;align-items:center}
+.cockpit .heroBottom>span{color:#9f9894;font-size:10px}
+.cockpit .heroBottom button{font-size:11px;min-height:30px}
+.privateStatus{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;margin-top:10px;background:#2b231f;border-radius:10px;border:1px solid #4b3831}
+.privateStatus>span{display:flex;align-items:center;gap:7px;font-size:10px;line-height:1.45;color:#dbc6b9;max-width:72%}
+.privateStatus>span svg{flex-shrink:0;color:#ea8853}
+.privateStatus button{display:flex;align-items:center;gap:2px;border:0;background:#a64520;color:#fff;padding:7px;border-radius:7px;font-size:10px;cursor:pointer;white-space:nowrap}
+.privateStatus button:disabled{opacity:.55;cursor:not-allowed}
+.heroPrivacy{margin:10px 0 2px}
+.heroPrivacy>div:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:#c3b5ad;margin-bottom:9px}
+.heroPrivacy strong{color:#ff9558;font-size:12px;font-variant-numeric:tabular-nums}
+.heroPrivacy .privacyBar{height:7px}
+.privacyHidden{color:#beb4ae;margin:9px 0 0;font-size:10px}
+.cockpit .quickActions{gap:8px;margin:11px 0 17px}
+.cockpit .quickActions button{min-height:64px;border-radius:12px;gap:5px;background:#1b1c1e;border-color:#3a3433;font-size:11px}
+.cockpit .quickActions button svg{width:18px;height:18px}
+.cockpit .quickActions button.agentAction{background:linear-gradient(130deg,#cf4c16,#f26428);border-color:#f17948;color:#fff;font-weight:650}
+.cockpit .quickActions button.agentAction svg{color:#fff}
+.cockpit .section{margin-top:17px}
+.cockpit .sectionTop{min-height:36px;align-items:center;margin-bottom:6px}
+.cockpit .sectionTop h2{margin:0;font-size:17px}
+.cockpit .sectionTop button{min-height:36px;max-width:51%;font-size:10px;text-align:right}
+.cockpit .rows{border:1px solid #302d30;background:#161719;border-radius:13px}
+.cockpit .assetRow{min-height:63px;gap:10px;padding:9px 11px}
+.cockpit .rowCopy strong{font-size:13px}
+.cockpit .rowCopy small{font-size:11px;color:#ada49f}
+.cockpit .rowAmount strong{font-size:13px}
+.cockpit .disclosure{font-size:10px}
+.inlineHint{margin:9px 0 0;font-size:11px;line-height:1.55;color:#afa6a2}
+.cockpit .privacyScope{font-size:10px;max-width:45%;text-align:right;line-height:1.4}
+.positionEmpty{display:flex;gap:10px;align-items:center;justify-content:space-between;border-radius:12px;padding:12px;background:#191a1b;border:1px solid #323034;color:#bcb0a8;font-size:11px;line-height:1.5}
+.positionEmpty span{flex:1;min-width:0}
+.positionEmpty button{display:flex;align-items:center;gap:4px;white-space:nowrap;border:0;background:none;color:#f59a69;padding:5px;cursor:pointer;font-size:11px}
+.cockpit .positionCard{padding:12px;margin-top:7px;border-radius:13px}
+.cockpit .positionCardBottom{margin-top:10px;padding-top:9px}
+.insightStrip{display:flex;align-items:center;gap:11px;padding:13px;margin-top:14px;background:#221b19;border:1px solid #5e3c30;border-radius:13px}
+.insightStrip>svg{flex-shrink:0;color:#ffa068}
+.insightStrip>div{flex:1;min-width:0}
+.insightStrip strong{display:block;font-size:12px}
+.insightStrip span{display:block;color:#bfb0a8;font-size:10px;margin-top:3px;line-height:1.45}
+.insightStrip button{background:none;color:#ffa068;border:0;cursor:pointer;padding:9px;display:grid;place-items:center}
+.footerScope{font-size:10px;line-height:1.5;color:#817d7d;margin:14px 0 0}
+@media(max-width:360px){
+  .cockpit .hero h1{font-size:29px}
+  .cockpit .scope{font-size:10px}
+  .privateStatus>span{font-size:9px}
+  .cockpit .quickActions button{min-height:60px;font-size:10px}
+}
