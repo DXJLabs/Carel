@@ -101,13 +101,13 @@ export function PortfolioOverview({
 
     <section className={styles.valueCard} aria-label="Observed wallet balance">
       <div className={styles.portfolioTopLine}>
-        <span>{privateRevealed ? "Observed STRK · public + revealed private" : "Observed public STRK"}</span>
-        <span className={styles.verifiedNetwork}>STRK</span>
+        <span>{hideAmounts ? "Observed balance" : privateRevealed ? "Observed STRK · public + revealed private" : "Observed public STRK"}</span>
+        <span className={styles.verifiedNetwork}>{hideAmounts ? "Hidden" : privateRevealed ? "Public + private" : "Public only"}</span>
       </div>
       <div className={styles.primaryBalance}>
         <strong>{visibleStrk}</strong><span>STRK</span>
       </div>
-      {!privateRevealed && <div className={styles.privateStatus}>
+      {!privateRevealed && !hideAmounts && <div className={styles.privateStatus}>
         <span><EyeOff size={15}/> Private balance not revealed — total is unknown</span>
         <button type="button" disabled={!canRevealPrivate} onClick={onRevealPrivate}>
           {canRevealPrivate ? "Reveal" : "Unavailable"} <ArrowRight size={13}/>
