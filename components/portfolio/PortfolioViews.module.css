@@ -114,8 +114,8 @@
 .privacyValues strong span{color:#c7b7b0;font-size:12px;font-weight:400}
 .privacyValues>span{color:#b8aca7;font-size:11px;font-variant-numeric:tabular-nums}
 .privacyBar{height:9px;border-radius:100px;background:#737075;overflow:hidden}
-.privacyBar>span{display:block;height:100%;background:#f46b2b;border-radius:100px;animation:fillPrivacy .8s ease-out}
-@keyframes fillPrivacy{from{max-width:0}}
+.privacyBar>span{display:block;height:100%;background:#f46b2b;border-radius:100px;transform-origin:left center;animation:fillPrivacy .8s ease-out}
+@keyframes fillPrivacy{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .privacyUnknown{display:flex;align-items:center;gap:10px;min-height:48px;color:#b7ada6;font-size:12px;line-height:1.5}
 .privacyUnknown svg{flex-shrink:0;color:#e47a49}
 .privacyLink{display:inline-flex;align-items:center;gap:7px;min-height:37px;margin-top:10px;background:none;border:0;color:#ffa270;padding:6px 0;font-size:11px;cursor:pointer}
@@ -140,3 +140,5 @@
 .unverifiedIcon{font-size:8px!important;color:#eeb3a1;letter-spacing:-.03em;white-space:nowrap}
 @media(max-width:360px){.quickActions{gap:6px}.quickActions button{font-size:11px}.heroBottom{flex-wrap:wrap}.positionStatus{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.privacyBar>span{animation:none}}
+
+#carel-network-options{scroll-margin-top:115px}
