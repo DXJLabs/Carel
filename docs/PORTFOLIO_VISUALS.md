@@ -6,7 +6,8 @@ Portfolio rows show SVG icons shipped locally from `public/token-icons/`, not re
 Source: [Open Crypto Icons](https://github.com/essamamdani/open-crypto-icons) by essamamdani (colored SVG set, `gh-pages` branch). The upstream project describes these assets as free for personal and commercial use. Third-party marks remain the property of their respective owners.
 
 - `strk.svg`, `usdc.svg`, `eth.svg`, `usdt.svg`, `wbtc.svg`, `btc.svg` are copied from that set.
-- `xSTRK` shows the STRK icon with a small `x` derivative badge; `strkBTC` shows BTC with a small `s` derivative badge. **Neither is represented as an officially sourced derivative-token logo.** Replace with verified contract-address-specific art when available.
+- `xstrk.svg` uses the Endur issuer icon shown alongside xSTRK in Endur-fi/client src/components/Icons.tsx (`endurLogo`).
+- `strkbtc.svg` uses Endur-fi/client public/strkbtc.svg. Both are attributed to the issuing protocol; artwork use does not imply endorsement or ownership.
 - Unknown tokens retain a visible monogram, and missing images fall back gracefully.
 - Assets remain identified by CAREL's chain-specific asset registry. Icon symbols affect only presentation, never token routing.
 
