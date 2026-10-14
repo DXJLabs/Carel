@@ -98,10 +98,10 @@ test("Portfolio offers navigable All Networks, network detail and per-asset deta
 });
 
 test("All Networks cannot fabricate prices, APR or unsupported balances", () => {
-  assert.match(multichainSource, /Valuation unavailable/);
+  assert.match(multichainSource, /USD value unavailable/);
   assert.match(multichainSource, /Not connected to CAREL Portfolio/);
   assert.match(multichainSource, /Only observed assets from the connected Starknet wallet are listed/);
-  assert.match(multichainSource, /No verified multi-asset price feed/);
+  assert.match(multichainSource, /USD value unavailable/);
   assert.doesNotMatch(multichainSource, /2,845\.32|1,658\.42|538\.12|7\.2%/);
   assert.ok(multichainSource.indexOf('PORTFOLIO_NETWORKS') >= 0);
 });
@@ -133,16 +133,16 @@ test("Portfolio views have scoped mobile styles and valid TSX syntax", () => {
   assert.match(multiCSS, /@media\(max-width:360px\)/);
 });
 
-test("Agentic DeFi overview keeps USD valuation secondary and factual", () => {
-  assert.match(multichainSource, /CAREL · PRIVATE DEFI/);
-  assert.match(multichainSource, /Observed STRK balance/);
-  assert.match(multichainSource, /Valuation unavailable/);
-  assert.match(multichainSource, /CAREL Insights/);
-  assert.match(multichainSource, /Read-only insight/);
+test("Agentic DeFi overview prioritizes observed balance and actual Agent action", () => {
   const overview = multichainSource.slice(multichainSource.indexOf("export function PortfolioOverview("), multichainSource.indexOf("export function PortfolioUnavailableNetwork("));
+  assert.match(overview, /Observed public STRK/);
+  assert.match(overview, /Observed STRK · public \+ revealed private/);
+  assert.match(overview, /USD value unavailable/);
+  assert.match(overview, /CAREL Insights/);
+  assert.match(overview, /onAgent/);
   assert.doesNotMatch(overview, /Total portfolio value/);
-  assert.match(overview, /positions\.filter\(position => position\.visibility === "private"\)/);
-  assert.match(overview, /hideAmounts\s*\?\s*"Portfolio amounts are hidden/);
+  assert.doesNotMatch(overview, /className=\{styles\.stats\}/);
+  assert.match(overview, /hideAmounts && <p className=\{styles\.privacyHidden\}/);
 });
 
 test("Portfolio asset lists default to observed positives, with Show all action", () => {
@@ -158,7 +158,7 @@ test("Private allocation cannot be shown without opt-in reveal or when hidden", 
   assert.match(source, /!hideAmounts && wallet\.privateRevealed/);
   assert.match(source, /wallet\.publicStrk !== null && privateBalance !== null/);
   assert.match(multichainSource, /privacyShare !== null && Number\.isFinite\(privacyShare\)/);
-  assert.match(multichainSource, /Allocation hidden or not revealed/);
+  assert.match(multichainSource, /Private balance not revealed/);
   assert.match(source, /position\.borrow && !hideAmounts/);
 });
 
@@ -181,4 +181,40 @@ test("xSTRK and strkBTC use issuer artwork rather than substitute token marks", 
   assert.match(issuerSvg, /<svg/);
   assert.match(btcSvg, /<svg/);
   assert.doesNotMatch(issuerSvg + btcSvg, /<script|onload=|<foreignObject/i);
+});
+
+test("Portfolio differentiates unrevealed private assets from total balance", () => {
+  assert.match(multichainSource, /Private balance not revealed — total is unknown/);
+  assert.match(multichainSource, /privateRevealed \? "Observed STRK/);
+  assert.match(multichainSource, /privateRevealed && privacyShare !== null/);
+  assert.match(multichainSource, /Private positions are not yet visible/);
+  assert.match(source, /onRevealPrivate=\{\(\) => void run\(\(\) => wallet\.revealPrivateBalance\(\)\)\}/);
+  assert.match(source, /positionsLoading=\{portfolioPositionsLoading\}/);
+  assert.match(source, /positionsWarning=\{portfolioPositionWarning\}/);
+});
+
+test("Network chooser expands at header without duplicate global banner", () => {
+  const view = multichainSource.slice(multichainSource.indexOf("export function PortfolioOverview("), multichainSource.indexOf("export function PortfolioUnavailableNetwork("));
+  assert.match(view, /showNetworks, setShowNetworks/);
+  assert.match(view, /aria-expanded=\{showNetworks\}/);
+  assert.match(view, /aria-controls="carel-network-options"/);
+  assert.match(view, /showNetworks && <section/);
+  assert.match(source, /tab !== "portfolio" && <div className=\{styles\.networkLine\}/);
+});
+
+test("Pending or inaccessible private positions are never labelled verified zero", () => {
+  assert.match(multichainSource, /positionsLoading \? "Checking positions"/);
+  assert.match(multichainSource, /positionsWarning \? "Positions partially unavailable"/);
+  assert.match(multichainSource, /"Private positions not checked"/);
+  assert.match(multichainSource, /onRetryPositions/);
+  assert.match(multichainSource, /Private positions are not yet visible/);
+});
+
+test("Compact mobile Portfolio retains wallet review and removes feature grid", () => {
+  const workspaceCSS = fs.readFileSync(path.join(__dirname, "..", "components", "CarelWorkspace.module.css"), "utf8");
+  assert.match(multiCSS, /\.cockpit \.quickActions button\.agentAction/);
+  assert.match(multiCSS, /\.privateStatus/);
+  assert.match(workspaceCSS, /\.app\[data-current-tab="portfolio"\] \.main/);
+  assert.match(source, /setQuickAction\(action\)/);
+  assert.doesNotMatch(source, /aria-label="Portfolio features"/);
 });
