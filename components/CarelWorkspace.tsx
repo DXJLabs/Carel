@@ -1380,15 +1380,13 @@ export function CarelApp() {
       return (
         <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
           <div className={`${styles.intro} ${styles.portfolioIntro}`}>
-            <p className={styles.eyebrow}>CAREL PORTFOLIO</p>
             <h1>Portfolio<span className={styles.portfolioTitleDot}>.</span></h1>
-            <p>Your assets, with clarity.</p>
+            <p>Private DeFi, in your control.</p>
           </div>
           <section className={styles.portfolioWelcome}>
-            <div className={styles.portfolioWelcomeIcon}><WalletCards size={29} aria-hidden="true"/></div>
-            <span className={styles.portfolioEyebrow}>YOUR WALLET, YOUR CONTROL</span>
+            <div className={styles.portfolioWelcomeIcon}><WalletCards size={25} aria-hidden="true"/></div>
             <h2>See what you own.</h2>
-            <p>Connect a supported Starknet wallet to view observed balances, privacy allocation, and available DeFi positions.</p>
+            <p>Connect your wallet to view assets, private balances you choose to reveal, and supported DeFi positions.</p>
             <button type="button" className={`${styles.primary} ${styles.portfolioConnect}`} disabled={wallet.connecting}
               onClick={() => void run(() => wallet.connect())}>
               {wallet.connecting ? <LoaderCircle size={19} aria-hidden="true"/> : <WalletCards size={19} aria-hidden="true"/>}
@@ -1399,11 +1397,7 @@ export function CarelApp() {
               <span>Viewing balances does not authorize transactions.</span>
             </div>
           </section>
-          <div className={styles.portfolioFeatures} aria-label="Portfolio features">
-            <div><WalletCards size={17} aria-hidden="true"/><span>Assets</span></div>
-            <div><EyeOff size={17} aria-hidden="true"/><span>Privacy</span></div>
-            <div><Layers3 size={17} aria-hidden="true"/><span>Positions</span></div>
-          </div>
+
         </div>
       );
     }
