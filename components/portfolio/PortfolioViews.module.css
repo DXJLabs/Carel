@@ -86,3 +86,57 @@
 @media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
 .pending{border-color:#39373b;background:#18191b}
+
+/* Agentic Private DeFi overview: financial hierarchy without invented valuations. */
+.hero{margin:2px 0 19px}
+.hero .scope{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.portfolioTopLine{display:flex;justify-content:space-between;align-items:center;gap:9px;color:#cdbcb3;font-size:12px}
+.verifiedNetwork{display:inline-block;font-size:10px;color:#a59a96}
+.primaryBalance{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:13px 0}
+.primaryBalance strong{font-size:clamp(34px,8.5vw,44px);font-weight:750;color:#fff;letter-spacing:-.048em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.primaryBalance span{color:#c4b2a7;font-size:14px}
+.valuationNotice{font-size:10px;color:#bba89e;line-height:1.5;max-width:440px}
+.heroBottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #4b3830;margin-top:16px;padding-top:12px}
+.heroBottom>span{display:flex;align-items:center;gap:7px;font-size:11px;color:#bfb0a6}
+.heroBottom svg{color:#ff925e}
+.heroBottom button{display:flex;align-items:center;gap:6px;border:0;color:#ff995d;background:none;padding:7px 0;font-size:12px;cursor:pointer}
+.quickActions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:17px 0 22px}
+.quickActions button{display:flex;align-items:center;justify-content:center;gap:7px;flex-direction:column;min-width:0;min-height:78px;border:1px solid #543b33;border-radius:14px;background:linear-gradient(145deg,#2b211e,#18191b);color:#efe7e2;font:inherit;font-size:12px;cursor:pointer}
+.quickActions button svg{color:#ff8a4e}
+.quickActions button:disabled{opacity:.45;cursor:not-allowed}
+.quickActions button:focus-visible,.privacyLink:focus-visible,.positionCardBottom button:focus-visible,.insightCard button:focus-visible{outline:2px solid #ff9b62;outline-offset:2px}
+.privacyCard{border:1px solid #443633;background:linear-gradient(145deg,#201c1e,#17181a);border-radius:16px;padding:17px;margin:0 0 25px}
+.privacyCard .sectionTop{margin-bottom:11px}
+.privacyCard .sectionTop h2{margin:0;font-size:17px}
+.privacyScope{font-size:10px;color:#af9d94}
+.privacyValues{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:15px 0 12px}
+.privacyValues strong{font-size:20px;color:#ff995c;font-variant-numeric:tabular-nums}
+.privacyValues strong span{color:#c7b7b0;font-size:12px;font-weight:400}
+.privacyValues>span{color:#b8aca7;font-size:11px;font-variant-numeric:tabular-nums}
+.privacyBar{height:9px;border-radius:100px;background:#737075;overflow:hidden}
+.privacyBar>span{display:block;height:100%;background:#f46b2b;border-radius:100px;animation:fillPrivacy .8s ease-out}
+@keyframes fillPrivacy{from{max-width:0}}
+.privacyUnknown{display:flex;align-items:center;gap:10px;min-height:48px;color:#b7ada6;font-size:12px;line-height:1.5}
+.privacyUnknown svg{flex-shrink:0;color:#e47a49}
+.privacyLink{display:inline-flex;align-items:center;gap:7px;min-height:37px;margin-top:10px;background:none;border:0;color:#ffa270;padding:6px 0;font-size:11px;cursor:pointer}
+.sectionTop{gap:9px}
+.sectionTop button{text-align:right}
+.positionCard{background:linear-gradient(145deg,#221c1b,#17181b);border:1px solid #4a3731;border-radius:15px;padding:14px;margin-top:9px}
+.positionCardHead{display:flex;align-items:center;gap:11px;min-width:0}
+.positionCardHead>div{flex:1;min-width:0}
+.positionCardHead strong{display:block;font-size:13px;font-weight:640;line-height:1.4}
+.positionCardHead small{display:block;font-size:11px;color:#b2a5a0;margin-top:4px}
+.positionStatus{padding:5px 7px;border-radius:7px;border:1px solid #72442f;color:#ffaf7c;background:#412518;font-size:10px;white-space:nowrap;text-transform:capitalize}
+.positionCardBottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #45322b;padding-top:12px;margin-top:14px;font-size:13px;font-variant-numeric:tabular-nums}
+.positionCardBottom>span{overflow-wrap:anywhere}
+.positionCardBottom button{display:flex;align-items:center;gap:5px;padding:8px 10px;border:1px solid #714530;border-radius:9px;color:#ffaf7f;background:#352018;cursor:pointer;font-size:11px}
+.insightCard{background:radial-gradient(ellipse at 0 0,#69371942,transparent 74%),#201a18;border:1px solid #69412f;border-radius:17px;padding:18px;margin-top:23px}
+.insightTitle{display:flex;align-items:center;gap:9px}
+.insightTitle svg{color:#ff914c}
+.insightTitle h2{margin:0;font-size:16px}
+.insightCard>p{color:#c2b3a9;font-size:12px;line-height:1.6;margin:12px 0}
+.insightCard button{display:flex;align-items:center;gap:7px;color:#ffaa71;background:none;border:0;cursor:pointer;font-weight:600;font-size:12px;padding:7px 0}
+.insightCard>small{display:block;margin-top:10px;color:#9e9692;font-size:10px;line-height:1.5}
+.unverifiedIcon{font-size:8px!important;color:#eeb3a1;letter-spacing:-.03em;white-space:nowrap}
+@media(max-width:360px){.quickActions{gap:6px}.quickActions button{font-size:11px}.heroBottom{flex-wrap:wrap}.positionStatus{font-size:9px}}
+@media(prefers-reduced-motion:reduce){.privacyBar>span{animation:none}}
