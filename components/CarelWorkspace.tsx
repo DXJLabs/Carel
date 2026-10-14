@@ -127,23 +127,20 @@ const LOCAL_TOKEN_ICON: Readonly<Record<string, string>> = {
   USDT: "usdt",
   WBTC: "wbtc",
   BTC: "btc",
-  XSTRK: "strk",
-  STRKBTC: "btc",
 };
 
 function AssetLogo({ symbol }: { symbol: string }) {
   const key = symbol.toUpperCase();
   const icon = LOCAL_TOKEN_ICON[key];
   const [failed, setFailed] = useState(false);
-  const derivative = key === "XSTRK" ? "x" : key === "STRKBTC" ? "s" : null;
+  const unverified = key === "XSTRK" || key === "STRKBTC";
   return (
-    <span className={`${styles.assetLogo} ${key === "STRK" || key === "XSTRK" ? styles.assetLogoStarknet : ""}`} role="img" aria-label={`${symbol} asset icon`}>
+    <span className={`${styles.assetLogo} ${key === "STRK" ? styles.assetLogoStarknet : ""}`} role="img" aria-label={`${symbol} asset icon`}>
       {icon && !failed ? (
         <img src={`/token-icons/${icon}.svg`} alt="" loading="lazy" decoding="async" width="36" height="36" onError={() => setFailed(true)}/>
       ) : (
-        <span className={styles.assetLogoFallback}>{symbol.slice(0, 1).toUpperCase()}</span>
+        <span className={styles.assetLogoFallback}>{unverified ? symbol : symbol.slice(0, 1).toUpperCase()}</span>
       )}
-      {derivative && <span className={styles.assetLogoDerivative} aria-hidden="true">{derivative}</span>}
     </span>
   );
 }
@@ -1563,7 +1560,7 @@ export function CarelApp() {
                       {position.detail}
                     </small>
 
-                    {position.borrow && (
+                    {position.borrow && !hideAmounts && (
                       <small>
                         Collateral{" "}
                         {formatPortfolioAmount(
