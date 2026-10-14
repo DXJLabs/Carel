@@ -127,6 +127,8 @@ const LOCAL_TOKEN_ICON: Readonly<Record<string, string>> = {
   USDT: "usdt",
   WBTC: "wbtc",
   BTC: "btc",
+  XSTRK: "xstrk",
+  STRKBTC: "strkbtc",
 };
 
 function AssetLogo({ symbol }: { symbol: string }) {
