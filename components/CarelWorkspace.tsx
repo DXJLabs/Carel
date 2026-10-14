@@ -198,6 +198,7 @@ export function CarelApp() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const [period, setPeriod] = useState<Period>("7D");
   const [portfolioView, setPortfolioView] = useState<PortfolioView>("overview");
+  const [portfolioNetworkTab, setPortfolioNetworkTab] = useState<"assets" | "positions">("assets");
   const [portfolioNetworkFocus, setPortfolioNetworkFocus] = useState<PortfolioNetworkFocus>("starknet");
   const [portfolioSelectedAssetId, setPortfolioSelectedAssetId] = useState<string | null>(null);
   const [portfolioShowAllAssets, setPortfolioShowAllAssets] = useState(false);
@@ -451,6 +452,7 @@ export function CarelApp() {
       setPortfolioNetworkFocus("starknet");
       setPortfolioSelectedAssetId(null);
       setPortfolioShowAllAssets(false);
+      setPortfolioNetworkTab("assets");
     }
     setTab(next);
     setPointsOpen(false);
@@ -1297,8 +1299,13 @@ export function CarelApp() {
   }
 
   function openPortfolioNetwork(focus: PortfolioNetworkFocus) {
+    setPortfolioNetworkTab("assets");
     setPortfolioNetworkFocus(focus);
     setPortfolioSelectedAssetId(null);
+    setPortfolioView("network");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function returnToPortfolioNetwork() {
     setPortfolioView("network");
     window.scrollTo({ top: 0, behavior: "instant" });
   }
@@ -1361,7 +1368,7 @@ export function CarelApp() {
       positions={portfolioPositions}
       hideAmounts={hideAmounts}
       privateRevealed={wallet.privateRevealed}
-      onBack={() => openPortfolioNetwork("starknet")}
+      onBack={returnToPortfolioNetwork}
       onAgent={() => navigate("agent")}
     />;
   }
@@ -1414,11 +1421,12 @@ export function CarelApp() {
       <div className={styles.portfolioIdentity}>
         <span><WalletCards size={16} aria-hidden="true"/>{shortAddress(wallet.address)}</span>
       </div>
-      <div className={styles.portfolioNetworkTabs}>
-        <button type="button" onClick={() => document.getElementById("carel-portfolio-holdings")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Assets</button>
-        <button type="button" onClick={() => document.getElementById("carel-portfolio-positions")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Positions</button>
-        <button type="button" onClick={() => navigate("activity")}>Activity</button>
+      <div className={styles.portfolioNetworkTabs} aria-label="Portfolio views">
+        <button type="button" aria-pressed={portfolioNetworkTab === "assets"} onClick={() => setPortfolioNetworkTab("assets")}>Assets</button>
+        <button type="button" aria-pressed={portfolioNetworkTab === "positions"} onClick={() => setPortfolioNetworkTab("positions")}>Positions</button>
+        <button type="button" onClick={() => navigate("activity")}>Activity <ArrowRight size={13} aria-hidden="true"/></button>
       </div>
+      {portfolioNetworkTab === "assets" && <div className={styles.portfolioTabPanel} role="region" aria-label="Assets view">
       <section className={`${styles.portfolioOverview} ${styles.portfolioSummary}`}>
         <div className={styles.overviewTop}>
           <div>
@@ -1531,7 +1539,9 @@ export function CarelApp() {
       </section>
 
       <GardenBalances hidden={hideAmounts}/>
+      </div>}
 
+      {portfolioNetworkTab === "positions" && <div className={styles.portfolioTabPanel} role="region" aria-label="Positions view">
       <section id="carel-portfolio-positions" className={styles.portfolioSection}>
         <SectionHeading title="Positions">
           {portfolioPositionsLoading && (
@@ -1714,7 +1724,16 @@ export function CarelApp() {
         ) : (
           <div className={styles.portfolioEmptyLine}>
             <Layers3 size={19} aria-hidden="true"/>
-            <div><strong>No visible positions</strong><p>Supported staking, lending and borrowing positions appear here when detected.</p></div>
+            <div>
+              <strong>{portfolioPositionWarning ? "Positions unavailable" : "No positions currently visible"}</strong>
+              <p>{portfolioPositionWarning
+                ? "Some protocol data could not be loaded. Retry the check or review the warning below."
+                : !wallet.privateRevealed
+                  ? "Private positions may become visible after an explicit balance reveal on Assets."
+                  : "No supported staking, lending, or borrowing positions were detected."}</p>
+              <button type="button" className={styles.portfolioDetailLink}
+                onClick={() => setSample(value => value + 1)}>Retry positions <RefreshCw size={13}/></button>
+            </div>
           </div>
         )}
 
@@ -1726,6 +1745,7 @@ export function CarelApp() {
           </p>
         )}
       </section>
+      </div>}
     </div>;
   }
   function renderActivity() {
