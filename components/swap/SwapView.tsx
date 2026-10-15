@@ -175,26 +175,29 @@ export function SwapView({
         onClick={() => setTokenPicker(null)}/>
       <div className={ui.pickerSheet}>
         <div className={ui.pickerHead}>
-          <div><h4>Select token</h4><p>{network.label} · Registered assets</p></div>
+          <div><h4>Select token</h4><p>{network.label} · {swapAssets.length} registered assets</p></div>
           <button type="button" aria-label="Close token picker" className={ui.pickerClose}
             onClick={() => setTokenPicker(null)}><X size={19}/></button>
         </div>
         <label className={ui.pickerSearch}>
           <Search size={17} aria-hidden="true"/>
-          <input aria-label="Search token by name or symbol" autoFocus value={tokenSearch}
-            onChange={event => setTokenSearch(event.target.value)} placeholder="Search assets"/>
+          <input aria-label="Search token by name or symbol" value={tokenSearch}
+            onChange={event => setTokenSearch(event.target.value)} placeholder="Search tokens" autoComplete="off" spellCheck={false}/>
+          {tokenSearch && <button type="button" className={ui.pickerClear} aria-label="Clear token search"
+            onClick={() => setTokenSearch("")}><X size={16}/></button>}
         </label>
         <div className={ui.pickerList}>
           {availableTokens.map(asset => <button type="button" className={ui.pickerOption}
-            key={asset.id} onClick={() => selectToken(asset.symbol)}>
+            key={asset.id} aria-pressed={asset.symbol === (tokenPicker === "sell" ? paySymbol : receiveSymbol)}
+            onClick={() => selectToken(asset.symbol)}>
             <SwapToken symbol={asset.symbol}/>
             <span><strong>{asset.symbol}</strong><small>{asset.name}</small></span>
             {asset.symbol === (tokenPicker === "sell" ? paySymbol : receiveSymbol) &&
               <Check size={18} className={ui.pickerSelected} aria-label="Selected"/>}
           </button>)}
           {availableTokens.length === 0 && <p className={ui.pickerEmpty}>No registered asset matches your search.</p>}
+          <p className={ui.pickerNote}>Token registration does not guarantee an AVNU route. A live quote is required before Swap review.</p>
         </div>
-        <p className={ui.pickerNote}>Token registration does not guarantee an AVNU route. A live quote is required before Swap review.</p>
       </div>
     </div>}
 
