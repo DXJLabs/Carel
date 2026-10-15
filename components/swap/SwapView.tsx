@@ -161,12 +161,12 @@ export function SwapView({
       </div>
     </div>
 
-    <div className={ui.routeStatus}>
+    {(!quote || mode !== "normal") && <div className={ui.routeStatus}>
       <span>{mode === "normal" ? "Public → AVNU → Public" :
         mode === "shield" ? "Public Swap → verified output → Shield" :
           "Unshield → verified input → Public Swap"}</span>
       <span>{network.label}</span>
-    </div>
+    </div>}
 
     {tokenPicker && <div className={ui.pickerOverlay} role="dialog" aria-modal="true"
       aria-label={tokenPicker === "sell" ? "Select token to pay" : "Select token to receive"}
@@ -207,7 +207,7 @@ export function SwapView({
           <span className={ui.quoteIndicator}><Check size={14} aria-hidden="true"/></span>
           <div><strong>Swap quote</strong><small>AVNU route preview</small></div>
         </div>
-        <span className={ui.quoteHeadBadge}>Starknet · AVNU</span>
+        <span className={ui.quoteHeadBadge}>{network.tag} · {mode === "normal" ? "Public" : "Private flow"}</span>
       </div>
       <div className={ui.quoteExchange}>
         <div className={ui.quoteAmount}>
