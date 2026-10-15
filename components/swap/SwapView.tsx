@@ -202,27 +202,44 @@ export function SwapView({
     </div>}
 
     {quote && sellAsset && buyAsset && <section className={ui.quoteDetails} aria-label="Live AVNU quote">
-      <div className={ui.quoteRow}>
-        <span>Preview pay</span>
-        <strong>{formatUnits(quote.sellAmount, sellAsset.decimals, 6)} {sellAsset.symbol}</strong>
+      <div className={ui.quoteHead}>
+        <div className={ui.quoteHeadTitle}>
+          <span className={ui.quoteIndicator}><Check size={14} aria-hidden="true"/></span>
+          <div><strong>Swap quote</strong><small>AVNU route preview</small></div>
+        </div>
+        <span className={ui.quoteHeadBadge}>Starknet · AVNU</span>
       </div>
-      <div className={ui.quoteRow}>
-        <span>Estimated receive</span>
-        <strong>{output} {buyAsset.symbol}</strong>
+      <div className={ui.quoteExchange}>
+        <div className={ui.quoteAmount}>
+          <span>You pay</span>
+          <strong>{formatUnits(quote.sellAmount, sellAsset.decimals, 6)}</strong>
+          <small>{sellAsset.symbol}</small>
+        </div>
+        <span className={ui.quoteArrow} aria-hidden="true"><ArrowRight size={17}/></span>
+        <div className={ui.quoteAmount}>
+          <span>Estimated receive</span>
+          <strong>{output}</strong>
+          <small>{buyAsset.symbol}</small>
+        </div>
       </div>
-      <div className={ui.quoteRow}>
-        <span>Price impact</span>
-        <strong>{Number.isFinite(quote.priceImpact) ? (quote.priceImpact / 100).toFixed(4) + "%" : "—"}</strong>
+      <div className={ui.quoteMetrics}>
+        <div className={ui.quoteMetric}>
+          <span>Price impact</span>
+          <strong>{Number.isFinite(quote.priceImpact) ? (quote.priceImpact / 100).toFixed(4) + "%" : "—"}</strong>
+        </div>
+        <div className={ui.quoteMetric}>
+          <span>Slippage limit</span>
+          <strong>0.5%</strong>
+        </div>
+        <div className={ui.quoteMetric}>
+          <span>AVNU fee</span>
+          <strong>{Number.isFinite(quote.fee.avnuFeesInUsd) ? "$" + quote.fee.avnuFeesInUsd.toFixed(4) : "—"}</strong>
+        </div>
       </div>
-      <div className={ui.quoteRow}>
-        <span>AVNU fee</span>
-        <strong>{Number.isFinite(quote.fee.avnuFeesInUsd) ? "$" + quote.fee.avnuFeesInUsd.toFixed(4) : "—"}</strong>
+      <div className={ui.quoteDisclaimer}>
+        <ShieldCheck size={15} aria-hidden="true"/>
+        <span>Indicative quote only. CAREL refreshes AVNU pricing before signing. Network and Agent fees may also apply.</span>
       </div>
-      <div className={ui.quoteRow}>
-        <span>Slippage limit</span>
-        <strong>0.5%</strong>
-      </div>
-      <p className={ui.quoteDisclaimer}>Indicative quote only. CAREL requests a fresh AVNU quote before each public Swap stage is signed. Network and Agent fees may also apply.</p>
     </section>}
 
     {swapAgentSession && <section className={ui.runPanel} aria-label="Swap Agent execution progress">
@@ -270,7 +287,7 @@ export function SwapView({
 
     <p className={ui.approval}><ShieldCheck size={15} aria-hidden="true"/>
       {swapAgentSession ? "Verify each Agent stage before continuing. Wallet approvals remain required." :
-        "Review quoted amounts and applicable fees. Your wallet signs, not CAREL."}
+        "Wallet approval required · CAREL never signs for you."}
     </p>
     {error && <p className={ui.notice} role="alert">{error}</p>}
     {success && <p className={ui.success} role="status">{success}</p>}
