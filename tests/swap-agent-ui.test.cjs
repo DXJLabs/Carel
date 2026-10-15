@@ -138,3 +138,35 @@ test("Token picker keeps full registry scrollable instead of masking last tokens
   assert.match(swapCss, /max-height:min\(88dvh,630px\)/);
   assert.match(swapCss, /\.pickerOption\[aria-pressed="true"\]/);
 });
+
+test("Swap quote visual hierarchy avoids duplicate receipt rows and keeps review data", () => {
+  const start = swap.indexOf('{quote && sellAsset && buyAsset && <section');
+  const end = swap.indexOf('{swapAgentSession && <section', start);
+  assert.ok(start >= 0 && end > start);
+  const quoteSection = swap.slice(start, end);
+  assert.match(quoteSection, /className=\{ui\.quoteHead\}/);
+  assert.match(quoteSection, /className=\{ui\.quoteExchange\}/);
+  assert.match(quoteSection, /className=\{ui\.quoteMetrics\}/);
+  assert.match(quoteSection, /className=\{ui\.quoteDisclaimer\}/);
+  assert.match(quoteSection, /formatUnits\(quote\.sellAmount, sellAsset\.decimals, 6\)/);
+  assert.match(quoteSection, /formatUnits\(quote\.buyAmount, buyAsset\.decimals, 6\)|\{output\}/);
+  assert.match(quoteSection, /quote\.priceImpact/);
+  assert.match(quoteSection, /quote\.fee\.avnuFeesInUsd/);
+  assert.match(quoteSection, /Slippage limit/);
+  assert.match(quoteSection, /Indicative quote only/);
+  assert.match(quoteSection, /Network and Agent fees may also apply/);
+  assert.doesNotMatch(quoteSection, /Preview pay/);
+  assert.match(swap, /\(!quote \|\| mode !== "normal"\)/);
+  assert.match(swap, /Wallet approval required/);
+  assert.match(swap, /onClick=\{\(\) => void startFlow\(\)\}/);
+});
+
+test("Compact financial metrics retain mobile sizing and visible safeguards", () => {
+  for (const className of ["quoteHead", "quoteHeadTitle", "quoteExchange", "quoteAmount",
+    "quoteArrow", "quoteMetrics", "quoteMetric", "quoteDisclaimer"]) {
+    assert.match(swapCss, new RegExp("\\." + className + "[\\s:{]"));
+  }
+  assert.match(swapCss, /\.quoteMetrics\{display:grid;grid-template-columns:repeat\(3/);
+  assert.match(swapCss, /@media\(max-width:380px\)/);
+  assert.match(swapCss, /\.actions \.primary/);
+});
