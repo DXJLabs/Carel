@@ -136,7 +136,7 @@ export function SwapView({
             disabled={busy || flowLocked}
             onChange={event => changeAmount(event.target.value)}
           />
-          <button type="button" className={ui.selectWrap} aria-label={"Select sell token, currently " + paySymbol}
+          <button id="carel-swap-sell" type="button" className={ui.selectWrap} aria-label={"Select sell token, currently " + paySymbol}
             disabled={busy || flowLocked} onClick={() => openTokenPicker("sell")}>
             <SwapToken symbol={paySymbol}/>
             <strong>{paySymbol}</strong>
@@ -151,7 +151,7 @@ export function SwapView({
         <label htmlFor="carel-swap-buy">Estimated receive</label>
         <div className={ui.tokenFieldBody}>
           <output className={ui.amountOutput} aria-live="polite">{output}</output>
-          <button type="button" className={ui.selectWrap} aria-label={"Select receive token, currently " + receiveSymbol}
+          <button id="carel-swap-buy" type="button" className={ui.selectWrap} aria-label={"Select receive token, currently " + receiveSymbol}
             disabled={busy || flowLocked} onClick={() => openTokenPicker("buy")}>
             <SwapToken symbol={receiveSymbol}/>
             <strong>{receiveSymbol}</strong>
