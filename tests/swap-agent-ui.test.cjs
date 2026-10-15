@@ -7,8 +7,12 @@ const ts = require("typescript");
 const root = path.join(__dirname, "..");
 const swapPath = path.join(root, "components", "swap", "SwapView.tsx");
 const workspacePath = path.join(root, "components", "CarelWorkspace.tsx");
+const controllerPath = path.join(root, "components", "swap", "useSwapController.ts");
+const networksPath = path.join(root, "lib", "carel", "networks.ts");
 const swap = fs.readFileSync(swapPath, "utf8");
 const workspace = fs.readFileSync(workspacePath, "utf8");
+const controller = fs.readFileSync(controllerPath, "utf8");
+const networks = fs.readFileSync(networksPath, "utf8");
 const swapCss = fs.readFileSync(path.join(root, "components", "swap", "SwapView.module.css"), "utf8");
 const workspaceCss = fs.readFileSync(path.join(root, "components", "CarelWorkspace.module.css"), "utf8");
 
@@ -40,7 +44,10 @@ test("Asset icons identify supported swap assets without altering contracts", ()
   assert.match(swap, /STRK: "strk", USDC: "usdc"/);
   assert.match(swap, /\/token-icons\//);
   assert.doesNotMatch(swap, /Tether Gold|logo\-diamond/);
-  assert.match(swap, /swapAssets\.map\(asset => <option/);
+  assert.match(swap, /availableTokens\.map\(asset => <button/);
+  assert.match(swap, /STRKBTC: "strkbtc", XSTRK: "xstrk"/);
+  assert.match(swap, /Select token/);
+  assert.match(swap, /Search token by name or symbol/);
 });
 
 test("Original swap execution, recovery and verification actions remain wired", () => {
@@ -79,4 +86,31 @@ test("Mobile layout and controlled buttons have real styles", () => {
   assert.match(workspaceCss, /\.agentPage \.agentTools\{display:flex/);
   assert.match(workspaceCss, /\.agentSwapReady/);
   assert.match(swapCss, /prefers-reduced-motion:reduce/);
+});
+
+test("Public Swap uses every registered mainnet token instead of a two-asset hardcode", () => {
+  assert.match(controller, /mode === "normal"\s*\? \[\.\.\.network\.assetList\]/);
+  for (const symbol of ["STRK", "USDC", "ETH", "USDT", "WBTC", "STRKBTC", "XSTRK"]) {
+    assert.ok(
+      swap.includes(symbol === "STRKBTC" ? 'STRKBTC: "strkbtc"' : symbol === "XSTRK" ? 'XSTRK: "xstrk"' : symbol + ': "' + symbol.toLowerCase() + '"'),
+      "Missing " + symbol + " icon",
+    );
+  }
+  for (const symbol of ["STARKNET_MAINNET_STRK", "STARKNET_MAINNET_USDC", "STARKNET_MAINNET_ETH", "STARKNET_MAINNET_USDT", "STARKNET_MAINNET_WBTC", "STARKNET_MAINNET_STRKBTC", "STARKNET_MAINNET_XSTRK"]) {
+    assert.ok(networks.includes(symbol), "Missing mainnet registry asset " + symbol);
+  }
+  assert.match(controller, /mode === "normal"/);
+  assert.match(controller, /network\.assets\.strk/);
+  assert.match(controller, /network\.assets\.usdc/);
+});
+
+test("Token picker does not claim a live route and selection clears stale quote", () => {
+  assert.match(swap, /aria-modal="true"/);
+  assert.match(swap, /availableTokens\.map\(asset => <button/);
+  assert.match(swap, /Token registration does not guarantee an AVNU route/);
+  assert.match(swap, /onClick=\{\(\) => selectToken\(asset\.symbol\)\}/);
+  assert.match(controller, /function selectSellAsset\(/);
+  assert.match(controller, /function selectBuyAsset\(/);
+  assert.match(controller, /setQuote\(null\)/);
+  assert.match(controller, /!network \|\| flowLocked \|\| swapAssets\.length < 2/);
 });
