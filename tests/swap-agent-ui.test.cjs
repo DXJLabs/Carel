@@ -170,3 +170,34 @@ test("Compact financial metrics retain mobile sizing and visible safeguards", ()
   assert.match(swapCss, /@media\(max-width:380px\)/);
   assert.match(swapCss, /\.actions \.primary/);
 });
+
+test("CAREL quote review emphasizes real output and preserves transaction review", () => {
+  const start = swap.indexOf("{quote && sellAsset && buyAsset && <section");
+  const end = swap.indexOf("{swapAgentSession && <section", start);
+  assert.ok(start >= 0 && end > start);
+  const quoteUI = swap.slice(start, end);
+  assert.match(quoteUI, /className=\{ui\.quoteHead\}/);
+  assert.match(quoteUI, /className=\{ui\.quoteExchange\}/);
+  assert.equal((quoteUI.match(/className=\{ui\.quoteAmount\}/g) ?? []).length, 2);
+  assert.equal((quoteUI.match(/className=\{ui\.quoteMetric\}/g) ?? []).length, 3);
+  assert.match(quoteUI, /formatUnits\(quote\.sellAmount, sellAsset\.decimals, 6\)/);
+  assert.match(quoteUI, /<strong>\{output\}<\/strong>/);
+  assert.match(quoteUI, /Price impact/);
+  assert.match(quoteUI, /AVNU fee/);
+  assert.match(quoteUI, /Slippage limit/);
+  assert.match(quoteUI, /quote\.fee\.avnuFeesInUsd/);
+  assert.match(quoteUI, /CAREL refreshes AVNU pricing before signing/);
+  assert.match(quoteUI, /Network and Agent fees may also apply/);
+  assert.doesNotMatch(quoteUI, /className=\{ui\.quoteRow\}/);
+  assert.match(swap, /onClick=\{\(\) => void startFlow\(\)\}/);
+});
+
+test("Quote review mobile hierarchy retains readable amounts and visible fees", () => {
+  assert.match(swapCss, /\.quoteHead\{/);
+  assert.match(swapCss, /\.quoteExchange\{/);
+  assert.match(swapCss, /grid-template-columns:minmax\(0,1fr\) 26px minmax\(0,1fr\)/);
+  assert.match(swapCss, /\.quoteMetrics\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(swapCss, /\.quoteDisclaimer\{display:flex/);
+  assert.match(swapCss, /\.actions \.primary\{/);
+  assert.match(swapCss, /@media\(max-width:380px\)/);
+});
