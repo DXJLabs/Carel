@@ -114,3 +114,27 @@ test("Token picker does not claim a live route and selection clears stale quote"
   assert.match(controller, /setQuote\(null\)/);
   assert.match(controller, /!network \|\| flowLocked \|\| swapAssets\.length < 2/);
 });
+
+test("Android token picker avoids white input focus rings and forced keyboard", () => {
+  assert.doesNotMatch(swap, /autoFocus value=\{tokenSearch\}/);
+  assert.match(swap, /aria-label="Search token by name or symbol"/);
+  assert.match(swap, /aria-label="Clear token search"/);
+  assert.match(swapCss, /\.pickerSearch input:focus,\.pickerSearch input:focus-visible/);
+  assert.match(swapCss, /outline:none!important/);
+  assert.match(swapCss, /\.pickerSearch:focus-within/);
+});
+
+test("Token picker keeps full registry scrollable instead of masking last tokens", () => {
+  const picker = swap.slice(swap.indexOf("{tokenPicker &&"), swap.indexOf("{quote && sellAsset"));
+  assert.match(picker, /\{swapAssets\.length\} registered assets/);
+  assert.match(picker, /availableTokens\.map\(asset => <button/);
+  assert.match(picker, /aria-pressed=\{asset\.symbol ===/);
+  assert.match(picker, /Token registration does not guarantee an AVNU route/);
+  const lastOption = picker.indexOf("availableTokens.length === 0");
+  const note = picker.indexOf("className={ui.pickerNote}");
+  const listClose = picker.indexOf("</div>\n      </div>");
+  assert.ok(note > lastOption && note < listClose, "Quote caution belongs inside the scrolling list");
+  assert.match(swapCss, /\.pickerList\{[\s\S]*?overflow-y:auto/);
+  assert.match(swapCss, /max-height:min\(88dvh,630px\)/);
+  assert.match(swapCss, /\.pickerOption\[aria-pressed="true"\]/);
+});
