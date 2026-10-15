@@ -52,3 +52,36 @@
 .success{background:#202d26;border-color:#3f6c50;color:#bce4cb}
 @media(max-width:360px){.shell{padding:12px}.exchange{padding:8px}.tokenField{padding:10px}.headingTitle p{font-size:10px}.routeStatus{font-size:10px}.selectWrap select{max-width:57px}.primary{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.shell *{animation:none!important;transition:none!important}}
+
+/* Custom in-app token picker replaces the unthemed Android native select.
+   It lists the registered assets; live AVNU quoting validates tradeability. */
+.selectWrap{color:#f5f3f2;cursor:pointer;font:inherit;min-height:40px}
+.selectWrap strong{font-size:13px;font-weight:680;color:#f9f4f0;max-width:80px;white-space:nowrap}
+.selectWrap:disabled{opacity:.6;cursor:not-allowed}
+.selectWrap:focus-visible{outline:2px solid #ffa576;outline-offset:2px}
+.pickerOverlay{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
+.pickerBackdrop{position:absolute;inset:0;background:#000c;border:0;width:100%;height:100%;cursor:pointer}
+.pickerSheet{position:relative;width:min(440px,100%);max-height:min(74dvh,580px);display:flex;flex-direction:column;overflow:hidden;background:#18191c;border:1px solid #5f3e33;border-radius:21px;box-shadow:0 26px 80px #000b}
+.pickerHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 18px 12px}
+.pickerHead h4{margin:0;color:#f5f1ee;font-weight:720;font-size:17px}
+.pickerHead p{margin:4px 0 0;color:#a69b94;font-size:11px}
+.pickerClose{border:1px solid #484045;border-radius:10px;background:#272629;color:#ece5df;display:grid;place-items:center;width:36px;height:36px;cursor:pointer}
+.pickerSearch{margin:0 15px 9px;padding:0 12px;display:flex;align-items:center;gap:9px;background:#242427;border:1px solid #494143;border-radius:12px;color:#e68e59}
+.pickerSearch:focus-within{border-color:#f28342}
+.pickerSearch input{flex:1;min-width:0;height:43px;border:0;outline:0;color:#f6f1ee;background:transparent;font-size:13px;font:inherit}
+.pickerSearch input::placeholder{color:#958b88}
+.pickerList{overflow-y:auto;overscroll-behavior:contain;min-height:0;padding:1px 9px 10px}
+.pickerOption{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:transparent;border:0;border-radius:12px;padding:10px 11px;min-height:59px;color:#faf7f5;cursor:pointer}
+.pickerOption:hover,.pickerOption:focus-visible{background:#302520;outline:0}
+.pickerOption .tokenIcon,.pickerOption .fallbackIcon{width:35px;height:35px}
+.pickerOption span:nth-child(2){display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.pickerOption strong{font-size:14px;font-weight:660}
+.pickerOption small{font-size:11px;color:#aba19b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pickerSelected{color:#ff9c62;flex-shrink:0}
+.pickerEmpty{padding:22px 10px;text-align:center;color:#b6aba5;font-size:12px}
+.pickerNote{margin:0;background:#211d1b;border-top:1px solid #3b322f;color:#aca19b;padding:12px 18px;font-size:10px;line-height:1.6}
+@media(max-width:580px){
+ .pickerOverlay{align-items:flex-end;padding:0}
+ .pickerSheet{width:100%;max-height:min(76dvh,660px);border-radius:24px 24px 0 0;border-bottom:none;padding-bottom:env(safe-area-inset-bottom)}
+}
+@media(prefers-reduced-motion:reduce){.pickerSheet{transition:none}}
