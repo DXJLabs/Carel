@@ -1,9 +1,10 @@
 "use client";
 
 import {
-  ArrowDown, ArrowRight, ChevronDown, LoaderCircle,
-  RefreshCw, ShieldCheck, Sparkles,
+  ArrowDown, ArrowRight, Check, ChevronDown, LoaderCircle,
+  RefreshCw, Search, ShieldCheck, Sparkles, X,
 } from "lucide-react";
+import { useState } from "react";
 
 import {
   formatUnits,
@@ -51,7 +52,10 @@ function actionLabel(
 
 function SwapToken({symbol}: {symbol: string}) {
   const asset = symbol.toUpperCase();
-  const supported: Record<string, string> = {STRK: "strk", USDC: "usdc"};
+  const supported: Record<string, string> = {
+    STRK: "strk", USDC: "usdc", ETH: "eth",
+    USDT: "usdt", WBTC: "wbtc", STRKBTC: "strkbtc", XSTRK: "xstrk",
+  };
   const icon = supported[asset];
   return icon
     ? <img className={ui.tokenIcon} src={"/token-icons/" + icon + ".svg"} alt="" width={30} height={30}/>
@@ -73,6 +77,21 @@ export function SwapView({
     selectBuyAsset, changeAmount, loadQuote, startFlow, executeNextStage,
     confirmSubmitted, resetFlow,
   } = controller;
+
+  const [tokenPicker, setTokenPicker] = useState<"sell" | "buy" | null>(null);
+  const [tokenSearch, setTokenSearch] = useState("");
+  const availableTokens = swapAssets.filter(asset =>
+    (asset.symbol + " " + asset.name).toLowerCase().includes(tokenSearch.trim().toLowerCase()),
+  );
+  function openTokenPicker(kind: "sell" | "buy") {
+    setTokenSearch("");
+    setTokenPicker(kind);
+  }
+  function selectToken(symbol: string) {
+    if (tokenPicker === "sell") selectSellAsset(symbol);
+    if (tokenPicker === "buy") selectBuyAsset(symbol);
+    setTokenPicker(null);
+  }
 
   if (!wallet.connected) return <section className={ui.shell}>
     <h3>Connect your wallet to review a Swap</h3>
@@ -117,14 +136,12 @@ export function SwapView({
             disabled={busy || flowLocked}
             onChange={event => changeAmount(event.target.value)}
           />
-          <div className={ui.selectWrap}>
+          <button type="button" className={ui.selectWrap} aria-label={"Select sell token, currently " + paySymbol}
+            disabled={busy || flowLocked} onClick={() => openTokenPicker("sell")}>
             <SwapToken symbol={paySymbol}/>
-            <select id="carel-swap-sell" aria-label="Sell token" value={paySymbol}
-              disabled={busy || flowLocked} onChange={event => selectSellAsset(event.target.value)}>
-              {swapAssets.map(asset => <option key={asset.id} value={asset.symbol}>{asset.symbol}</option>)}
-            </select>
+            <strong>{paySymbol}</strong>
             <ChevronDown size={13} aria-hidden="true"/>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -134,14 +151,12 @@ export function SwapView({
         <label htmlFor="carel-swap-buy">Estimated receive</label>
         <div className={ui.tokenFieldBody}>
           <output className={ui.amountOutput} aria-live="polite">{output}</output>
-          <div className={ui.selectWrap}>
+          <button type="button" className={ui.selectWrap} aria-label={"Select receive token, currently " + receiveSymbol}
+            disabled={busy || flowLocked} onClick={() => openTokenPicker("buy")}>
             <SwapToken symbol={receiveSymbol}/>
-            <select id="carel-swap-buy" aria-label="Receive token" value={receiveSymbol}
-              disabled={busy || flowLocked} onChange={event => selectBuyAsset(event.target.value)}>
-              {swapAssets.map(asset => <option key={asset.id} value={asset.symbol}>{asset.symbol}</option>)}
-            </select>
+            <strong>{receiveSymbol}</strong>
             <ChevronDown size={13} aria-hidden="true"/>
-          </div>
+          </button>
         </div>
       </div>
     </div>
@@ -152,6 +167,36 @@ export function SwapView({
           "Unshield → verified input → Public Swap"}</span>
       <span>{network.label}</span>
     </div>
+
+    {tokenPicker && <div className={ui.pickerOverlay} role="dialog" aria-modal="true"
+      aria-label={tokenPicker === "sell" ? "Select token to pay" : "Select token to receive"}
+      onKeyDown={event => { if (event.key === "Escape") setTokenPicker(null); }}>
+      <button type="button" className={ui.pickerBackdrop} aria-label="Close token picker"
+        onClick={() => setTokenPicker(null)}/>
+      <div className={ui.pickerSheet}>
+        <div className={ui.pickerHead}>
+          <div><h4>Select token</h4><p>{network.label} · Registered assets</p></div>
+          <button type="button" aria-label="Close token picker" className={ui.pickerClose}
+            onClick={() => setTokenPicker(null)}><X size={19}/></button>
+        </div>
+        <label className={ui.pickerSearch}>
+          <Search size={17} aria-hidden="true"/>
+          <input aria-label="Search token by name or symbol" autoFocus value={tokenSearch}
+            onChange={event => setTokenSearch(event.target.value)} placeholder="Search assets"/>
+        </label>
+        <div className={ui.pickerList}>
+          {availableTokens.map(asset => <button type="button" className={ui.pickerOption}
+            key={asset.id} onClick={() => selectToken(asset.symbol)}>
+            <SwapToken symbol={asset.symbol}/>
+            <span><strong>{asset.symbol}</strong><small>{asset.name}</small></span>
+            {asset.symbol === (tokenPicker === "sell" ? paySymbol : receiveSymbol) &&
+              <Check size={18} className={ui.pickerSelected} aria-label="Selected"/>}
+          </button>)}
+          {availableTokens.length === 0 && <p className={ui.pickerEmpty}>No registered asset matches your search.</p>}
+        </div>
+        <p className={ui.pickerNote}>Token registration does not guarantee an AVNU route. A live quote is required before Swap review.</p>
+      </div>
+    </div>}
 
     {quote && sellAsset && buyAsset && <section className={ui.quoteDetails} aria-label="Live AVNU quote">
       <div className={ui.quoteRow}>
