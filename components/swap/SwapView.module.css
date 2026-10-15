@@ -85,3 +85,115 @@
  .pickerSheet{width:100%;max-height:min(76dvh,660px);border-radius:24px 24px 0 0;border-bottom:none;padding-bottom:env(safe-area-inset-bottom)}
 }
 @media(prefers-reduced-motion:reduce){.pickerSheet{transition:none}}
+
+/* Select token — compact Ready Wallet sheet, including Android focus reset.
+   The availability note scrolls with the tokens rather than covering them. */
+.pickerOverlay{overscroll-behavior:contain}
+.pickerSheet{
+  background:#17181b;
+  border-color:#3d3331;
+  box-shadow:0 28px 85px #000c;
+}
+.pickerHead{padding:15px 16px 10px}
+.pickerHead h4{font-size:17px;letter-spacing:-.025em}
+.pickerHead p{font-size:11px;line-height:1.35}
+.pickerClose{width:32px;height:32px;border-radius:9px}
+.pickerClose:focus-visible,.pickerClear:focus-visible,.pickerOption:focus-visible{
+  outline:2px solid #fa935a!important;outline-offset:-2px;
+}
+.pickerSearch{
+  min-height:43px;
+  margin:0 13px 7px;
+  padding:0 12px;
+  border:1px solid #494144;
+  border-radius:11px;
+  box-shadow:none;
+  background:#242426;
+}
+.pickerSearch:focus-within{
+  border-color:#f58a4f;
+  box-shadow:0 0 0 1px #fa87404f;
+}
+.pickerSearch input{
+  display:block;
+  min-height:40px;
+  height:40px;
+  width:100%;
+  min-width:0;
+  padding:0!important;
+  margin:0!important;
+  border:0!important;
+  border-radius:0;
+  outline:none!important;
+  box-shadow:none!important;
+  appearance:none;
+  -webkit-appearance:none;
+  font-size:16px!important;
+  line-height:1.35;
+  background:transparent!important;
+  color:#f8f3f0!important;
+}
+.pickerSearch input:focus,.pickerSearch input:focus-visible{
+  border:0!important;
+  outline:none!important;
+  box-shadow:none!important;
+}
+.pickerClear{
+  width:27px;height:27px;flex-shrink:0;
+  display:grid;place-items:center;
+  border:0;border-radius:7px;
+  padding:0;color:#a8a0a0;background:#383235;
+}
+.pickerList{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:2px 10px max(11px,env(safe-area-inset-bottom));
+  scrollbar-width:thin;
+  scrollbar-color:#6a5046 transparent;
+  -webkit-overflow-scrolling:touch;
+}
+.pickerOption{
+  min-height:50px;
+  gap:10px;
+  padding:7px 10px;
+  border-radius:10px;
+  margin:1px 0;
+  background:transparent;
+}
+.pickerOption .tokenIcon,.pickerOption .fallbackIcon{width:31px;height:31px}
+.pickerOption span:nth-child(2){gap:0}
+.pickerOption strong{font-size:13px;line-height:1.35}
+.pickerOption small{font-size:10px;line-height:1.45}
+.pickerOption[aria-pressed="true"]{
+  background:#35241f;
+  box-shadow:inset 2px 0 #f38a4f;
+}
+@media(hover:hover){
+  .pickerOption:hover{background:#302522}
+}
+@media(hover:none){
+  .pickerOption:hover:not([aria-pressed="true"]){background:transparent}
+}
+.pickerSelected{width:16px;height:16px}
+.pickerNote{
+  margin:8px 5px 0;
+  padding:11px 7px 3px;
+  border:0;
+  border-top:1px solid #353034;
+  background:transparent;
+  font-size:10px;
+  line-height:1.5;
+  color:#938c88;
+}
+.pickerEmpty{font-size:12px;padding:17px 10px}
+@media(max-width:580px){
+  .pickerOverlay{align-items:flex-end;padding:0}
+  .pickerSheet{
+    max-height:min(88dvh,630px);
+    width:100%;
+    padding-bottom:0;
+    border-radius:20px 20px 0 0;
+  }
+}
