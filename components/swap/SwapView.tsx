@@ -204,23 +204,10 @@ export function SwapView({
     {quote && sellAsset && buyAsset && <section className={ui.quoteDetails} aria-label="Live AVNU quote">
       <div className={ui.quoteHead}>
         <div className={ui.quoteHeadTitle}>
-          <span className={ui.quoteIndicator}><Check size={14} aria-hidden="true"/></span>
-          <div><strong>Swap quote</strong><small>AVNU route preview</small></div>
+          <span className={ui.quoteIndicator}><Sparkles size={16} aria-hidden="true"/></span>
+          <div><strong>CAREL prepared your quote</strong><small>AVNU · Route preview</small></div>
         </div>
         <span className={ui.quoteHeadBadge}>{network.tag} · {mode === "normal" ? "Public" : "Private flow"}</span>
-      </div>
-      <div className={ui.quoteExchange}>
-        <div className={ui.quoteAmount}>
-          <span>You pay</span>
-          <strong>{formatUnits(quote.sellAmount, sellAsset.decimals, 6)}</strong>
-          <small>{sellAsset.symbol}</small>
-        </div>
-        <span className={ui.quoteArrow} aria-hidden="true"><ArrowRight size={17}/></span>
-        <div className={ui.quoteAmount}>
-          <span>Estimated receive</span>
-          <strong>{output}</strong>
-          <small>{buyAsset.symbol}</small>
-        </div>
       </div>
       <div className={ui.quoteMetrics}>
         <div className={ui.quoteMetric}>
