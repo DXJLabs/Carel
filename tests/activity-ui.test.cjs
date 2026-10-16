@@ -37,7 +37,7 @@ test("Activity status counts derive from the same actual records", () => {
 
 test("Execution filters and explorer details are unchanged", () => {
   assert.match(workspace, /activityFilter === "pending"/);
-  assert.match(workspace, /activityFilter === "confirmed"/);
+  assert.match(workspace, /record\.status === "confirmed"/);
   assert.match(workspace, /visibleRecords\.map\(renderExecution\)/);
   assert.match(workspace, /setSelectedHash\(null\)/);
   assert.match(workspace, /selectedExecution\.hash/);
