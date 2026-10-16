@@ -40,3 +40,100 @@
 .history > button > span:last-child { display: flex; align-items: center; gap: 5px; color: #aaa7a5; font-size: 10px; }
 .balances { margin-top: 24px; padding-top: 18px; border-top: 1px solid #292929; }
 @media (max-width: 380px) { .bridge { padding: 16px; } .tag { font-size: 9px; padding-inline: 6px; } .heading { gap: 8px; } }
+
+/* CAREL Garden Bridge: constrained to Bitcoin Testnet4 / Starknet Sepolia. */
+.bridge{margin-top:10px;border-radius:19px;background:linear-gradient(150deg,#241b19,#161719 65%);border-color:#4e3932;padding:16px;box-shadow:0 8px 25px #0003}
+.bridge *{box-sizing:border-box}
+.bridge>.heading{align-items:center;gap:10px;margin-bottom:13px}
+.bridgeTitle{display:flex;align-items:center;gap:10px;min-width:0}
+.bridgeTitle>div{min-width:0}
+.bridgeMark{display:grid;place-items:center;background:#41261b;color:#ff9a61;border:1px solid #714631;width:37px;height:37px;border-radius:11px;flex-shrink:0}
+.bridgeTitle h2{font-size:18px;line-height:1.25;letter-spacing:-.03em;font-weight:720;margin:0;color:#fff}
+.bridgeTitle .eyebrow{font-size:9px;letter-spacing:.11em;color:#f2a073;margin-bottom:3px!important}
+.bridgeSubtitle{margin:4px 0 0;color:#b4a9a2;font-size:10px;line-height:1.4}
+.bridge>.heading .tag{border-radius:9px;padding:7px 9px;color:#ffbc95;background:#35211c;border-color:#774938;font-size:10px;letter-spacing:.025em;font-weight:670}
+.networkScope{display:flex;align-items:flex-start;gap:9px;padding:11px 12px;background:#2c231e;border:1px solid #634835;border-radius:11px;color:#d4b6a4;font-size:10px;line-height:1.6;margin:9px 0 15px}
+.networkScope svg{flex-shrink:0;color:#ff9e67;margin-top:1px}
+.networkScope strong{color:#ffe3bf;font-weight:690}
+.route{padding:5px 0 10px;gap:6px;align-items:center}
+.routeCard{min-width:0;flex:1;padding:12px 9px;border:1px solid #493b3a;border-radius:13px;background:#1e1f22}
+.routeCard small{display:block;color:#ada09c;font-size:9px;line-height:1.55;white-space:normal;min-height:27px}
+.routeCard>div{display:flex;align-items:center;gap:8px;margin-top:6px}
+.routeCard strong{margin:0;font-size:16px;font-weight:710;color:#fff;line-height:1.35}
+.tokenIcon,.tokenFallback{display:grid;place-items:center;flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#3b3433;font-size:12px;font-weight:700;color:#fff}
+.routeReverse{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;background:#3a251e;border:1px solid #77503a;border-radius:50%;color:#ffa064;cursor:pointer;padding:0}
+.routeReverse:disabled{opacity:.5}
+.routeReverse:focus-visible{outline:2px solid #ff975e;outline-offset:2px}
+.assetPicker{margin:4px 0 13px}
+.pickerHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.pickerHeading strong{font-size:11px;color:#f4ebe5}
+.pickerHeading span{font-size:10px;color:#a59b95;text-align:right}
+.assetChoices{display:flex;gap:7px;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;padding:2px 0 6px}
+.assetChoices::-webkit-scrollbar{display:none}
+.assetChoices button{display:flex;align-items:center;gap:8px;min-height:42px;padding:5px 10px 5px 5px;border:1px solid #4b403f;border-radius:10px;color:#eadfd9;background:#232225;flex-shrink:0;cursor:pointer}
+.assetChoices button .tokenIcon,.assetChoices button .tokenFallback{width:28px;height:28px}
+.assetChoices button span{font-size:12px;font-weight:680}
+.assetChoices button[aria-pressed="true"]{border-color:#e27e43;background:#3c281f;color:#fff}
+.assetChoices button:disabled{opacity:.55;cursor:not-allowed}
+.assetChoices button:focus-visible{outline:2px solid #ff9c63;outline-offset:2px}
+.assetNote{font-size:10px;margin:0 0 12px!important;color:#aea19a;line-height:1.5}
+.inputCard{border:1px solid #523e36;border-radius:14px;background:radial-gradient(ellipse at -20% -40%,#70391d38,transparent 75%),#1c1e20;padding:13px;margin:12px 0}
+.inputLabel{display:flex;justify-content:space-between;align-items:center;color:#bbaea6;font-size:11px}
+.inputLabel span{color:#928e8b;font-size:10px}
+.amountInputRow{display:flex;align-items:center;gap:8px;margin-top:9px;min-width:0}
+.amountInputRow input{width:100%;min-width:0;flex:1;padding:0!important;border:0!important;outline:none!important;box-shadow:none!important;background:transparent!important;color:#fff!important;font-size:clamp(25px,6.8vw,35px)!important;font-weight:730;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.amountInputRow input:focus-visible{outline:2px solid #ff9760!important;outline-offset:4px!important;border-radius:3px}
+.inputToken{display:flex;align-items:center;gap:7px;flex-shrink:0;border:1px solid #474143;background:#29292b;padding:4px 9px 4px 4px;border-radius:999px;font-size:13px;color:#f5efeb;font-weight:670}
+.inputToken .tokenIcon,.inputToken .tokenFallback{width:27px;height:27px}
+.addressField{display:flex;flex-direction:column;gap:7px;color:#b5aaa3;font-size:11px;margin:13px 0}
+.addressField input{width:100%;min-width:0;min-height:47px;padding:12px!important;border:1px solid #4d4140;border-radius:11px;background:#222225!important;color:#f7f2ee!important;outline:none!important;box-shadow:none!important;font-size:13px!important;line-height:1.45}
+.addressField input:focus-visible{border-color:#ff9052!important;outline:2px solid #875035!important;outline-offset:1px!important}
+.addressField small{color:#9d9590;font-size:10px;line-height:1.5}
+.walletDestination{display:flex;align-items:center;gap:8px;padding:11px;border:1px solid #423b3c;background:#202124;border-radius:11px;color:#b5aaa6;font-size:10px;margin:13px 0}
+.walletDestination svg{color:#ef9865;flex-shrink:0}
+.walletDestination span{flex:1;min-width:0}
+.walletDestination strong{color:#f0d5c3;font-size:11px;font-variant-numeric:tabular-nums}
+.testnetHint{font-size:10px;line-height:1.6;color:#ada29c;margin:9px 0 13px}
+.testnetHint a{display:inline-flex;align-items:center;gap:3px;margin-left:4px;color:#ffc096;text-decoration:underline;text-underline-offset:3px}
+.bridge .primary{min-height:50px;border:1px solid #fc864c;background:linear-gradient(110deg,#ff722e,#e94f18);border-radius:11px;font-size:13px!important;font-weight:700!important;display:flex;align-items:center;gap:9px;box-shadow:0 8px 18px #fa60221d}
+.bridge .primary svg:last-child{margin-left:auto}
+.bridge .primary:focus-visible,.bridge .secondary:focus-visible{outline:2px solid #ffb07d;outline-offset:2px}
+.bridge .secondary{border-radius:10px;min-height:40px;background:#2c2323;color:#f4dfd1;border-color:#5d4236}
+.review{border:1px solid #553b33;border-radius:15px;padding:13px;background:#201b1c;margin-top:15px}
+.quoteHead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.quoteHead>div{display:flex;align-items:center;gap:9px;min-width:0}
+.quoteHead svg{color:#ff9b62;flex-shrink:0}
+.quoteHead>div>span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.quoteHead strong{font-size:12px;color:#fff3eb;font-weight:680}
+.quoteHead small{font-size:10px;color:#a9a09a}
+.quoteBadge{font-size:10px;color:#f5b68d;border:1px solid #714734;border-radius:8px;background:#34241e;padding:5px 8px;flex-shrink:0}
+.quoteFlow{display:flex;align-items:center;gap:7px;margin:14px 0 11px;padding:12px 9px;border:1px solid #453b3c;border-radius:11px;background:#191b1e}
+.quoteFlow>div{flex:1;min-width:0}
+.quoteFlow>div:last-child{text-align:right}
+.quoteFlow>svg{flex-shrink:0;color:#ff975f}
+.quoteFlow span{font-size:10px;color:#a9a19d}
+.quoteFlow strong{display:block;color:#faf6f1;font-size:clamp(13px,3.7vw,16px);font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;margin-top:5px}
+.quoteFlow small{font-size:10px;color:#e6baa2;font-weight:600}
+.quoteDetails>.detail{padding:9px 2px;font-size:11px}
+.quoteDetails>.detail>span{white-space:normal}
+.quoteExpiry{display:flex;align-items:flex-start;gap:7px;margin:12px 0 0;color:#c9ac9d;font-size:10px;line-height:1.5}
+.quoteExpiry svg{color:#efa06e;flex-shrink:0}
+.quoteFooter{display:flex;align-items:flex-start;gap:7px;font-size:10px;line-height:1.5;color:#a9a09a;margin:10px 2px 0}
+.quoteFooter svg{color:#f2a26f;flex-shrink:0}
+.orderPanel{margin-top:10px}
+.orderPanel .heading{margin-bottom:7px}
+.orderPanel .heading h3{font-size:16px;color:#fff;font-weight:710;margin:0}
+.orderId{font-size:10px;color:#aaa09a;margin:8px 0 10px}
+.progressSteps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:11px 0 14px}
+.progressSteps span{min-width:0;padding:9px 3px;border-radius:7px;text-align:center;font-size:9px;line-height:1.35;border:1px solid #3a3739}
+.progressActive{background:#4a2c21;border-color:#865139!important;color:#ffcb9d}
+.progressIdle{background:#232226;color:#8c8684}
+.orderException{border:1px solid #7c4934;background:#33251e;color:#fac098;font-size:11px;padding:10px;border-radius:10px}
+.bridge .deposit{border-radius:12px;background:#2b211d;border-color:#77503a;padding:13px}
+.bridge .deposit code{font-size:11px;line-height:1.6}
+.bridge .history{margin-top:18px;padding-top:12px;border-top:1px solid #403838}
+.bridge .history>h3{font-size:14px;margin:0 0 10px}
+.bridge .history>button{min-height:64px;padding:10px 0}
+@media(max-width:420px){.bridge{padding:13px}.routeCard{padding:10px 7px}.routeCard small{font-size:8px}.routeCard strong{font-size:14px}.routeReverse{width:30px;height:30px}.quoteFlow{padding:10px 7px}.quoteFlow strong{font-size:12px}.progressSteps span{font-size:8px}}
+@media(max-width:350px){.bridge>.heading .tag{font-size:9px;padding:6px}.networkScope{padding:10px}.quoteFlow{gap:4px}}
+@media(prefers-reduced-motion:reduce){.bridge *{animation:none!important;transition:none!important}}
