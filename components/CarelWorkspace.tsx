@@ -1225,10 +1225,19 @@ export function CarelApp() {
         </div>
       )}
 
+      {agentPlan && selectedRuntimeSurface === "bridge" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Bridge plan</strong>
+            <span>Garden Testnet4 ↔ Sepolia · Review the quote, funding and delivery stages below</span></div>
+        </div>
+      )}
+
       {agentPlan && !(
         mode === "normal" && agentPlan.stages.length === 1 &&
         (selectedRuntimeSurface === "swap" || selectedRuntimeSurface === "staking" ||
-          selectedRuntimeSurface === "lend" || selectedRuntimeSurface === "borrow")
+          selectedRuntimeSurface === "lend" || selectedRuntimeSurface === "borrow" ||
+          selectedRuntimeSurface === "bridge")
       ) && (
         <section className={styles.agentPlanSummary} aria-live="polite">
           <div className={styles.agentSummaryTitle}>
