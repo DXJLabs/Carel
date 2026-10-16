@@ -60,6 +60,7 @@ import { VesuBorrow } from "./borrow/VesuBorrow";
 import { VesuRepay } from "./borrow/VesuRepay";
 import { VesuLend } from "./lending/VesuLend";
 import { PortfolioOverview, PortfolioAssetDetail, PortfolioUnavailableNetwork, type PortfolioNetworkFocus } from "./portfolio/PortfolioViews";
+import activityUI from "./ActivityView.module.css";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
@@ -1782,10 +1783,63 @@ export function CarelApp() {
     </div>;
   }
   function renderActivity() {
-    return <div className={styles.narrowPage}><div className={styles.intro}><h1>Activity</h1><p>Your executions, from start to finish.</p></div><div className={styles.segment} aria-label="Execution filter">{(["all", "pending", "confirmed"] as const).map(value => <button key={value} aria-pressed={activityFilter === value} onClick={() => setActivityFilter(value)}>{value === "all" ? "All" : value === "pending" ? "Pending" : "Completed"}</button>)}</div>
-      <div className={styles.activityList}>{visibleRecords.length ? visibleRecords.map(renderExecution) : <EmptyState title={activityFilter === "all" ? "No STRK executions yet" : "No matching STRK executions"}>Shield and Unshield executions from this wallet session appear here.</EmptyState>}</div>
-      {selectedExecution && <section className={styles.panel}><SectionHeading title={txName(selectedExecution.label)}><button className={styles.iconButton} onClick={() => setSelectedHash(null)} aria-label="Close execution detail"><X size={16}/></button></SectionHeading><p className={styles.helper}>{selectedExecution.label}</p><div className={styles.rule}><span>Status</span><strong>{selectedExecution.status}</strong></div><div className={styles.rule}><span>Network</span><strong>{activeNetwork?.label ?? "Starknet"}</strong></div><p className={styles.hash}>{selectedExecution.hash}</p><a className={styles.secondary} href={`${activeNetwork?.explorerTx ?? SEPOLIA_EXPLORER_TX}${selectedExecution.hash}`} target="_blank" rel="noreferrer">View on explorer<ArrowUpRight size={16}/></a></section>}
-      <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("normal")}/>
+    const confirmed = records.filter(record => record.status === "confirmed").length;
+    const pending = records.length - confirmed;
+    return <div className={`${styles.narrowPage} ${activityUI.page}`}>
+      <div className={activityUI.hero}>
+        <div className={activityUI.eyebrow}><Activity size={14}/> CAREL ACTIVITY</div>
+        <h1>Execution history<span>.</span></h1>
+        <p>Track recorded STRK20 executions for your connected wallet, and Garden Bridge activity below.</p>
+        <div className={activityUI.walletScope}>
+          <WalletCards size={15}/>
+          <span>{wallet.connected && wallet.address ? shortAddress(wallet.address) : "Wallet not connected"}</span>
+          <span className={activityUI.scopeNetwork}>{wallet.connected ? activeNetwork?.label ?? "Starknet" : "Connect wallet"}</span>
+        </div>
+      </div>
+
+      <div className={activityUI.metrics}>
+        <div><span>Recorded</span><strong>{records.length}</strong></div>
+        <div><span>Confirmed</span><strong>{confirmed}</strong></div>
+        <div><span>In progress</span><strong>{pending}</strong></div>
+      </div>
+
+      <section className={activityUI.history} aria-label="STRK20 execution history">
+        <div className={activityUI.historyHead}>
+          <div><h2>STRK20 executions</h2><p>Saved for this wallet · Not a complete transaction index</p></div>
+        </div>
+        <div className={activityUI.filters} aria-label="Execution filter">
+          {(["all", "pending", "confirmed"] as const).map(value =>
+            <button type="button" key={value} aria-pressed={activityFilter === value}
+              onClick={() => setActivityFilter(value)}>
+              {value === "all" ? "All" : value === "pending" ? "In progress" : "Confirmed"}
+            </button>)}
+        </div>
+        <div className={activityUI.items}>
+          {visibleRecords.length
+            ? visibleRecords.map(renderExecution)
+            : <EmptyState title={activityFilter === "all" ? "No recorded STRK20 executions yet" : "No matching executions"}>
+                This list includes saved Shield and Unshield activity for this wallet. Other protocol history may appear in its own section.
+              </EmptyState>}
+        </div>
+      </section>
+
+      {selectedExecution && <section className={`${styles.panel} ${activityUI.detail}`} aria-label="Selected execution details">
+        <SectionHeading title={txName(selectedExecution.label)}>
+          <button className={styles.iconButton} type="button" onClick={() => setSelectedHash(null)} aria-label="Close execution detail"><X size={16}/></button>
+        </SectionHeading>
+        <p className={styles.helper}>{selectedExecution.label}</p>
+        <div className={styles.rule}><span>Status</span><strong>{selectedExecution.status}</strong></div>
+        <div className={styles.rule}><span>Network</span><strong>{activeNetwork?.label ?? "Starknet"}</strong></div>
+        <p className={styles.hash}>{selectedExecution.hash}</p>
+        <a className={styles.secondary}
+          href={`${activeNetwork?.explorerTx ?? SEPOLIA_EXPLORER_TX}${selectedExecution.hash}`}
+          target="_blank" rel="noreferrer">View on explorer <ArrowUpRight size={16}/></a>
+      </section>}
+
+      <div className={activityUI.bridgeSection}>
+        <div className={activityUI.bridgeHeading}><h2>Garden Bridge</h2><p>Bridge executions are tracked separately from STRK20 activity.</p></div>
+        <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("normal")}/>
+      </div>
     </div>;
   }
   function renderSettings() {
