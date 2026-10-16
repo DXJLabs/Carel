@@ -1278,3 +1278,17 @@
  .agentPage .agentGoalInput{font-size:14px!important}
  .agentPage .agentModeRow .modeButton{padding-inline:9px}
 }
+
+/* Agentic first action on Home, without pretending that preview submits a trade. */
+.homeQuickStart{position:relative;margin-top:17px;padding:13px;border:1px solid #534037;border-radius:13px;background:#171819dd;max-width:100%;min-width:0}
+.homeQuickStart>span{display:block;color:#f0d2be;font-size:11px;font-weight:650;letter-spacing:.02em;margin-bottom:9px}
+.homeQuickActions{display:flex;gap:7px;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;padding-bottom:4px}
+.homeQuickActions::-webkit-scrollbar{display:none}
+.homeQuickActions button{display:flex;flex:0 0 auto;align-items:center;gap:7px;min-height:38px;padding:7px 9px;border:1px solid #60453a;border-radius:9px;background:#29201e;color:#ffdabf;font-size:11px;font-weight:610;cursor:pointer}
+.homeQuickActions button svg:first-child{color:#ff995e}
+.homeQuickActions button svg:last-child{color:#ba9a89}
+.homeQuickActions button:focus-visible{outline:2px solid #ff9b6e;outline-offset:2px}
+.homeQuickActions button:hover{background:#372823;border-color:#8b583d}
+.homeQuickStart>p{font-size:10px;line-height:1.5;color:#a69a94;margin:9px 0 0}
+@media(max-width:420px){.homeQuickStart{padding:11px}.homeQuickActions button{min-height:36px;padding:7px 9px}}
+@media(prefers-reduced-motion:reduce){.homeQuickActions button{transition:none}}
