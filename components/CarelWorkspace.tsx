@@ -1196,7 +1196,7 @@ export function CarelApp() {
       {agentPlan && selectedRuntimeSurface === "staking" && mode === "normal" && agentPlan.stages.length === 1 && (
         <div className={styles.agentSwapReady} role="status">
           <Sparkles size={17} aria-hidden="true"/>
-          <div><strong>CAREL prepared a one-step Staking plan</strong><span>Provider route and wallet review below · No transaction submitted yet</span></div>
+          <div><strong>CAREL prepared a one-step Staking plan</strong><span>Provider route, wallet approval and execution status appear below</span></div>
         </div>
       )}
 
