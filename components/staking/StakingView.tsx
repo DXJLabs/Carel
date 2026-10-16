@@ -131,10 +131,13 @@ export function StakingView({
     <div className={ui.routeInfo}>
       <div><span>Provider</span><strong>{providerLabel(selectedOption.providerId)}</strong></div>
       <div><span>Network</span><strong>{network.label}</strong></div>
-      <div><span>Observed pool APR</span><strong>{pool ? formatApr(pool.apr) : "Unavailable"}</strong></div>
+      <div><span>Provider pool APR</span><strong>{mode === "normal" && pool ? formatApr(pool.apr) : "Unavailable"}</strong></div>
     </div>
-    {pool && <p className={ui.rateNote}>Provider-reported APR is variable, not guaranteed. Pool {shortAddress(pool.poolAddress)}.</p>}
-    {!pool && <p className={ui.rateNote}>Only capability-supported assets are shown. APR is not assumed when live pool data is unavailable.</p>}
+    {mode === "normal" && pool
+      ? <p className={ui.rateNote}>Provider-reported APR is variable, not guaranteed. Pool {shortAddress(pool.poolAddress)}.</p>
+      : <p className={ui.rateNote}>{mode === "normal"
+          ? "Only capability-supported assets are shown. APR is not assumed when live pool data is unavailable."
+          : "APR for this privacy route is not verified. Public pool rates are not used as private yield estimates."}</p>}
 
     {mode === "shield" && output && <div className={ui.privacyCard}>
       <ShieldCheck size={17} aria-hidden="true"/>
