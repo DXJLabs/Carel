@@ -1388,11 +1388,56 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
         <a href="https://testnetbtc.com/" target="_blank" rel="noreferrer">Get test BTC <ArrowUpRight size={12}/></a>
       </p>
       {!quote && <button className={styles.primary} disabled={working || !ready || needsPublicMode || !assetId} onClick={() => void loadQuote()}>{busy ? "Getting quote…" : "Get live quote"}</button>}
-      {quote && <div className={styles.review} aria-live="polite"><h3>Review bridge</h3><div className={styles.detail}><span>You send</span><strong>{formatBitcoinAmount(quote.sourceAmount)} {quote.source.symbol}</strong></div><div className={styles.detail}><span>You receive</span><strong>{formatBitcoinAmount(quote.destinationAmount)} {quote.destination.symbol}</strong></div>{quote.estimatedSeconds !== null && <div className={styles.detail}><span>Garden estimate</span><strong>~{Math.max(1, Math.ceil(quote.estimatedSeconds / 60))} min</strong></div>}<p className={styles.helper}>Garden fees are reflected in the receive amount. Your source network transaction fee is additional.</p><p className={styles.helper}>{quoteExpired ? "Quote expired. Refresh before continuing." : `Quote refresh required in ${Math.max(0, Math.ceil((quote.expiresAt - now) / 1000))}s.`}</p><button className={styles.primary} disabled={working || needsPublicMode || !ready} onClick={() => void (quoteExpired ? loadQuote() : create())}>{busy ? "Contacting Garden…" : quoteExpired ? "Refresh quote" : "Create bridge order"}</button></div>}
+      {quote && <section className={styles.review} aria-live="polite" aria-label="Live Garden quote review">
+        <div className={styles.quoteHead}>
+          <div><Sparkles size={18} aria-hidden="true"/><span><strong>CAREL prepared your bridge</strong><small>Live Garden testnet quote</small></span></div>
+          <span className={styles.quoteBadge}>{quoteExpired ? "Expired" : "Indicative"}</span>
+        </div>
+        <div className={styles.quoteFlow}>
+          <div><span>You send</span><strong>{formatBitcoinAmount(quote.sourceAmount)} <small>{quote.source.symbol}</small></strong></div>
+          <ArrowRight size={17} aria-hidden="true"/>
+          <div><span>Estimated receive</span><strong>{formatBitcoinAmount(quote.destinationAmount)} <small>{quote.destination.symbol}</small></strong></div>
+        </div>
+        <div className={styles.quoteDetails}>
+          {quote.estimatedSeconds !== null &&
+            <div className={styles.detail}><span>Garden time estimate</span><strong>~{Math.max(1, Math.ceil(quote.estimatedSeconds / 60))} min</strong></div>}
+          <div className={styles.detail}><span>Provider fees</span><strong>Included in receive amount</strong></div>
+          <div className={styles.detail}><span>Source network fee</span><strong>Additional · wallet/network</strong></div>
+        </div>
+        <div className={styles.quoteExpiry}><Clock3 size={15} aria-hidden="true"/>
+          {quoteExpired ? "Quote expired. Refresh before continuing." :
+            `Quote valid for ~${Math.max(0, Math.ceil((quote.expiresAt - now) / 1000))}s. A fresh quote is required before creating an order.`}
+        </div>
+        <button type="button" className={styles.primary} disabled={working || needsPublicMode || !ready}
+          onClick={() => void (quoteExpired ? loadQuote() : create())}>
+          {busy ? "Contacting Garden…" : quoteExpired ? "Refresh quote" : "Review & Create Bridge Order"}
+          <ArrowRight size={17} aria-hidden="true"/>
+        </button>
+        <p className={styles.quoteFooter}><ShieldCheck size={14} aria-hidden="true"/>
+          Creating an order does not deliver funds. Funding and final settlement are separate, verifiable stages.
+        </p>
+      </section>}
     </>}
-    {activeId && <div className={styles.review}>
-      <div className={styles.heading}><h3>{order ? STATUS[order.state] : "Loading bridge…"}</h3><button className={styles.iconButton} disabled={working} aria-label="Refresh bridge status" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button></div>
-      <p className={styles.helper}>Order <span className={styles.address}>{activeId}</span></p>
+    {activeId && <div className={`${styles.review} ${styles.orderPanel}`}>
+      <div className={styles.heading}><div><p className={styles.eyebrow}>GARDEN ORDER · LIVE STATUS</p>
+        <h3>{order ? STATUS[order.state] : "Checking order…"}</h3></div>
+        <button type="button" className={styles.iconButton} disabled={working}
+          aria-label="Refresh bridge status" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button></div>
+      <p className={styles.orderId}>Order <span className={styles.address}>{brief(activeId)}</span></p>
+      {order && <div className={styles.progressSteps} aria-label="Bridge order progress">
+        {(["awaiting-deposit", "confirming", "exchanging", "settling", "completed"] as const).map((step, index) => {
+          const stage = ["awaiting-deposit", "confirming", "exchanging", "settling", "completed"].indexOf(order.state);
+          const exception = ["expired", "refunding", "refunded"].includes(order.state);
+          const label = ["Fund", "Confirm", "Exchange", "Settle", "Received"][index];
+          return <span key={step} className={index <= stage && !exception ? styles.progressActive : styles.progressIdle}
+            aria-current={!exception && order.state === step ? "step" : undefined}>{label}</span>;
+        })}
+      </div>}
+      {order && ["expired", "refunding", "refunded"].includes(order.state) &&
+        <p className={styles.orderException} role="status">
+          {order.state === "expired" ? "Order expired · do not deposit" :
+            order.state === "refunding" ? "Refund is being processed" : "Refund completed"}
+        </p>}
       {bridgeAgentStage?.executionReference?.kind === "provider-order" && bridgeAgentStage.executionReference.id === activeId && <div className={styles.detail}><span>Agent stage</span><strong>{bridgeAgentStage.status}</strong></div>}
       {orderError && <p className={styles.notice} role="alert">{orderError} Status is not confirmed.</p>}
       {order && <><div className={styles.detail}><span>Send</span><strong>{formatBitcoinAmount(order.sourceAmount)} {order.direction === "to-starknet" ? "BTC" : order.asset.symbol}</strong></div><div className={styles.detail}><span>Receive</span><strong>{formatBitcoinAmount(order.destinationAmount)} {order.direction === "to-starknet" ? order.asset.symbol : "BTC"}</strong></div>
