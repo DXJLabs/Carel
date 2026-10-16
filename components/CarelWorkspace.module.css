@@ -1293,16 +1293,35 @@
 @media(max-width:420px){.homeQuickStart{padding:11px}.homeQuickActions button{min-height:36px;padding:7px 9px}}
 @media(prefers-reduced-motion:reduce){.homeQuickActions button{transition:none}}
 
-/* Some Android in-app wallet browsers expose an unusually large CSS
-   safe-area inset while also reserving their own bottom toolbar.
-   Cap CAREL's extra nav padding; we cannot modify native wallet chrome. */
+/* Mobile in-app browsers (including Ready Wallet) already reserve their
+   own system/toolbar area. The web nav must not add a second safe-area gap.
+   Apply to every CAREL tab, not only Agent. */
 @media (max-width: 699px) {
+ .app .nav,
  .app[data-current-tab="agent"] .nav {
    bottom:0;
-   padding:7px 8px calc(8px + min(env(safe-area-inset-bottom, 0px), 24px));
+   padding:6px 8px 5px;
+ }
+ .app .nav button,
+ .app[data-current-tab="agent"] .nav button {
+   min-height:52px;
+   padding:5px 2px;
+ }
+ .app[data-current-tab="agent"] .nav {
    background:#111214;
  }
  .app[data-current-tab="agent"] .main {
-   padding-bottom:calc(120px + min(env(safe-area-inset-bottom, 0px), 24px));
+   padding-bottom:108px;
+ }
+}
+/* A truly standalone installed PWA has no wallet toolbar to reserve the
+   home-indicator area, so restore only its genuine device safe-area inset. */
+@media (max-width: 699px) and (display-mode: standalone) {
+ .app .nav,
+ .app[data-current-tab="agent"] .nav {
+   padding-bottom:calc(5px + env(safe-area-inset-bottom, 0px));
+ }
+ .app[data-current-tab="agent"] .main {
+   padding-bottom:calc(108px + env(safe-area-inset-bottom, 0px));
  }
 }
