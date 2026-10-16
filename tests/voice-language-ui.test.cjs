@@ -33,18 +33,36 @@ Module._resolveFilename = function (request, parent, isMain, options) {
 };
 const { CarelVoiceAssistant } = require("../components/voice/CarelVoiceAssistant.tsx");
 
-test("voice language chooser is inline and never opens Android native select", () => {
+const { VOICE_LANGUAGES } = require("../lib/voice/voice-languages.ts");
+
+test("voice assistant starts as a compact goal microphone, not a large language card", () => {
   const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
-  assert.match(html, /role="group" aria-label="Voice recognition language"/);
-  assert.doesNotMatch(html, /<select\b/i);
-  assert.match(html, />English<\/button>/);
-  assert.match(html, />Indonesia<\/button>/);
+  assert.match(html, /aria-label="Open voice assistant"/);
+  assert.ok(!html.includes("Voice assistant</strong>"), "Voice card must be hidden until requested");
+  assert.ok(!html.includes("<select"), "Never render a native Android language selector");
+  assert.ok(!html.includes("Speech language"), "Settings belong inside the on-demand sheet");
 });
 
-test("English is selected by default, Indonesian remains available", () => {
+test("microphone entry stays a safe user action without transaction approval", () => {
   const html = renderToStaticMarkup(React.createElement(CarelVoiceAssistant, { onCommand: () => "" }));
-  const chooser = html.split('aria-label="Voice recognition language"')[1].split("</div>")[0];
-  assert.match(chooser, /aria-pressed="true"[^>]*>English<\/button>/);
-  assert.match(chooser, /aria-pressed="false"[^>]*>Indonesia<\/button>/);
-  assert.match(chooser, /type="button"/);
+  assert.match(html, /type="button"/);
+  assert.match(html, /aria-label="Open voice assistant"/);
+  assert.doesNotMatch(html, /Execute transaction|Confirm transfer/);
+});
+
+test("language catalogue contains at least 15 unique browser locales", () => {
+  assert.ok(VOICE_LANGUAGES.length >= 15);
+  assert.equal(new Set(VOICE_LANGUAGES.map(entry => entry.code)).size, VOICE_LANGUAGES.length);
+  for (const entry of VOICE_LANGUAGES) {
+    assert.match(entry.code, /^[a-z]{2}-[A-Z]{2}$/);
+    assert.ok(entry.label.length > 0);
+    assert.ok(entry.nativeName.length > 0);
+  }
+});
+
+test("language catalogue remains available for compact speech sheet", () => {
+  const english = VOICE_LANGUAGES.find(item => item.code === "en-US");
+  const indonesia = VOICE_LANGUAGES.find(item => item.code === "id-ID");
+  assert.equal(english.label, "English");
+  assert.equal(indonesia.label, "Indonesia");
 });

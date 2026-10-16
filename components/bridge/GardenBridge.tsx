@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownUp, ArrowUpRight, Check, Copy, RefreshCw } from "lucide-react";
+import { ArrowDownUp, ArrowRight, ArrowUpRight, Check, Clock3, Copy, RefreshCw, ShieldCheck, Sparkles, WalletCards } from "lucide-react";
 import { constants } from "starknet";
 import { useCarelTestnet } from "@/components/testnet/Strk20Testnet";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/lib/agent/garden-bridge-runtime";
 import { BITCOIN_TESTNET4 } from "@/lib/carel/ecosystems/bitcoin/chains";
 import { STARKNET_SEPOLIA } from "@/lib/carel/ecosystems/starknet/chains";
+import { CAREL_NETWORKS } from "@/lib/carel/networks";
 import { sepoliaProvider } from "@/lib/strk20/config";
 import { bitcoinAddress, felt, formatBitcoinAmount, parseBitcoinAmount, validateFundingCalls } from "@/lib/garden/protocol";
 import type {
@@ -145,6 +146,19 @@ function explorer(hash: string | null, bitcoin: boolean) {
   const clean = hash.split(":")[0];
   if (!/^(?:0x)?[0-9a-f]{1,64}$/i.test(clean)) return null;
   return bitcoin ? `https://mempool.space/testnet4/tx/${clean}` : `https://sepolia.voyager.online/tx/${clean}`;
+}
+
+function BridgeToken({ symbol }: { symbol: string }) {
+  const icon: Record<string, string> = {
+    BTC: "btc", WBTC: "wbtc", STRKBTC: "strkbtc",
+    STRK: "strk", USDC: "usdc", ETH: "eth",
+    USDT: "usdt", XSTRK: "xstrk",
+  };
+  const name = icon[symbol.toUpperCase()];
+  return name
+    ? <img className={styles.tokenIcon} alt="" width={30} height={30}
+        src={`/token-icons/${name}.svg`}/>
+    : <span className={styles.tokenFallback} aria-hidden="true">{symbol.slice(0, 1)}</span>;
 }
 
 export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, activityFilter = "all" }: { mode: "normal" | "shield" | "unshield"; onPublicMode: () => void; historyOnly?: boolean; intent?: BridgeIntent | null; activityFilter?: "all" | "pending" | "confirmed" }) {
@@ -1302,6 +1316,11 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     null;
 
   const selectedAsset = catalog?.starknet.find(asset => asset.id === assetId);
+  // Separate public CAREL Mainnet asset registration from verified Garden testnet routes.
+  // These assets are informational only: no quote, order or wallet action is wired.
+  const otherCarelAssets = CAREL_NETWORKS.mainnet.assetList.filter(
+    asset => !catalog?.starknet.some(garden => garden.symbol.toUpperCase() === asset.symbol.toUpperCase()),
+  );
   const sourceSymbol = direction === "to-starknet" ? "BTC" : selectedAsset?.symbol || "BTC";
   const destinationSymbol = direction === "to-starknet" ? selectedAsset?.symbol || "BTC" : "BTC";
   const quoteExpired = quote !== null && now >= quote.expiresAt;
@@ -1310,26 +1329,141 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
   const refundLink = order ? explorer(order.refundTx, order.direction === "to-starknet") : null;
 
   return <section className={styles.bridge} aria-label="Garden Bitcoin bridge">
-    <div className={styles.heading}><div><p className={styles.eyebrow}>POWERED BY GARDEN · TESTNET</p><h2>{historyOnly ? "Bridge activity" : "Bitcoin bridge"}</h2></div><span className={styles.tag}>Public route</span></div>
-    <p className={styles.helper}>Bitcoin Testnet4 ↔ Starknet Sepolia. Bridge deposits and receipts are public.</p>
+    <div className={styles.heading}>
+      <div className={styles.bridgeTitle}>
+        <span className={styles.bridgeMark}><Sparkles size={19} aria-hidden="true"/></span>
+        <div><p className={styles.eyebrow}>CAREL AGENT · GARDEN</p><h2>{historyOnly ? "Bridge activity" : "CAREL Bridge"}</h2>
+          <p className={styles.bridgeSubtitle}>{historyOnly ? "Your Garden orders and delivery status" : "Bitcoin and Starknet · Agent-guided review"}</p>
+        </div>
+      </div>
+      <span className={styles.tag}>TESTNET ONLY</span>
+    </div>
+    <div className={styles.networkScope}><ShieldCheck size={16} aria-hidden="true"/>
+      <span>Bitcoin Testnet4 ↔ Starknet Sepolia · Public transfers only. <strong>Do not send real BTC.</strong></span>
+    </div>
     {!ready && <div className={styles.notice}>{wallet.connected ? "Switch your wallet to Starknet Sepolia, then reconnect." : "Connect your Starknet wallet to begin."}{!wallet.connected && <button className={styles.secondary} disabled={wallet.connecting} onClick={() => void wallet.connect()}>{wallet.connecting ? "Connecting…" : "Connect wallet"}</button>}</div>}
     {needsPublicMode && <div className={styles.notice}>Garden does not fund this bridge from your privacy pool.<button className={styles.secondary} onClick={onPublicMode} disabled={working}>Use public route</button></div>}
     {catalogError && <div className={styles.notice} role="alert"><p>{catalogError}</p><button className={styles.secondary} onClick={() => setCatalogVersion(value => value + 1)}>Retry connection</button></div>}
     {!catalog && !catalogError && <p className={styles.helper} role="status">Checking Garden testnet assets…</p>}
     {catalog && !historyOnly && !activeId && <>
-      {!catalog.starknet.some(asset => asset.symbol === "strkBTC") && <p className={styles.assetNote}>Garden currently lists WBTC for Sepolia. strkBTC is not listed on this testnet route.</p>}
-      <div className={styles.route}><span>{direction === "to-starknet" ? "Bitcoin Testnet4" : "Starknet Sepolia"}<strong>{sourceSymbol}</strong></span><button className={styles.iconButton} aria-label="Reverse bridge direction" disabled={working} onClick={() => { invalidate(); setDirection(value => value === "to-starknet" ? "to-bitcoin" : "to-starknet"); }}><ArrowDownUp size={19}/></button><span>{direction === "to-starknet" ? "Starknet Sepolia" : "Bitcoin Testnet4"}<strong>{destinationSymbol}</strong></span></div>
-      <label className={styles.field}>Asset on Starknet Sepolia<select value={assetId} disabled={working} onChange={event => { invalidate(); setAssetId(event.target.value); }}>{!assetId && <option value="" disabled>Select an available asset</option>}{catalog.starknet.map(asset => <option key={asset.id} value={asset.id}>{asset.symbol}</option>)}</select></label>
-      <label className={styles.field}>Amount to send ({sourceSymbol})<input inputMode="decimal" autoComplete="off" value={amount} disabled={working} onChange={event => { invalidate(); setAmount(event.target.value); }}/></label>
-      <label className={styles.field}>{direction === "to-starknet" ? "Your Bitcoin Testnet4 refund address" : "Receive BTC at your Bitcoin Testnet4 address"}<input value={btcAddress} disabled={working} placeholder="tb1…" autoComplete="off" autoCapitalize="none" spellCheck={false} onChange={event => { invalidate(); setBtcAddress(event.target.value.trim()); }}/></label>
-      <div className={styles.detail}><span>{direction === "to-starknet" ? "Receive on Starknet" : "Send from Starknet"}</span><span className={styles.address}>{owner || "Connect wallet"}</span></div>
-      <p className={styles.helper}>Use Testnet4 BTC. Signet, Testnet3, and real BTC cannot fund this route. <a href="https://testnetbtc.com/" target="_blank" rel="noreferrer">Get test BTC <ArrowUpRight size={12}/></a></p>
+      <div className={styles.route} aria-label="Selected bridge route">
+        <div className={styles.routeCard}>
+          <small>FROM · {direction === "to-starknet" ? "Bitcoin Testnet4" : "Starknet Sepolia"}</small>
+          <div><BridgeToken symbol={sourceSymbol}/><strong>{sourceSymbol}</strong></div>
+        </div>
+        <button type="button" className={styles.routeReverse} aria-label="Reverse bridge direction"
+          disabled={working} onClick={() => { invalidate(); setDirection(value => value === "to-starknet" ? "to-bitcoin" : "to-starknet"); }}>
+          <ArrowDownUp size={18}/>
+        </button>
+        <div className={styles.routeCard}>
+          <small>TO · {direction === "to-starknet" ? "Starknet Sepolia" : "Bitcoin Testnet4"}</small>
+          <div><BridgeToken symbol={destinationSymbol}/><strong>{destinationSymbol}</strong></div>
+        </div>
+      </div>
+      <div className={styles.assetPicker} aria-label="Garden-listed Starknet assets">
+        <div className={styles.pickerHeading}><strong>Starknet asset</strong><span>Only assets listed by Garden</span></div>
+        <div className={styles.assetChoices} role="group" aria-label="Choose Starknet bridge asset">
+          {catalog.starknet.map(asset => <button type="button" key={asset.id} aria-pressed={asset.id === assetId}
+            disabled={working} onClick={() => { invalidate(); setAssetId(asset.id); }}>
+            <BridgeToken symbol={asset.symbol}/><span>{asset.symbol}</span>
+          </button>)}
+        </div>
+      </div>
+      <div className={styles.otherAssets} aria-label="Other CAREL assets without a Garden testnet route">
+        <div className={styles.otherAssetsHeading}>
+          <strong>More assets in CAREL</strong>
+          <span>Mainnet only · No Garden testnet route</span>
+        </div>
+        <div className={styles.unavailableAssets}>
+          {otherCarelAssets.map(asset =>
+            <span key={asset.id} className={styles.unavailableAsset}
+              aria-label={asset.symbol + " has no enabled Garden testnet bridge route"}>
+              <BridgeToken symbol={asset.symbol}/><strong>{asset.symbol}</strong>
+              <small>Unavailable</small>
+            </span>)}
+        </div>
+        <p className={styles.assetNote}>Additional assets are registered in CAREL, but Garden cannot quote these tokens on this Testnet4 ↔ Sepolia bridge. Only the Garden-listed choices above are executable.</p>
+      </div>
+      {!catalog.starknet.some(asset => asset.symbol === "strkBTC") &&
+        <p className={styles.assetNote}>strkBTC is not currently listed on this Garden Sepolia route. Only listed assets can be selected.</p>}
+      <div className={styles.inputCard}>
+        <label className={styles.inputLabel} htmlFor="garden-bridge-amount">You send <span>{sourceSymbol}</span></label>
+        <div className={styles.amountInputRow}>
+          <input id="garden-bridge-amount" inputMode="decimal" autoComplete="off" aria-label="Amount to bridge"
+            value={amount} disabled={working} onChange={event => { invalidate(); setAmount(event.target.value); }}/>
+          <span className={styles.inputToken}><BridgeToken symbol={sourceSymbol}/>{sourceSymbol}</span>
+        </div>
+      </div>
+      <label className={styles.addressField} htmlFor="garden-btc-address">
+        <span>{direction === "to-starknet" ? "Your Bitcoin Testnet4 refund address" : "Your Bitcoin Testnet4 receive address"}</span>
+        <input id="garden-btc-address" value={btcAddress} disabled={working} placeholder="tb1…"
+          autoComplete="off" autoCapitalize="none" spellCheck={false}
+          onChange={event => { invalidate(); setBtcAddress(event.target.value.trim()); }}/>
+        <small>{direction === "to-starknet"
+          ? "BTC refunds, if needed, return to this Testnet4 address."
+          : "Garden will deliver Testnet4 BTC to this address only after settlement."}</small>
+      </label>
+      <div className={styles.walletDestination}><WalletCards size={15} aria-hidden="true"/>
+        <span>{direction === "to-starknet" ? "Receive on Starknet Sepolia" : "Fund from Starknet Sepolia"}</span>
+        <strong>{owner ? brief(owner) : "Connect wallet"}</strong>
+      </div>
+      <p className={styles.testnetHint}>Only Bitcoin Testnet4 BTC is accepted. Signet, Testnet3 and real BTC cannot fund this route.
+        <a href="https://testnetbtc.com/" target="_blank" rel="noreferrer">Get test BTC <ArrowUpRight size={12}/></a>
+      </p>
       {!quote && <button className={styles.primary} disabled={working || !ready || needsPublicMode || !assetId} onClick={() => void loadQuote()}>{busy ? "Getting quote…" : "Get live quote"}</button>}
-      {quote && <div className={styles.review} aria-live="polite"><h3>Review bridge</h3><div className={styles.detail}><span>You send</span><strong>{formatBitcoinAmount(quote.sourceAmount)} {quote.source.symbol}</strong></div><div className={styles.detail}><span>You receive</span><strong>{formatBitcoinAmount(quote.destinationAmount)} {quote.destination.symbol}</strong></div>{quote.estimatedSeconds !== null && <div className={styles.detail}><span>Garden estimate</span><strong>~{Math.max(1, Math.ceil(quote.estimatedSeconds / 60))} min</strong></div>}<p className={styles.helper}>Garden fees are reflected in the receive amount. Your source network transaction fee is additional.</p><p className={styles.helper}>{quoteExpired ? "Quote expired. Refresh before continuing." : `Quote refresh required in ${Math.max(0, Math.ceil((quote.expiresAt - now) / 1000))}s.`}</p><button className={styles.primary} disabled={working || needsPublicMode || !ready} onClick={() => void (quoteExpired ? loadQuote() : create())}>{busy ? "Contacting Garden…" : quoteExpired ? "Refresh quote" : "Create bridge order"}</button></div>}
+      {quote && <section className={styles.review} aria-live="polite" aria-label="Live Garden quote review">
+        <div className={styles.quoteHead}>
+          <div><Sparkles size={18} aria-hidden="true"/><span><strong>CAREL prepared your bridge</strong><small>Live Garden testnet quote</small></span></div>
+          <span className={styles.quoteBadge}>{quoteExpired ? "Expired" : "Indicative"}</span>
+        </div>
+        <div className={styles.quoteFlow}>
+          <div><span>You send</span><strong>{formatBitcoinAmount(quote.sourceAmount)} <small>{quote.source.symbol}</small></strong></div>
+          <ArrowRight size={17} aria-hidden="true"/>
+          <div><span>Estimated receive</span><strong>{formatBitcoinAmount(quote.destinationAmount)} <small>{quote.destination.symbol}</small></strong></div>
+        </div>
+        <div className={styles.quoteDetails}>
+          {quote.estimatedSeconds !== null &&
+            <div className={styles.detail}><span>Garden time estimate</span><strong>~{Math.max(1, Math.ceil(quote.estimatedSeconds / 60))} min</strong></div>}
+          <div className={styles.detail}><span>Provider fees</span><strong>Included in receive amount</strong></div>
+          <div className={styles.detail}><span>Source network fee</span><strong>Additional · wallet/network</strong></div>
+        </div>
+        <div className={styles.quoteExpiry}><Clock3 size={15} aria-hidden="true"/>
+          {quoteExpired ? "Quote expired. Refresh before continuing." :
+            `Quote valid for ~${Math.max(0, Math.ceil((quote.expiresAt - now) / 1000))}s. A fresh quote is required before creating an order.`}
+        </div>
+        <button type="button" className={styles.primary} disabled={working || needsPublicMode || !ready}
+          onClick={() => void (quoteExpired ? loadQuote() : create())}>
+          {busy ? "Contacting Garden…" : quoteExpired ? "Refresh quote" : "Review & Create Bridge Order"}
+          <ArrowRight size={17} aria-hidden="true"/>
+        </button>
+        <p className={styles.quoteFooter}><ShieldCheck size={14} aria-hidden="true"/>
+          Creating an order does not deliver funds. Funding and final settlement are separate, verifiable stages.
+        </p>
+      </section>}
     </>}
-    {activeId && <div className={styles.review}>
-      <div className={styles.heading}><h3>{order ? STATUS[order.state] : "Loading bridge…"}</h3><button className={styles.iconButton} disabled={working} aria-label="Refresh bridge status" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button></div>
-      <p className={styles.helper}>Order <span className={styles.address}>{activeId}</span></p>
+    {activeId && <div className={`${styles.review} ${styles.orderPanel}`}>
+      <div className={styles.heading}><div><p className={styles.eyebrow}>GARDEN ORDER · LIVE STATUS</p>
+        <h3>{order ? STATUS[order.state] : "Checking order…"}</h3></div>
+        <button type="button" className={styles.iconButton} disabled={working}
+          aria-label="Refresh bridge status" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button></div>
+      <p className={styles.orderId}>Order <span className={styles.address}>{brief(activeId)}</span></p>
+      {order && <div className={styles.progressSteps} aria-label="Bridge order progress">
+        {(["awaiting-deposit", "confirming", "exchanging", "settling", "completed"] as const).map((step, index) => {
+          const stage = ["awaiting-deposit", "confirming", "exchanging", "settling", "completed"].indexOf(order.state);
+          const exception = ["expired", "refunding", "refunded"].includes(order.state);
+          const label = ["Fund", "Confirm", "Exchange", "Settle", "Received"][index];
+          const progressStyle = exception ? styles.progressIdle :
+            index < stage ? styles.progressDone :
+              index === stage ? styles.progressCurrent : styles.progressIdle;
+          return <span key={step} className={progressStyle}
+            aria-current={!exception && order.state === step ? "step" : undefined}>{label}</span>;
+        })}
+      </div>}
+      {order && ["expired", "refunding", "refunded"].includes(order.state) &&
+        <p className={styles.orderException} role="status">
+          {order.state === "expired" ? "Order expired · do not deposit" :
+            order.state === "refunding" ? "Refund is being processed" : "Refund completed"}
+        </p>}
       {bridgeAgentStage?.executionReference?.kind === "provider-order" && bridgeAgentStage.executionReference.id === activeId && <div className={styles.detail}><span>Agent stage</span><strong>{bridgeAgentStage.status}</strong></div>}
       {orderError && <p className={styles.notice} role="alert">{orderError} Status is not confirmed.</p>}
       {order && <><div className={styles.detail}><span>Send</span><strong>{formatBitcoinAmount(order.sourceAmount)} {order.direction === "to-starknet" ? "BTC" : order.asset.symbol}</strong></div><div className={styles.detail}><span>Receive</span><strong>{formatBitcoinAmount(order.destinationAmount)} {order.direction === "to-starknet" ? order.asset.symbol : "BTC"}</strong></div>

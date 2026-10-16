@@ -37,6 +37,7 @@ import { VesuClosePosition } from "./VesuClosePosition";
 import { VesuWithdrawCollateral } from "./VesuWithdrawCollateral";
 
 import styles from "../CarelWorkspace.module.css";
+import ui from "./VesuPositionManager.module.css";
 
 type RepayPrepareResponse =
   Readonly<{
@@ -324,82 +325,33 @@ export function VesuRepay({
   }
 
   return (
-    <div
-      className={
-        styles.repayPanel
-      }
-    >
-      <div
-        className={
-          styles.repayHeader
-        }
-      >
-        <div>
-          <strong>
-            Manage Position
-          </strong>
-
-          <small>
-            Vesu · {poolName}
-          </small>
+    <section className={`${styles.repayPanel} ${ui.manager}`} aria-label="Manage Vesu position">
+      <div className={ui.header}>
+        <div className={ui.headerTitle}>
+          <span className={ui.headerIcon} aria-hidden="true">◈</span>
+          <div><h3>Manage Position</h3><p>Vesu · {poolName}</p></div>
         </div>
-
-        <button
-          type="button"
-          className={
-            styles.iconButton
-          }
-          aria-label="Close position manager"
-          disabled={
-            executing ||
-            wallet.busy
-          }
-          onClick={onClose}
-        >
-          <X size={16}/>
+        <button type="button" className={styles.iconButton} aria-label="Close position manager"
+          disabled={executing || wallet.busy} onClick={onClose}>
+          <X size={17}/>
         </button>
       </div>
 
-      <VesuAddCollateral
-        poolId={poolId}
-        poolName={poolName}
-        collateralAsset={
-          collateralAsset
-        }
-        collateralAmount={
-          collateralAmount
-        }
-        debtAsset={
-          debtAsset
-        }
-        hidden={
-          hidden
-        }
-        onComplete={
-          onComplete
-        }
-      />
+      <div className={ui.overview}>
+        <div><span>Collateral</span><strong>{hidden ? "••••••" : formatUnits(collateralAmount, collateralAsset.decimals, 6)} {collateralAsset.symbol}</strong></div>
+        <div><span>Outstanding debt</span><strong>{formattedDebt} {debtAsset.symbol}</strong></div>
+      </div>
 
-      <VesuWithdrawCollateral
-        poolId={poolId}
-        poolName={poolName}
-        collateralAsset={
-          collateralAsset
-        }
-        collateralAmount={
-          collateralAmount
-        }
-        debtAsset={
-          debtAsset
-        }
-        hidden={
-          hidden
-        }
-        onComplete={
-          onComplete
-        }
-      />
+      <p className={ui.intro}>Choose an action. CAREL prepares a fresh on-chain review before wallet approval where required.</p>
 
+      <div className={ui.groups}>
+        <details className={ui.group} open>
+          <summary className={ui.summary}>
+            <span className={ui.summaryIcon}><Check size={17}/></span>
+            <span className={ui.summaryText}><strong>Partial Repay</strong><small>Reduce existing debt</small></span>
+            <span className={ui.chevron} aria-hidden="true">⌄</span>
+          </summary>
+          <div className={ui.groupBody}>
       <div
         className={
           styles.positionSectionTitle
@@ -557,22 +509,6 @@ export function VesuRepay({
           : "Review & Repay"}
       </button>
 
-      <VesuClosePosition
-        poolId={poolId}
-        poolName={poolName}
-        collateralAsset={
-          collateralAsset
-        }
-        debtAsset={
-          debtAsset
-        }
-        hidden={
-          hidden
-        }
-        onComplete={
-          onComplete
-        }
-      />
 
       {error && (
         <div
@@ -603,6 +539,100 @@ export function VesuRepay({
           {success}
         </p>
       )}
-    </div>
+
+          </div>
+        </details>
+
+        <details className={ui.group}>
+          <summary className={ui.summary}>
+            <span className={ui.summaryIcon}><Check size={17}/></span>
+            <span className={ui.summaryText}><strong>Add Collateral</strong><small>Increase your deposited backing</small></span>
+            <span className={ui.chevron} aria-hidden="true">⌄</span>
+          </summary>
+          <div className={ui.groupBody}>
+      <VesuAddCollateral
+        poolId={poolId}
+        poolName={poolName}
+        collateralAsset={
+          collateralAsset
+        }
+        collateralAmount={
+          collateralAmount
+        }
+        debtAsset={
+          debtAsset
+        }
+        hidden={
+          hidden
+        }
+        onComplete={
+          onComplete
+        }
+      />
+
+
+          </div>
+        </details>
+
+        <details className={ui.group}>
+          <summary className={ui.summary}>
+            <span className={ui.summaryIcon}><Check size={17}/></span>
+            <span className={ui.summaryText}><strong>Withdraw Collateral</strong><small>Requires a fresh LTV and risk check</small></span>
+            <span className={ui.chevron} aria-hidden="true">⌄</span>
+          </summary>
+          <div className={ui.groupBody}>
+      <VesuWithdrawCollateral
+        poolId={poolId}
+        poolName={poolName}
+        collateralAsset={
+          collateralAsset
+        }
+        collateralAmount={
+          collateralAmount
+        }
+        debtAsset={
+          debtAsset
+        }
+        hidden={
+          hidden
+        }
+        onComplete={
+          onComplete
+        }
+      />
+
+
+          </div>
+        </details>
+
+        <details className={`${ui.group} ${ui.dangerGroup}`}>
+          <summary className={ui.summary}>
+            <span className={ui.summaryIcon}>!</span>
+            <span className={ui.summaryText}><strong>Close Position</strong><small>Repay all debt and withdraw collateral</small></span>
+            <span className={ui.chevron} aria-hidden="true">⌄</span>
+          </summary>
+          <div className={ui.groupBody}>
+      <VesuClosePosition
+        poolId={poolId}
+        poolName={poolName}
+        collateralAsset={
+          collateralAsset
+        }
+        debtAsset={
+          debtAsset
+        }
+        hidden={
+          hidden
+        }
+        onComplete={
+          onComplete
+        }
+      />
+
+
+          </div>
+        </details>
+      </div>
+    </section>
   );
 }

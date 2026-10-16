@@ -903,3 +903,425 @@
 @media (prefers-reduced-motion: reduce) {
   .agentPage .agentComposer { transition: none; }
 }
+
+
+/* Unified Agent Workspace: one goal editor, voice on demand, real planner results */
+.agentPage { max-width: 690px; }
+.agentPage .agentIntro { margin: 7px 0 21px; }
+.agentPage .agentIntro h1 { max-width: 540px; font-size: clamp(35px, 7.5vw, 47px); line-height: 1.12; letter-spacing: -.046em; }
+.agentPage .agentIntro > p:last-child { margin-top: 11px; max-width: 430px; font-size: 13px; }
+.agentPage .agentComposer { padding: 19px; border-radius: 19px; border-color: #51332c; }
+.agentInputRow { position: relative; min-width: 0; }
+.agentPage .agentGoalInput { width: 100%; padding: 0 60px 18px 0; min-height: 99px; font-size: 17px !important; resize: vertical; }
+.agentInputRow > button {
+  position: absolute; bottom: 13px; right: 2px;
+  z-index: 1; flex-shrink: 0;
+}
+.agentPage .agentModeRow { margin-top: 5px; padding-top: 12px; }
+.agentPage .agentTools { margin-top: 19px; gap: 8px; }
+.agentPage .agentTools button { min-height: 78px; }
+.agentPage .agentPrimary { margin-top: 3px; min-height: 53px; border-radius: 13px; }
+.agentExecutionSurface { scroll-margin-top: 100px; }
+.agentPlanSummary {
+  border: 1px solid #463732;
+  border-radius: 18px;
+  background: linear-gradient(150deg,#1c1a1a,#121315 85%);
+  margin: 21px 0;
+  padding: 17px;
+  overflow: hidden;
+}
+.agentSummaryTitle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid #3b3434; }
+.agentSummaryTitle h2 { font-size: 17px; line-height: 1.3; }
+.agentSummaryTitle span { font-size: 12px; color: #aaa29c; }
+.agentSummaryGoal { display: flex; flex-direction: column; gap: 6px; padding: 14px 0; border-bottom: 1px solid #343133; }
+.agentSummaryGoal strong { font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.agentSummaryGoal span { color: #b1a49f; font-size: 11px; text-transform: capitalize; }
+.agentStages { display: grid; gap: 0; }
+.agentStage { display: flex; align-items: flex-start; gap: 12px; padding: 16px 2px; border-bottom: 1px solid #343032; }
+.agentStageNumber {
+  flex: 0 0 31px; width: 31px; height: 31px;
+  display: grid; place-items: center;
+  border: 1px solid #a74e29; border-radius: 50%;
+  background: #3f1e15; color: #ffb18d;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.agentStage > div { flex: 1; min-width: 0; }
+.agentStage strong { display: block; font-size: 14px; font-weight: 650; line-height: 1.45; }
+.agentStage p { color: #aea7a2; font-size: 12px; line-height: 1.55; margin-top: 3px; overflow-wrap: anywhere; }
+.agentApprovalNote { display: flex; align-items: flex-start; gap: 10px; padding: 13px 2px 0; color: #c5b8b0; font-size: 12px; line-height: 1.55; }
+.agentApprovalNote svg { flex-shrink: 0; color: #ff7335; margin-top: 1px; }
+.agentPage .agentReviewButton {
+  width: 100%; min-height: 45px; margin-top: 15px;
+  background: linear-gradient(115deg, #ed5f1a, #e5490f);
+  border-radius: 12px;
+  box-shadow: none;
+  font-size: 13px !important;
+}
+.agentRecents { padding: 18px 0 8px; }
+.agentRecents h2 { display: flex; align-items: baseline; gap: 8px; font-size: 16px; margin-bottom: 11px; }
+.agentRecents h2 span { font-size: 11px; color: #aaa39e; font-weight: 400; }
+.agentRecents button {
+  width: 100%; min-height: 56px; padding: 12px 14px; margin: 0 0 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid #353134; border-radius: 12px;
+  text-align: left; background: #151719; color: #e6dfda;
+  font-size: 12px; cursor: pointer;
+}
+.agentRecents button span { flex: 1; overflow-wrap: anywhere; }
+.agentRecents button svg { flex-shrink: 0; color: #f56c32; }
+@media (max-width: 580px) {
+  .agentPage .agentIntro h1 { font-size: clamp(33px, 8.1vw, 40px); }
+  .agentPage .agentComposer { padding: 17px; }
+  .agentPage .agentGoalInput { min-height: 97px; font-size: 16px !important; }
+  .agentPage .agentTools button { min-height: 73px; }
+  .agentPlanSummary { padding: 15px; }
+}
+@media (max-width: 359px) {
+  .agentPage .agentIntro h1 { font-size: 32px; }
+  .agentPage .agentTools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+
+/* Portfolio refresh — separate wallet onboarding from observed on-chain data. */
+.portfolioRefresh { padding: 0 0 25px; }
+.portfolioIntro { margin: 6px 0 22px; }
+.portfolioIntro .eyebrow { color: #a69a94; letter-spacing: .19em; }
+.portfolioIntro h1 {
+  margin: 4px 0 0; font-size: clamp(37px, 8.5vw, 48px);
+  letter-spacing: -.051em; line-height: 1.07;
+  font-family: var(--font-carel-display), sans-serif;
+  font-weight: 700;
+}
+.portfolioTitleDot { color: #fb6d2b; }
+.portfolioIntro > p:last-child { margin: 11px 0 0; font-size: 13px; line-height: 1.6; color: #aea5a0; }
+.portfolioWelcome {
+  position: relative; overflow: hidden; isolation: isolate;
+  padding: 25px 22px 21px;
+  border-radius: 21px; border: 1px solid #613b2a;
+  background:
+    radial-gradient(ellipse 90% 82% at 5% 0%, #74341c45, transparent 70%),
+    linear-gradient(145deg, #231b19, #151617 75%);
+  box-shadow: 0 9px 32px #0004, inset 0 1px 0 #fff1;
+}
+.portfolioWelcomeIcon {
+  display: grid; place-items: center;
+  width: 57px; height: 57px; margin-bottom: 24px;
+  color: #ff995e; border: 1px solid #964728; border-radius: 18px;
+  background: linear-gradient(145deg, #542616, #2b1a14);
+  box-shadow: 0 4px 28px #f45a1f2b;
+}
+.portfolioEyebrow { color: #e7966f; font-size: 10px; font-weight: 650; letter-spacing: .17em; }
+.portfolioWelcome h2 { font-size: clamp(24px, 6vw, 29px); font-weight: 700; letter-spacing: -.033em; margin: 9px 0; line-height: 1.15; }
+.portfolioWelcome > p { color: #c1b6af; max-width: 470px; font-size: 13px; line-height: 1.65; margin: 0 0 23px; }
+.portfolioWelcome .portfolioConnect {
+  display: flex; align-items: center; gap: 11px; justify-content: center;
+  min-height: 55px; border: 1px solid #ff9b58; border-radius: 13px;
+  background: linear-gradient(115deg, #ff7a22, #ed480e);
+  color: #fff; font-size: 15px !important; font-weight: 680 !important;
+  box-shadow: 0 6px 23px #e94b1231;
+}
+.portfolioConnect span { min-width: 0; }
+.portfolioConnect svg:last-child { margin-left: auto; }
+.portfolioConnect svg:first-child { margin-left: auto; }
+.portfolioConnect:disabled { opacity: .55; }
+.portfolioSafety { display: flex; align-items: flex-start; gap: 9px; margin: 16px 0 0; color: #b0a6a0; font-size: 11px; line-height: 1.55; }
+.portfolioSafety svg { flex-shrink: 0; margin-top: 1px; color: #f18a55; }
+.portfolioFeatures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 16px 0 0; }
+.portfolioFeatures > div {
+  min-width: 0; display: flex; align-items: center; justify-content: center;
+  gap: 8px; min-height: 52px; padding: 11px 6px;
+  border: 1px solid #323235; border-radius: 12px;
+  background: #171819; color: #bbb6b2; font-size: 11px; font-weight: 600;
+}
+.portfolioFeatures svg { color: #f67f41; flex-shrink: 0; }
+.portfolioIdentity {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 9px; margin: -1px 0 14px;
+  color: #afa29b; font-size: 11px;
+}
+.portfolioIdentity > span:first-child {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: #d4c8c1; padding: 9px 11px; border: 1px solid #43352f;
+  background: #1d1a1a; border-radius: 11px;
+}
+.portfolioIdentity svg { color: #fa8a4c; }
+.portfolioSummary {
+  padding: 23px 20px 18px;
+  border: 1px solid #55372a; border-radius: 21px;
+  background: radial-gradient(ellipse 85% 95% at 4% 1%, #7d361c30, transparent 69%),
+    linear-gradient(138deg, #201b1a, #131516 84%);
+  box-shadow: 0 8px 30px #0003, inset 0 1px 0 #ffffff0b;
+}
+.portfolioSummary .label { font-size: 12px; color: #b5a7a0; }
+.portfolioSummary .money { margin: 5px 0 4px; padding: 0; font-size: clamp(32px, 9vw, 43px); font-weight: 650; }
+.portfolioSummary .money span { color: #b6aca6; }
+.portfolioSummary .iconButton { border-color: #654332; background: #2d211c; color: #ff9e69; }
+.portfolioSummary > .helper { max-width: 480px; color: #afa49e; font-size: 11px; margin-top: 8px; line-height: 1.55; }
+.portfolioHistory { padding: 10px 0 0; margin-top: 16px; border-top: 1px solid #46332e; }
+.portfolioHistory .sectionHeading { margin-top: 10px; }
+.portfolioHistory .sectionHeading h2 { font-size: 15px; }
+.portfolioHistoryNoData {
+  border-radius: 11px; background: #201d1c; border: 1px solid #393132;
+  padding: 13px; color: #b8aaa2; font-size: 12px; line-height: 1.55;
+  margin: 12px 0;
+}
+.portfolioHistoryHint {
+  display: flex; align-items: center; gap: 9px;
+  border-top: 1px solid #493731; margin-top: 18px; padding-top: 13px;
+  color: #a9a09b; font-size: 11px; line-height: 1.5;
+}
+.portfolioHistoryHint svg { color: #d0754a; flex-shrink: 0; }
+.portfolioRefresh .portfolioSection { margin-top: 24px; }
+.portfolioRefresh .portfolioSection > .sectionHeading { margin: 0 0 12px; }
+.portfolioRefresh .portfolioSection > .sectionHeading h2 { font-size: 19px; font-weight: 650; }
+.portfolioRefresh .balanceCards { gap: 11px; }
+.portfolioRefresh .balanceCard {
+  padding: 17px 15px 8px; border-color: #353237;
+  border-radius: 17px; background: linear-gradient(145deg, #1b1b1e, #151617);
+}
+.portfolioRefresh .balanceCard > span { font-size: 12px; }
+.portfolioRefresh .balanceCard > span svg { color: #b2aaa5; }
+.portfolioRefresh .balanceCard > strong { min-height: 39px; font-size: clamp(19px, 5.7vw, 25px); font-weight: 620; }
+.portfolioRefresh .balanceCard button { color: #f59157; font-size: 12px !important; min-height: 38px; }
+.portfolioRefresh .balanceCard button:disabled { opacity: .45; }
+.portfolioRefresh .allocation { height: 7px; border-radius: 100px; margin-top: 18px; }
+.portfolioRefresh .allocation span:first-child { background: #e96221; }
+.portfolioRefresh .allocation span:last-child { background: #797475; }
+.portfolioRefresh .actionPair { margin-top: 12px; }
+.portfolioRefresh .actionPair button {
+  min-height: 48px; border-color: #493b36; border-radius: 12px;
+  background: #1c1c1e;
+}
+.portfolioRefresh .actionPair button:disabled { opacity: .45; }
+.portfolioRefresh .quickPanel { background: #1b1716; padding: 16px; border-radius: 15px; }
+.portfolioRefresh .holdingRow { min-height: 66px; padding: 12px 6px; }
+.portfolioRefresh .coin { background: #39241b; color: #f59968; }
+.portfolioRefresh .holdingAmount { font-variant-numeric: tabular-nums; }
+.portfolioEmptyLine {
+  display: flex; gap: 12px; align-items: flex-start;
+  min-height: 76px; padding: 17px 15px;
+  border: 1px solid #343237; border-radius: 15px;
+  background: linear-gradient(150deg,#191a1c,#131516);
+}
+.portfolioEmptyLine > svg { flex-shrink: 0; color: #e7824b; margin-top: 1px; }
+.portfolioEmptyLine > div { min-width: 0; }
+.portfolioEmptyLine strong { display: block; font-size: 13px; font-weight: 620; }
+.portfolioEmptyLine p { color: #a9a19d; font-size: 11px; line-height: 1.55; margin-top: 4px; }
+@media (max-width: 580px) {
+  .portfolioIntro { margin-bottom: 20px; }
+  .portfolioWelcome { padding: 21px 18px 19px; }
+  .portfolioWelcomeIcon { margin-bottom: 21px; }
+  .portfolioSummary { padding: 21px 17px 17px; }
+}
+@media (max-width: 359px) {
+  .portfolioWelcome { padding: 18px 15px; }
+  .portfolioFeatures > div { gap: 4px; font-size: 10px; }
+  .portfolioFeatures svg { width: 15px; }
+  .portfolioRefresh .balanceCard { padding: 13px 11px 6px; }
+}
+
+
+/* Portfolio token artwork and data-driven animated graphs. */
+.portfolioRefresh .assetLogo {
+  position: relative; flex: 0 0 38px;
+  width: 38px; height: 38px; display: grid; place-items: center;
+  overflow: visible; border-radius: 50%;
+  background: #241d1c;
+  border: 1px solid #413332;
+}
+.assetLogo img {
+  display: block; width: 35px; height: 35px;
+  border-radius: 50%; object-fit: contain;
+}
+.assetLogoStarknet { background: #0c0c4f !important; border-color: #262650 !important; }
+.assetLogoFallback {
+  display: grid; place-items: center;
+  width: 100%; height: 100%; border-radius: 50%;
+  font-size: 15px; font-weight: 700; color: #ffb28c;
+}
+.assetLogoDerivative {
+  position: absolute; right: -4px; bottom: -3px;
+  display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  font-size: 10px; font-weight: 800;
+  color: #fff; background: #dd5b25;
+  border: 2px solid #151516;
+}
+.portfolioAllocationDetail {
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: 20px; margin-top: 15px; padding: 17px;
+  border: 1px solid #393135; border-radius: 17px;
+  background: linear-gradient(130deg, #1c1b1f, #141517);
+}
+.portfolioDonut { width: 121px; height: 121px; flex-shrink: 0; overflow: visible; }
+.portfolioDonutBase { stroke: #6c686a; }
+.portfolioDonutSegment {
+  stroke: #fa6928;
+  animation: portfolioDraw 1.05s cubic-bezier(.22,.8,.25,1) both;
+}
+@keyframes portfolioDraw {
+  from { stroke-dasharray: 0 100; opacity: .35; }
+}
+.portfolioDonutCaption { font-size: 10px; fill: #b6aaa5; }
+.portfolioDonutValue {
+  font-size: 15px; font-weight: 750;
+  fill: #fff2e9; font-variant-numeric: tabular-nums;
+}
+.portfolioDonutDetails { flex: 1; min-width: 0; }
+.portfolioDonutDetails > strong { display: block; font-size: 14px; font-weight: 650; }
+.portfolioDonutDetails > p { margin: 3px 0 15px; font-size: 11px; color: #aaa09b; }
+.portfolioDonutDetails > div {
+  display: flex; align-items: center; gap: 8px;
+  color: #c5bcb7; font-size: 12px; margin-top: 10px;
+}
+.portfolioDonutDetails > div strong {
+  margin-left: auto; font-variant-numeric: tabular-nums;
+  font-size: 12px; color: #f5ede8;
+}
+.portfolioLegendOrange,.portfolioLegendGrey {
+  flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%;
+}
+.portfolioLegendOrange { background: #fa6928; }
+.portfolioLegendGrey { background: #777175; }
+.portfolioRefresh .chart { overflow: visible; }
+.chartAnimatedLine {
+  stroke-linecap: round; stroke-linejoin: round;
+  animation: portfolioLineDraw 1.1s ease-out both;
+}
+.chartAnimatedFill { animation: portfolioAreaShow .95s ease-out both; }
+.chartLivePoint { animation: portfolioPointShow .4s 1s ease-out both; transform-box: fill-box; transform-origin: center; }
+@keyframes portfolioLineDraw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes portfolioAreaShow { from { opacity: 0; } to { opacity: 1; } }
+@keyframes portfolioPointShow { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
+@media (max-width: 360px) {
+  .portfolioAllocationDetail { gap: 11px; padding: 13px 10px; }
+  .portfolioDonut { width: 103px; height: 103px; }
+  .portfolioDonutDetails > div { gap: 5px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .portfolioDonutSegment, .chartAnimatedLine, .chartAnimatedFill, .chartLivePoint { animation: none !important; }
+}
+
+/* Navigation layer for the multichain Portfolio view. Existing wallet actions are unchanged. */
+.portfolioNetworkTop{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:3px 0 21px}
+.portfolioReturnLink{display:inline-flex;align-items:center;gap:9px;min-height:44px;background:transparent;border:0;color:#ddd0c8;font-size:13px;cursor:pointer}
+.portfolioReturnLink svg{color:#ff823d}
+.portfolioNetworkTop>span{border:1px solid #4c3a30;background:#201a18;border-radius:8px;padding:7px 10px;color:#c4b1a6;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.portfolioNetworkTabs{display:grid;grid-template-columns:repeat(3,1fr);padding:5px;gap:6px;border:1px solid #3b3230;background:#191a1c;border-radius:13px;margin:0 0 17px}
+.portfolioNetworkTabs button{min-height:42px;border:1px solid transparent;color:#c9bdb5;background:transparent;border-radius:10px;font-size:12px;cursor:pointer}
+.portfolioNetworkTabs button[aria-pressed="true"]{background:#3c2017;color:#fff;border-color:#ad4b27}
+.portfolioRefresh #carel-portfolio-holdings,.portfolioRefresh #carel-portfolio-positions{scroll-margin-top:105px}
+.portfolioHoldingButton{width:100%;background:transparent;color:inherit;border:0;text-align:left;cursor:pointer;font:inherit;padding:12px 6px}
+.portfolioHoldingButton:hover{background:#211b1a}
+.portfolioChevron{color:#ae9f95}
+.portfolioDetailLink{display:flex;align-items:center;gap:2px;min-height:29px;padding:4px 7px;border-radius:7px;border:1px solid #4b3b33;background:#241b17;font-size:10px;color:#ffb58b;cursor:pointer}
+@media(max-width:360px){.portfolioNetworkTop{gap:8px}.portfolioNetworkTabs button{font-size:11px}.portfolioReturnLink{font-size:12px}}
+
+/* Compact Portfolio wallet setup for mobile wallets with their own browser chrome. */
+.app[data-current-tab="portfolio"] .main{padding-top:15px}
+.app[data-current-tab="portfolio"] .portfolioIntro{margin:2px 0 16px}
+.app[data-current-tab="portfolio"] .portfolioIntro h1{font-size:clamp(32px,8vw,39px)}
+.app[data-current-tab="portfolio"] .portfolioIntro>p:last-child{font-size:12px;margin:7px 0 0}
+.app[data-current-tab="portfolio"] .portfolioWelcome{padding:18px;border-radius:17px;box-shadow:none}
+.app[data-current-tab="portfolio"] .portfolioWelcomeIcon{width:42px;height:42px;margin-bottom:13px;border-radius:11px}
+.app[data-current-tab="portfolio"] .portfolioWelcome h2{font-size:23px;line-height:1.2}
+.app[data-current-tab="portfolio"] .portfolioWelcome>p{font-size:12px;line-height:1.55;margin:10px 0 18px}
+.app[data-current-tab="portfolio"] .portfolioWelcome .portfolioConnect{min-height:47px;font-size:13px!important;border-radius:11px;box-shadow:none}
+.app[data-current-tab="portfolio"] .portfolioSafety{margin-top:12px;font-size:10px}
+
+/* Portfolio network detail: switch panels instead of jumping within a long page. */
+.portfolioNetworkTabs button{display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.portfolioNetworkTabs button[aria-pressed="false"]:hover{background:#282224}
+.portfolioNetworkTabs button:focus-visible{outline:2px solid #ff9b61;outline-offset:1px}
+.portfolioNetworkTabs button svg{width:12px;height:12px;color:#a8a19c}
+.portfolioTabPanel{min-width:0;animation:portfolioPanelIn .2s ease-out}
+.portfolioTabPanel>section:first-child{margin-top:0}
+.portfolioTabPanel .portfolioEmptyLine button{margin-top:10px;min-height:37px}
+@keyframes portfolioPanelIn{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.portfolioTabPanel{animation:none}.portfolioNetworkTabs button{transition:none}}
+
+/* CAREL Agent: keep the goal and real Swap action in one visual flow. */
+.app[data-current-tab="agent"] .main{padding-top:13px;padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+.agentPage .agentIntro{margin:4px 0 13px}
+.agentPage .agentIntro h1{font-size:clamp(27px,7vw,34px);line-height:1.16;max-width:370px;letter-spacing:-.04em}
+.agentPage .agentIntro .eyebrow{font-size:10px;letter-spacing:.13em;margin-bottom:8px}
+.agentPage .agentIntro>p:last-child{font-size:11px;max-width:380px;line-height:1.5;margin-top:7px}
+.agentPage .agentComposer{padding:13px 14px 11px;border-radius:15px;border-color:#433533;box-shadow:none}
+.agentPage .agentComposer>label{font-size:11px}
+.agentPage .agentGoalInput{min-height:62px;max-height:135px;padding-bottom:6px;font-size:15px!important;line-height:1.5}
+.agentInputRow>button{bottom:5px}
+.agentPage .agentModeRow{margin-top:1px;padding-top:8px;gap:7px}
+.agentPage .agentModeRow .modeButton{min-height:36px;padding:6px 10px;font-size:11px!important;gap:6px}
+.agentPage .agentModeRow .modeButton svg{width:14px;height:14px}
+.agentPage .agentRouteHint{font-size:10px;line-height:1.45}
+.agentPage .agentTools{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;gap:7px;margin-top:11px;padding-bottom:5px}
+.agentPage .agentTools::-webkit-scrollbar{display:none}
+.agentPage .agentTools button{min-height:39px;flex:0 0 auto;padding:7px 10px;border-radius:10px;display:flex;flex-direction:row;align-items:center;gap:6px;font-size:11px!important}
+.agentPage .agentTools button svg{width:15px;height:15px;flex-shrink:0}
+.agentPage .agentPrimary{min-height:47px;margin-top:10px;font-size:13px!important;border-radius:12px}
+.agentPage .agentPrimary svg{width:17px;height:17px}
+.agentSwapReady{display:flex;gap:10px;align-items:flex-start;border:1px solid #543d30;background:#2a1e1a;border-radius:12px;padding:10px 12px;margin:11px 0}
+.agentSwapReady>svg{color:#ff914f;flex-shrink:0;margin-top:3px}
+.agentSwapReady strong{display:block;font-size:12px;color:#ffe7d6;font-weight:650}
+.agentSwapReady span{display:block;font-size:10px;line-height:1.5;color:#b8aba2;margin-top:3px}
+.agentPage .agentExecutionSurface{margin-top:10px;scroll-margin-top:87px}
+.agentPage .agentPlanSummary{margin:13px 0}
+@media(max-width:580px){
+ .agentPage .agentIntro h1{font-size:clamp(27px,7vw,33px)}
+ .agentPage .agentComposer{padding:12px 13px}
+ .agentPage .agentGoalInput{min-height:62px;font-size:15px!important}
+ .agentPage .agentTools button{min-height:39px;padding-inline:10px}
+ .agentPage .agentPrimary{min-height:47px}
+}
+@media(max-width:359px){
+ .agentPage .agentTools{display:flex;grid-template-columns:none}
+ .agentPage .agentGoalInput{font-size:14px!important}
+ .agentPage .agentModeRow .modeButton{padding-inline:9px}
+}
+
+/* Agentic first action on Home, without pretending that preview submits a trade. */
+.homeQuickStart{position:relative;margin-top:17px;padding:13px;border:1px solid #534037;border-radius:13px;background:#171819dd;max-width:100%;min-width:0}
+.homeQuickStart>span{display:block;color:#f0d2be;font-size:11px;font-weight:650;letter-spacing:.02em;margin-bottom:9px}
+.homeQuickActions{display:flex;gap:7px;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;padding-bottom:4px}
+.homeQuickActions::-webkit-scrollbar{display:none}
+.homeQuickActions button{display:flex;flex:0 0 auto;align-items:center;gap:7px;min-height:38px;padding:7px 9px;border:1px solid #60453a;border-radius:9px;background:#29201e;color:#ffdabf;font-size:11px;font-weight:610;cursor:pointer}
+.homeQuickActions button svg:first-child{color:#ff995e}
+.homeQuickActions button svg:last-child{color:#ba9a89}
+.homeQuickActions button:focus-visible{outline:2px solid #ff9b6e;outline-offset:2px}
+.homeQuickActions button:hover{background:#372823;border-color:#8b583d}
+.homeQuickStart>p{font-size:10px;line-height:1.5;color:#a69a94;margin:9px 0 0}
+@media(max-width:420px){.homeQuickStart{padding:11px}.homeQuickActions button{min-height:36px;padding:7px 9px}}
+@media(prefers-reduced-motion:reduce){.homeQuickActions button{transition:none}}
+
+/* Mobile in-app browsers (including Ready Wallet) already reserve their
+   own system/toolbar area. The web nav must not add a second safe-area gap.
+   Apply to every CAREL tab, not only Agent. */
+@media (max-width: 699px) {
+ .app .nav,
+ .app[data-current-tab="agent"] .nav {
+   bottom:0;
+   padding:6px 8px 5px;
+ }
+ .app .nav button,
+ .app[data-current-tab="agent"] .nav button {
+   min-height:52px;
+   padding:5px 2px;
+ }
+ .app[data-current-tab="agent"] .nav {
+   background:#111214;
+ }
+ .app[data-current-tab="agent"] .main {
+   padding-bottom:108px;
+ }
+}
+/* A truly standalone installed PWA has no wallet toolbar to reserve the
+   home-indicator area, so restore only its genuine device safe-area inset. */
+@media (max-width: 699px) and (display-mode: standalone) {
+ .app .nav,
+ .app[data-current-tab="agent"] .nav {
+   padding-bottom:calc(5px + env(safe-area-inset-bottom, 0px));
+ }
+ .app[data-current-tab="agent"] .main {
+   padding-bottom:calc(108px + env(safe-area-inset-bottom, 0px));
+ }
+}

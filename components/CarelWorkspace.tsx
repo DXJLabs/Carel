@@ -59,12 +59,15 @@ import { AvnuStaking } from "./staking/AvnuStaking";
 import { VesuBorrow } from "./borrow/VesuBorrow";
 import { VesuRepay } from "./borrow/VesuRepay";
 import { VesuLend } from "./lending/VesuLend";
+import { PortfolioOverview, PortfolioAssetDetail, PortfolioUnavailableNetwork, type PortfolioNetworkFocus } from "./portfolio/PortfolioViews";
+import activityUI from "./ActivityView.module.css";
 import styles from "./CarelWorkspace.module.css";
 
 type Tab = "home" | "agent" | "portfolio" | "activity" | "settings";
 type Mode = "normal" | "shield" | "unshield";
 type Tool = "Swap" | "Bridge" | "Staking" | "Lend" | "Borrow";
 type Period = "1D" | "7D" | "30D";
+type PortfolioView = "overview" | "network" | "asset";
 type Execution = { hash: string; label: string; status: "pending" | "submitted" | "confirmed"; ts: number };
 type Observation = { ts: number; total: number };
 const ZERO = BigInt(0);
@@ -118,6 +121,33 @@ function SectionHeading({ title, children }: { title: string; children?: ReactNo
 function EmptyState({ children, title }: { children: ReactNode; title: string }) {
   return <div className={styles.emptyState}><strong>{title}</strong><p>{children}</p></div>;
 }
+const LOCAL_TOKEN_ICON: Readonly<Record<string, string>> = {
+  STRK: "strk",
+  USDC: "usdc",
+  ETH: "eth",
+  USDT: "usdt",
+  WBTC: "wbtc",
+  BTC: "btc",
+  XSTRK: "xstrk",
+  STRKBTC: "strkbtc",
+};
+
+function AssetLogo({ symbol }: { symbol: string }) {
+  const key = symbol.toUpperCase();
+  const icon = LOCAL_TOKEN_ICON[key];
+  const [failed, setFailed] = useState(false);
+  const unverified = key === "XSTRK" || key === "STRKBTC";
+  return (
+    <span className={`${styles.assetLogo} ${key === "STRK" ? styles.assetLogoStarknet : ""}`} role="img" aria-label={`${symbol} asset icon`}>
+      {icon && !failed ? (
+        <img src={`/token-icons/${icon}.svg`} alt="" loading="lazy" decoding="async" width="36" height="36" onError={() => setFailed(true)}/>
+      ) : (
+        <span className={styles.assetLogoFallback}>{unverified ? symbol : symbol.slice(0, 1).toUpperCase()}</span>
+      )}
+    </span>
+  );
+}
+
 function PerformanceChart({ points, hidden }: { points: Observation[]; hidden: boolean }) {
   if (hidden) return <EmptyState title="Balances hidden">Turn off “Hide portfolio amounts” in Settings to see performance.</EmptyState>;
   if (points.length < 2) return <EmptyState title="Your history starts here">Refresh your balances over time to see changes in your observed STRK balance.</EmptyState>;
@@ -134,8 +164,9 @@ function PerformanceChart({ points, hidden }: { points: Observation[]; hidden: b
     <p className={styles.change}>{delta >= 0 ? "+" : ""}{delta.toFixed(4)} STRK {pct !== null && `(${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`}<span>Balance change · not investment return</span></p>
     <svg className={styles.chart} viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="Observed STRK balance changes during this visit">
       <defs><linearGradient id="carel-orbit-chart-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity=".18"/><stop offset="100%" stopColor="currentColor" stopOpacity="0"/></linearGradient></defs>
-      <path d={`${path} L${coords[coords.length - 1].x} 180 L${coords[0].x} 180 Z`} fill="url(#carel-orbit-chart-fill)"/>
-      <path d={path} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+      <path className={styles.chartAnimatedFill} d={`${path} L${coords[coords.length - 1].x} 180 L${coords[0].x} 180 Z`} fill="url(#carel-orbit-chart-fill)"/>
+      <path className={styles.chartAnimatedLine} d={path} fill="none" stroke="currentColor" strokeWidth="2.5" vectorEffect="non-scaling-stroke" pathLength={100} strokeDasharray={100}/>
+      <circle className={styles.chartLivePoint} cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="4" fill="currentColor"/>
     </svg>
     <div className={styles.chartAxis}><span>{txDate(points[0].ts)}</span><span>{txDate(points[points.length - 1].ts)}</span></div>
   </div>;
@@ -156,6 +187,7 @@ export function CarelApp() {
       null,
     );
   const [goalText, setGoalText] = useState("Swap 1 STRK for USDC.");
+  const [recentGoals, setRecentGoals] = useState<string[]>([]);
   const [planTarget, setPlanTarget] = useState("1");
   const [planned, setPlanned] = useState(false);
   const [agentPlan, setAgentPlan] =
@@ -166,6 +198,11 @@ export function CarelApp() {
   const [hideAmounts, setHideAmounts] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [period, setPeriod] = useState<Period>("7D");
+  const [portfolioView, setPortfolioView] = useState<PortfolioView>("overview");
+  const [portfolioNetworkTab, setPortfolioNetworkTab] = useState<"assets" | "positions">("assets");
+  const [portfolioNetworkFocus, setPortfolioNetworkFocus] = useState<PortfolioNetworkFocus>("starknet");
+  const [portfolioSelectedAssetId, setPortfolioSelectedAssetId] = useState<string | null>(null);
+  const [portfolioShowAllAssets, setPortfolioShowAllAssets] = useState(false);
   const [sample, setSample] = useState(0);
   const [observations, setObservations] = useState<{ owner: string; points: Observation[] }>({ owner: "", points: [] });
   const [executions, setExecutions] = useState<{ owner: string; records: Execution[] }>({ owner: "", records: [] });
@@ -410,7 +447,18 @@ export function CarelApp() {
     return observations.points.filter(point => point.ts >= Date.now() - days * 86400000);
   }, [observations, sessionKey, period, wallet.connected]);
 
-  function navigate(next: Tab) { setTab(next); setPointsOpen(false); window.scrollTo({ top: 0, behavior: "instant" }); }
+  function navigate(next: Tab) {
+    if (next === "portfolio") {
+      setPortfolioView("overview");
+      setPortfolioNetworkFocus("starknet");
+      setPortfolioSelectedAssetId(null);
+      setPortfolioShowAllAssets(false);
+      setPortfolioNetworkTab("assets");
+    }
+    setTab(next);
+    setPointsOpen(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
   function openPoints() { setPointsOpen(true); window.scrollTo({ top: 0, behavior: "instant" }); }
   function openWallet() {
     navigate("settings");
@@ -608,6 +656,8 @@ export function CarelApp() {
         decision.kind ===
           "plan"
       ) {
+        // Session-only history: never fabricate goals or store them remotely.
+        setRecentGoals(current => [inputGoal.trim(), ...current.filter(value => value !== inputGoal.trim())].slice(0, 3));
         setAgentPlan(
           structuredPlan,
         );
@@ -851,16 +901,26 @@ export function CarelApp() {
         <p className={styles.eyebrow}><span className={styles.dot}/>Your private DeFi agent</p>
         <div className={styles.heroArt}><CarelOrbit className={styles.orbit} paused={reduceMotion}/></div>
         <div className={styles.heroCopy}><h1>Your goals.<br/>Your control.</h1><p>One place to plan your next move.</p></div>
-        <button type="button" className={styles.primary} onClick={() => navigate("agent")}>Start with a goal<ArrowUpRight size={18}/></button>
+        <button type="button" className={styles.primary} onClick={() => navigate("agent")}>Ask CAREL <ArrowUpRight size={18}/></button>
+        <div className={styles.homeQuickStart}>
+          <span>Or start with a workflow</span>
+          <div className={styles.homeQuickActions}>
+            {TOOLS.map(tool => <button type="button" key={tool.name}
+              onClick={() => { setMode("normal"); chooseTool(tool); navigate("agent"); }}>
+              <tool.Icon size={15} aria-hidden="true"/>{tool.name}<ArrowRight size={13} aria-hidden="true"/>
+            </button>)}
+          </div>
+          <p>CAREL prepares a plan first. You review and sign with your wallet.</p>
+        </div>
       </section>
       <section className={styles.homePortfolio}>
         <SectionHeading title="Portfolio"><button className={styles.textButton} onClick={() => navigate("portfolio")}>View portfolio<ArrowRight size={14}/></button></SectionHeading>
-        <div className={styles.panel}><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p><p className={styles.helper}>{balanceHelp}</p>
+        <div className={styles.panel}><p className={styles.label}>Observed STRK balance</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p><p className={styles.helper}>{balanceHelp}</p>
           {wallet.connected && wallet.publicStrk === null && <button className={styles.textButton} disabled={!publicReady || busy} onClick={() => void refreshBalances()}><RefreshCw size={14}/>Load balance</button>}
         </div>
         <button type="button" className={styles.pointsCard} onClick={openPoints}><span className={styles.pointsIcon}><Sparkles size={19}/></span><span><strong>{pointsSummary.seasonTotal.toLocaleString()} PTS</strong><small>{wallet.connected ? `${pointsSummary.season.name} · +${pointsSummary.last7Days.toLocaleString()} last 7 days` : `${pointsSummary.season.name} · Connect wallet`}</small></span><ChevronRight size={17}/></button>
       </section>
-      <section className={styles.homeActivity}><SectionHeading title="Latest activity"><button className={styles.textButton} onClick={() => navigate("activity")}>View all<ArrowRight size={14}/></button></SectionHeading>{records.length ? records.slice(0, 2).map(renderExecution) : <EmptyState title="Your next move starts here">Completed and pending executions appear here.</EmptyState>}</section>
+      <section className={styles.homeActivity}><SectionHeading title="Latest STRK20 activity"><button className={styles.textButton} onClick={() => navigate("activity")}>View Activity<ArrowRight size={14}/></button></SectionHeading>{records.length ? records.slice(0, 2).map(renderExecution) : <EmptyState title="Your next move starts here">Recorded Shield and Unshield executions appear here. Other protocol activity is tracked separately.</EmptyState>}</section>
     </div>;
   }
   function renderPoints() {
@@ -1048,11 +1108,42 @@ export function CarelApp() {
   function renderAgent() {
     return <div className={`${styles.narrowPage} ${styles.agentPage}`}>
       <div className={`${styles.intro} ${styles.agentIntro}`}>
-        <p className={styles.eyebrow}>CAREL AGENT</p>
+        <p className={styles.eyebrow}>CAREL · YOUR DEFI AGENT</p>
         <h1>What’s your <span>next move?</span></h1>
-        <p>Set a goal. CAREL previews every step before you sign.</p>
+        <p>Set a goal. CAREL prepares a route; you approve every transaction.</p>
       </div>
-      <div className={`${styles.composer} ${styles.agentComposer}`}><label htmlFor="carel-goal">Your goal</label><textarea id="carel-goal" className={styles.agentGoalInput} value={goalText} onChange={event => { setGoalText(event.target.value); setPlanned(false); setAgentPlan(null); setGoalError(null); setSelectedTool(null); setSelectedAdapterId(null); }} spellCheck={false}/>
+      <div className={`${styles.composer} ${styles.agentComposer}`}>
+        <label htmlFor="carel-goal">Your goal</label>
+        <div className={styles.agentInputRow}>
+          <textarea
+            id="carel-goal"
+            className={styles.agentGoalInput}
+            value={goalText}
+            onChange={event => {
+              setGoalText(event.target.value);
+              setPlanned(false);
+              setAgentPlan(null);
+              setGoalError(null);
+              setSelectedTool(null);
+              setSelectedAdapterId(null);
+            }}
+            spellCheck={false}
+          />
+          <CarelVoiceAssistant
+            disabled={busy}
+            onCommand={(spokenGoal, language) => {
+              setGoalText(spokenGoal);
+              setSelectedAdapterId(null);
+              previewPlan(spokenGoal);
+              const voicePlan = buildStarknetAgentPlan({
+                goal: spokenGoal,
+                chainId: wallet.chainId,
+                mode,
+              });
+              return describeVoicePlan(voicePlan, language);
+            }}
+          />
+        </div>
         <div className={`${styles.modeRow} ${styles.agentModeRow}`}>
           <button
             type="button"
@@ -1094,132 +1185,121 @@ export function CarelApp() {
           </span>
         </div>
       </div>
-      <CarelVoiceAssistant
-        disabled={busy}
-        onCommand={(spokenGoal, language) => {
-          setGoalText(spokenGoal);
-          setSelectedAdapterId(null);
-          previewPlan(spokenGoal);
-          const voicePlan = buildStarknetAgentPlan({
-            goal: spokenGoal,
-            chainId: wallet.chainId,
-            mode,
-          });
-          return describeVoicePlan(voicePlan, language);
-        }}
-      />
       <div className={`${styles.tools} ${styles.agentTools}`} aria-label="Agent tools">{TOOLS.map(tool => <button type="button" key={tool.name} aria-pressed={selectedTool === tool.name} onClick={() => chooseTool(tool)}><tool.Icon size={19}/><span>{tool.name}</span></button>)}</div>
-      <button
+      {!agentPlan && <button
         type="button"
         className={`${styles.primary} ${styles.agentPrimary}`}
         disabled={busy || !goalText.trim()}
         onClick={() => previewPlan()}
       >
         <Sparkles size={19} aria-hidden="true"/>
-        <span>Preview agent plan</span>
+        <span>Prepare Agent plan</span>
         <ArrowRight size={18} aria-hidden="true"/>
-      </button>
+      </button>}
 
-      {agentPlan && (
-        <section
-          className={styles.plan}
-          aria-live="polite"
-        >
-          <SectionHeading title="Agent plan">
-            <span className={styles.status}>
-              {agentPlan.objective.mode}
-            </span>
-          </SectionHeading>
+      {agentPlan && selectedRuntimeSurface === "swap" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Swap</strong><span>AVNU quote and wallet review below · No transaction submitted yet</span></div>
+        </div>
+      )}
 
-          <div className={styles.panel}>
-            <div className={styles.rule}>
-              <span>Objective</span>
-              <strong>
-                {agentPlan.objective.tool}
-              </strong>
-            </div>
+      {agentPlan && selectedRuntimeSurface === "staking" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Staking plan</strong><span>Provider route, wallet approval and execution status appear below</span></div>
+        </div>
+      )}
 
-            <div className={styles.rule}>
-              <span>Network</span>
-              <strong>
-                {activeNetwork?.label ?? "Starknet"}
-              </strong>
-            </div>
+      {agentPlan && selectedRuntimeSurface === "lend" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Lend plan</strong><span>Vesu market context and wallet review appear below</span></div>
+        </div>
+      )}
 
-            {agentPlan.stages.map(
-              (stage, index) => (
-                <div
-                  key={stage.id}
-                >
-                  <div className={styles.rule}>
-                    <span>
-                      Stage {index + 1}
-                      {" · "}
-                      {stage.action
-                        .slice(0, 1)
-                        .toUpperCase() +
-                        stage.action.slice(1)}
-                    </span>
+      {agentPlan && selectedRuntimeSurface === "borrow" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Borrow plan</strong><span>Vesu LTV and liquidation risk must be reviewed below before wallet approval</span></div>
+        </div>
+      )}
 
-                    <strong>
-                      {stage.privacyBefore}
-                      {" → "}
-                      {stage.privacyAfter}
-                    </strong>
-                  </div>
+      {agentPlan && selectedRuntimeSurface === "bridge" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Bridge plan</strong>
+            <span>Garden Testnet4 ↔ Sepolia · Review the quote, funding and delivery stages below</span></div>
+        </div>
+      )}
 
-                  {(stage.inputAssetSymbol ||
-                    stage.outputAssetSymbol) && (
-                    <p className={styles.helper}>
-                      {stage.inputAssetSymbol ?? "Asset"}
-                      {stage.outputAssetSymbol &&
-                        stage.outputAssetSymbol !==
-                          stage.inputAssetSymbol
-                        ? ` → ${stage.outputAssetSymbol}`
-                        : ""}
-                    </p>
-                  )}
-
-                  {stage.dependsOn.length > 0 && (
-                    <p className={styles.helper}>
-                      Runs after{" "}
-                      {stage.dependsOn.join(", ")}
-                      {" "}is confirmed.
-                    </p>
-                  )}
-
-                  {stage.note && (
-                    <p className={styles.privacyNote}>
-                      {stage.note}
-                    </p>
-                  )}
-                </div>
-              ),
-            )}
-
-            <div className={styles.rule}>
-              <span>CAREL Agent fee</span>
-              <strong>
-                Quoted before execution
-              </strong>
-            </div>
-
-            <p className={styles.helper}>
-              One Agent fee boundary applies to this plan.
-              Protocol and network fees remain separate.
-            </p>
-
-            <div className={styles.rule}>
-              <span>Authorization</span>
-              <strong>
-                Wallet approval required
-              </strong>
-            </div>
+      {agentPlan && !(
+        mode === "normal" && agentPlan.stages.length === 1 &&
+        (selectedRuntimeSurface === "swap" || selectedRuntimeSurface === "staking" ||
+          selectedRuntimeSurface === "lend" || selectedRuntimeSurface === "borrow" ||
+          selectedRuntimeSurface === "bridge")
+      ) && (
+        <section className={styles.agentPlanSummary} aria-live="polite">
+          <div className={styles.agentSummaryTitle}>
+            <h2>Plan summary</h2>
+            <span>{agentPlan.stages.length} {agentPlan.stages.length === 1 ? "step" : "steps"}</span>
           </div>
+          <div className={styles.agentSummaryGoal}>
+            <strong>{goalText}</strong>
+            <span>{agentPlan.objective.mode} · {activeNetwork?.label ?? "Starknet"}</span>
+          </div>
+          <div className={styles.agentStages}>
+            {agentPlan.stages.map((stage, index) => (
+              <div className={styles.agentStage} key={stage.id}>
+                <span className={styles.agentStageNumber}>{index + 1}</span>
+                <div>
+                  <strong>{stage.action.slice(0, 1).toUpperCase() + stage.action.slice(1)}</strong>
+                  {(stage.inputAssetSymbol || stage.outputAssetSymbol) && (
+                    <p>{stage.inputAssetSymbol ?? "Asset"}{stage.outputAssetSymbol && stage.outputAssetSymbol !== stage.inputAssetSymbol ? ` → ${stage.outputAssetSymbol}` : ""}</p>
+                  )}
+                  <p>{stage.privacyBefore} → {stage.privacyAfter}</p>
+                  {stage.dependsOn.length > 0 && <p>After {stage.dependsOn.join(", ")} is confirmed</p>}
+                  {stage.note && <p>{stage.note}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className={styles.agentApprovalNote}>
+            <ShieldCheck size={18} aria-hidden="true"/>
+            <span>Review each action and all fees. CAREL never signs for you.</span>
+          </div>
+          <button
+            type="button"
+            className={`${styles.primary} ${styles.agentReviewButton}`}
+            onClick={() => document.getElementById("carel-agent-execution")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            Review execution details <ArrowRight size={17}/>
+          </button>
         </section>
       )}
 
-      {selectedRuntimeSurface === "bridge" ? (
+      {recentGoals.length > 0 && !agentPlan && (
+        <section className={styles.agentRecents}>
+          <h2>Recent goals <span>this session</span></h2>
+          {recentGoals.map(value => (
+            <button
+              type="button"
+              key={value}
+              onClick={() => {
+                setGoalText(value);
+                setSelectedAdapterId(null);
+                previewPlan(value);
+              }}
+            >
+              <span>{value}</span>
+              <ChevronRight size={16} aria-hidden="true"/>
+            </button>
+          ))}
+        </section>
+      )}
+
+      <div id="carel-agent-execution" className={styles.agentExecutionSurface}>
+        {selectedRuntimeSurface === "bridge" ? (
         <GardenBridge
           mode={mode}
           intent={bridgeIntent}
@@ -1258,6 +1338,7 @@ export function CarelApp() {
           
         </>
       )}
+      </div>
       {goalError && <div className={styles.notice} role="alert"><p>{goalError}</p><button type="button" className={styles.textButton} onClick={() => chooseBalanceGoal()}>Use a STRK balance target<ArrowRight size={14}/></button></div>}
       {planned && <section className={styles.plan} aria-live="polite"><SectionHeading title="Your plan"><span className={styles.status}>{plan.status.replaceAll("-", " ")}</span></SectionHeading><div className={styles.panel}><h3>{plan.title}</h3><p className={styles.helper}>{plan.reason}</p>
         {plan.status === "ready" && <><div className={styles.route}><span>{plan.action === "shield" ? "Public wallet" : "Privacy pool"}</span><ArrowRight size={16}/><span>{plan.action === "shield" ? "Privacy pool" : "Public wallet"}</span></div><div className={styles.rule}><span>Amount to move</span><strong>{formatUnits18(plan.delta)} STRK</strong></div><p className={styles.privacyNote}>{plan.action === "shield" ? "The deposit is public. Funds become private after the pool’s maturity period." : "This withdrawal makes the amount and destination public."}</p><button type="button" className={styles.primary} disabled={busy} onClick={() => void executePlan()}>{busy ? <LoaderCircle size={16}/> : <ShieldCheck size={16}/>} {busy ? "Waiting for wallet…" : `Review & ${plan.action === "shield" ? "Shield" : "Unshield"}`}</button></>}
@@ -1268,37 +1349,207 @@ export function CarelApp() {
       </div></section>}
     </div>;
   }
+
+  function openPortfolioNetwork(focus: PortfolioNetworkFocus) {
+    setPortfolioNetworkTab("assets");
+    setPortfolioNetworkFocus(focus);
+    setPortfolioSelectedAssetId(null);
+    setPortfolioView("network");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function returnToPortfolioNetwork() {
+    setPortfolioView("network");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function openPortfolioAsset(id: string) {
+    setPortfolioSelectedAssetId(id);
+    setPortfolioNetworkFocus("starknet");
+    setPortfolioView("asset");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function backToPortfolioOverview() {
+    setPortfolioSelectedAssetId(null);
+    setPortfolioView("overview");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function openPortfolioPrivacyAction(action: "shield" | "unshield") {
+    if (!privacyReady || !wallet.strk20Capable || busy) return;
+    setPortfolioNetworkTab("assets");
+    setPortfolioNetworkFocus("starknet");
+    setPortfolioView("network");
+    setQuickAction(action);
+    setActionError(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById("carel-portfolio-quick")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  function renderPortfolioOverview() {
+    const historyReady = observations.owner === sessionKey && chartPoints.length >= 2 && !hideAmounts;
+    return <PortfolioOverview
+      chain={activeNetwork?.chain ?? null}
+      walletLabel={wallet.address ? shortAddress(wallet.address) : "Starknet"}
+      visibleStrk={amount(visibleBalance, hideAmounts)}
+      holdings={portfolioHoldings}
+      positions={portfolioPositions}
+      hideAmounts={hideAmounts}
+      chart={historyReady ? <PerformanceChart points={chartPoints} hidden={false}/> : undefined}
+      privacyShare={
+        !hideAmounts && wallet.privateRevealed &&
+        wallet.publicStrk !== null && privateBalance !== null && total !== null && total > ZERO
+          ? Number(privateBalance * 10000n / total) / 100
+          : null
+      }
+      privateRevealed={wallet.privateRevealed}
+      canRevealPrivate={privacyReady && wallet.strk20Capable && !busy && !hideAmounts}
+      onRevealPrivate={() => void run(() => wallet.revealPrivateBalance())}
+      positionsLoading={portfolioPositionsLoading}
+      positionsWarning={portfolioPositionWarning}
+      onRetryPositions={() => setSample(value => value + 1)}
+      canPrivacyAction={privacyReady && wallet.strk20Capable && !busy}
+      onShield={() => openPortfolioPrivacyAction("shield")}
+      onUnshield={() => openPortfolioPrivacyAction("unshield")}
+      onAgent={() => navigate("agent")}
+      onNetwork={openPortfolioNetwork}
+      onAsset={openPortfolioAsset}
+    />;
+  }
+  function renderPortfolioAssetDetail() {
+    const holding = portfolioHoldings.find(holding => holding.asset.id === portfolioSelectedAssetId) ?? null;
+    return <PortfolioAssetDetail
+      holding={holding}
+      positions={portfolioPositions}
+      hideAmounts={hideAmounts}
+      privateRevealed={wallet.privateRevealed}
+      onBack={returnToPortfolioNetwork}
+      onAgent={() => navigate("agent")}
+    />;
+  }
   function renderPortfolio() {
+    if (wallet.connected && portfolioView === "overview") return renderPortfolioOverview();
+    if (wallet.connected && portfolioView === "asset") return renderPortfolioAssetDetail();
+    if (wallet.connected && portfolioView === "network" && portfolioNetworkFocus !== "starknet") return <PortfolioUnavailableNetwork focus={portfolioNetworkFocus} onBack={backToPortfolioOverview}/>;
     const privateShare = total !== null && total > ZERO && privateBalance !== null ? Number(privateBalance * BigInt(10000) / total) / 100 : null;
-    return <div className={styles.portfolioPage}>
-      <div className={styles.intro}><h1>Portfolio</h1><p>Your capital, at a glance.</p></div>
-      <section className={styles.portfolioOverview}><div className={styles.overviewTop}><div><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p></div><button type="button" className={styles.iconButton} disabled={!publicReady || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button></div><p className={styles.helper}>{balanceHelp}</p>
-        {!wallet.connected && connectButton}<SectionHeading title="Performance"/><PerformanceChart points={chartPoints} hidden={hideAmounts}/>
-        <div className={styles.segment} aria-label="Performance period">{(["1D", "7D", "30D"] as const).map(value => <button key={value} aria-pressed={period === value} onClick={() => setPeriod(value)}>{value}</button>)}</div>
+    const hasRecordedHistory = observations.owner === sessionKey && observations.points.filter(point => point.ts >= Date.now() - 30 * 86400000).length >= 2;
+    const activeHoldings = portfolioHoldings.filter(holding => holding.observedAmount !== null && holding.observedAmount > ZERO);
+    const visibleHoldings = portfolioShowAllAssets ? [
+      ...activeHoldings,
+      ...portfolioHoldings.filter(holding => holding.observedAmount === null || holding.observedAmount <= ZERO),
+    ] : activeHoldings;
+    if (!wallet.connected) {
+      return (
+        <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
+          <div className={`${styles.intro} ${styles.portfolioIntro}`}>
+            <h1>Portfolio<span className={styles.portfolioTitleDot}>.</span></h1>
+            <p>Private DeFi, in your control.</p>
+          </div>
+          <section className={styles.portfolioWelcome}>
+            <div className={styles.portfolioWelcomeIcon}><WalletCards size={25} aria-hidden="true"/></div>
+            <h2>See what you own.</h2>
+            <p>Connect your wallet to view assets, private balances you choose to reveal, and supported DeFi positions.</p>
+            <button type="button" className={`${styles.primary} ${styles.portfolioConnect}`} disabled={wallet.connecting}
+              onClick={() => void run(() => wallet.connect())}>
+              {wallet.connecting ? <LoaderCircle size={19} aria-hidden="true"/> : <WalletCards size={19} aria-hidden="true"/>}
+              <span>{wallet.connecting ? "Connecting…" : "Connect wallet"}</span>
+              <ArrowRight size={18} aria-hidden="true"/>
+            </button>
+            <div className={styles.portfolioSafety}><ShieldCheck size={15} aria-hidden="true"/>
+              <span>Viewing balances does not authorize transactions.</span>
+            </div>
+          </section>
+
+        </div>
+      );
+    }
+    return <div className={`${styles.portfolioPage} ${styles.portfolioRefresh}`}>
+      <div className={styles.portfolioNetworkTop}>
+        <button type="button" className={styles.portfolioReturnLink} onClick={backToPortfolioOverview}><ArrowLeft size={17}/> All networks</button>
+        <span>{activeNetwork?.tag ?? "Network"}</span>
+      </div>
+      <div className={`${styles.intro} ${styles.portfolioIntro}`}>
+        <p className={styles.eyebrow}>CAREL PORTFOLIO</p>
+        <h1>Starknet<span className={styles.portfolioTitleDot}>.</span></h1>
+        <p>Private DeFi assets and positions.</p>
+      </div>
+      <div className={styles.portfolioIdentity}>
+        <span><WalletCards size={16} aria-hidden="true"/>{shortAddress(wallet.address)}</span>
+      </div>
+      <div className={styles.portfolioNetworkTabs} aria-label="Portfolio views">
+        <button type="button" aria-pressed={portfolioNetworkTab === "assets"} onClick={() => setPortfolioNetworkTab("assets")}>Assets</button>
+        <button type="button" aria-pressed={portfolioNetworkTab === "positions"} onClick={() => setPortfolioNetworkTab("positions")}>Positions</button>
+        <button type="button" onClick={() => navigate("activity")}>Activity <ArrowRight size={13} aria-hidden="true"/></button>
+      </div>
+      {portfolioNetworkTab === "assets" && <div className={styles.portfolioTabPanel} role="region" aria-label="Assets view">
+      <section className={`${styles.portfolioOverview} ${styles.portfolioSummary}`}>
+        <div className={styles.overviewTop}>
+          <div>
+            <p className={styles.label}>Observed STRK balance</p>
+            <p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p>
+          </div>
+          <button type="button" className={styles.iconButton} disabled={!publicReady || busy} aria-label="Refresh public balance" onClick={() => void refreshBalances()}><RefreshCw size={18}/></button>
+        </div>
+        <p className={styles.helper}>{balanceHelp}</p>
+        {hasRecordedHistory && !hideAmounts ? (
+          <div className={styles.portfolioHistory}>
+            <SectionHeading title="Balance history"/>
+            {chartPoints.length >= 2 ? <PerformanceChart points={chartPoints} hidden={false}/> : <p className={styles.portfolioHistoryNoData}>No balance observations in this period. Try 7D or 30D.</p>}
+            <div className={styles.segment} aria-label="Balance history period">{(["1D", "7D", "30D"] as const).map(value => (
+              <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{value}</button>
+            ))}</div>
+          </div>
+        ) : (
+          <div className={styles.portfolioHistoryHint}>
+            <Activity size={16} aria-hidden="true"/>
+            <span>{hideAmounts ? "Amounts are hidden in Settings." : "Balance history starts after multiple observations."}</span>
+          </div>
+        )}
       </section>
-      <section><SectionHeading title="Allocation"/><div className={styles.balanceCards}>
+      <section className={styles.portfolioSection}><SectionHeading title="Allocation"/><div className={styles.balanceCards}>
         <div className={styles.balanceCard}><span><WalletCards size={15}/>Public</span><strong>{amount(wallet.publicStrk, hideAmounts)} <small>STRK</small></strong><button disabled={!publicReady || busy} onClick={() => void refreshBalances()}>{wallet.publicStrk === null ? "Load" : "Refresh"}<RefreshCw size={13}/></button></div>
         <div className={styles.balanceCard}><span><EyeOff size={15}/>Private</span><strong>{amount(privateBalance, hideAmounts || !wallet.privateRevealed)} <small>STRK</small></strong><button disabled={!ready || !wallet.strk20Capable || busy} onClick={() => void run(() => wallet.revealPrivateBalance())}>{wallet.privateRevealed ? "Refresh" : "Reveal"}<Eye size={13}/></button></div>
       </div>
-      {privateShare !== null && !hideAmounts && <><div className={styles.allocation} role="img" aria-label={`Private ${privateShare}%, public ${(100 - privateShare).toFixed(2)}%`}><span style={{ width: `${privateShare}%` }}/><span style={{ width: `${100 - privateShare}%` }}/></div><div className={styles.allocationLegend}><span>Private {privateShare.toFixed(1)}%</span><span>Public {(100 - privateShare).toFixed(1)}%</span></div></>}
+      {privateShare !== null && !hideAmounts && (
+        <div className={styles.portfolioAllocationDetail}>
+          <svg className={styles.portfolioDonut} viewBox="0 0 120 120" role="img"
+            aria-label={`Private ${privateShare.toFixed(1)}%, public ${(100 - privateShare).toFixed(1)}%`}>
+            <circle className={styles.portfolioDonutBase} cx="60" cy="60" r="45" fill="none" strokeWidth="12"/>
+            <circle className={styles.portfolioDonutSegment} cx="60" cy="60" r="45"
+              fill="none" strokeWidth="12" strokeLinecap="round"
+              pathLength={100} strokeDasharray={`${privateShare} ${100 - privateShare}`}
+              transform="rotate(-90 60 60)"/>
+            <text x="60" y="55" textAnchor="middle" className={styles.portfolioDonutCaption}>Private</text>
+            <text x="60" y="74" textAnchor="middle" className={styles.portfolioDonutValue}>{privateShare.toFixed(1)}%</text>
+          </svg>
+          <div className={styles.portfolioDonutDetails}>
+            <strong>Privacy allocation</strong>
+            <p>Observed STRK split</p>
+            <div><span className={styles.portfolioLegendOrange}/>Private <strong>{privateShare.toFixed(1)}%</strong></div>
+            <div><span className={styles.portfolioLegendGrey}/>Public <strong>{(100 - privateShare).toFixed(1)}%</strong></div>
+          </div>
+        </div>
+      )}
       <div className={styles.actionPair}><button className={styles.secondary} disabled={!ready || !wallet.strk20Capable || busy} onClick={() => { setQuickAction("shield"); setActionError(null); }}><ArrowDownToLine size={16}/>Shield</button><button className={styles.secondary} disabled={!ready || !wallet.strk20Capable || busy} onClick={() => { setQuickAction("unshield"); setActionError(null); }}><ArrowUpFromLine size={16}/>Unshield</button></div>
-      {quickAction && <div className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
+      {quickAction && <div id="carel-portfolio-quick" className={styles.quickPanel}><SectionHeading title={quickAction === "shield" ? "Shield STRK" : "Unshield STRK"}><button className={styles.iconButton} onClick={() => setQuickAction(null)} aria-label="Close transfer form"><X size={17}/></button></SectionHeading><label className={styles.fieldLabel} htmlFor="carel-amount">Amount in STRK</label><input id="carel-amount" className={styles.amountInput} inputMode="decimal" value={quickAmount} onChange={event => setQuickAmount(event.target.value)}/><p className={styles.privacyNote}>{quickAction === "shield" ? "Public wallet → Privacy pool. The deposit remains public; privacy starts after maturity." : "Privacy pool → Public wallet. The withdrawal amount and destination become public."}</p><button className={styles.primary} disabled={busy || !ready} onClick={() => void executeQuick()}>{busy ? "Waiting for wallet…" : `Review & ${quickAction === "shield" ? "Shield" : "Unshield"}`}</button></div>}
       {wallet.maturityTarget !== null && <p className={styles.notice}>Pool maturity: block {wallet.maturityTarget.toLocaleString()}{wallet.currentBlock !== null && ` · Current block ${wallet.currentBlock.toLocaleString()}`}</p>}
       </section>
-      <section>
-        <SectionHeading title="Holdings"/>
+      <section id="carel-portfolio-holdings" className={styles.portfolioSection}>
+        <SectionHeading title="Holdings">
+          <button type="button" className={styles.portfolioDetailLink} onClick={() => setPortfolioShowAllAssets(show => !show)}>
+            {portfolioShowAllAssets ? "Active only" : "Show all assets"} <ChevronRight size={13}/>
+          </button>
+        </SectionHeading>
 
-        {portfolioHoldings.length ? (
-          portfolioHoldings.map(
+        {visibleHoldings.length ? (
+          visibleHoldings.map(
             (holding) => (
-              <div
-                className={styles.holdingRow}
+              <button
+                type="button"
+                className={`${styles.holdingRow} ${styles.portfolioHoldingButton}`}
                 key={holding.asset.id}
+                onClick={() => openPortfolioAsset(holding.asset.id)}
+                aria-label={`View ${holding.asset.name} asset details`}
               >
-                <span className={styles.coin}>
-                  {holding.asset.symbol
-                    .slice(0, 1)}
-                </span>
+                <AssetLogo symbol={holding.asset.symbol}/>
 
                 <div className={styles.rowCopy}>
                   <strong>
@@ -1328,20 +1579,23 @@ export function CarelApp() {
                     {holding.asset.symbol}
                   </small>
                 </strong>
-              </div>
+                <ChevronRight size={16} className={styles.portfolioChevron}/>
+              </button>
             ),
           )
         ) : (
-          <EmptyState title="No holdings loaded">
-            Connect a supported network to load
-            registered CAREL assets.
-          </EmptyState>
+          <div className={styles.portfolioEmptyLine}>
+            <WalletCards size={19} aria-hidden="true"/>
+            <div><strong>No positive holdings currently observed</strong><p>Use Show all assets to view available tokens, or refresh wallet balances. Unrevealed private assets are not assumed to be zero.</p></div>
+          </div>
         )}
       </section>
 
       <GardenBalances hidden={hideAmounts}/>
+      </div>}
 
-      <section>
+      {portfolioNetworkTab === "positions" && <div className={styles.portfolioTabPanel} role="region" aria-label="Positions view">
+      <section id="carel-portfolio-positions" className={styles.portfolioSection}>
         <SectionHeading title="Positions">
           {portfolioPositionsLoading && (
             <span className={styles.status}>
@@ -1360,10 +1614,7 @@ export function CarelApp() {
                 <div
                   className={styles.holdingRow}
                 >
-                  <span className={styles.coin}>
-                    {position.asset.symbol
-                      .slice(0, 1)}
-                  </span>
+                  <AssetLogo symbol={position.asset.symbol}/>
 
                   <div className={styles.rowCopy}>
                     <strong>
@@ -1376,7 +1627,7 @@ export function CarelApp() {
                       {position.detail}
                     </small>
 
-                    {position.borrow && (
+                    {position.borrow && !hideAmounts && (
                       <small>
                         Collateral{" "}
                         {formatPortfolioAmount(
@@ -1415,6 +1666,9 @@ export function CarelApp() {
                       styles.positionEnd
                     }
                   >
+                    <button type="button" className={styles.portfolioDetailLink}
+                      onClick={() => openPortfolioAsset(position.asset.id)}
+                      aria-label={`View ${position.asset.symbol} asset details`}>Details <ChevronRight size={13}/></button>
                     <strong
                       className={
                         styles.holdingAmount
@@ -1521,10 +1775,19 @@ export function CarelApp() {
             Loading protocol positions…
           </p>
         ) : (
-          <EmptyState title="No visible positions">
-            Staking, lending, and borrowing
-            positions will appear here.
-          </EmptyState>
+          <div className={styles.portfolioEmptyLine}>
+            <Layers3 size={19} aria-hidden="true"/>
+            <div>
+              <strong>{portfolioPositionWarning ? "Positions unavailable" : "No positions currently visible"}</strong>
+              <p>{portfolioPositionWarning
+                ? "Some protocol data could not be loaded. Retry the check or review the warning below."
+                : !wallet.privateRevealed
+                  ? "Private positions may become visible after an explicit balance reveal on Assets."
+                  : "No supported staking, lending, or borrowing positions were detected."}</p>
+              <button type="button" className={styles.portfolioDetailLink}
+                onClick={() => setSample(value => value + 1)}>Retry positions <RefreshCw size={13}/></button>
+            </div>
+          </div>
         )}
 
         {portfolioPositionWarning && (
@@ -1535,13 +1798,67 @@ export function CarelApp() {
           </p>
         )}
       </section>
+      </div>}
     </div>;
   }
   function renderActivity() {
-    return <div className={styles.narrowPage}><div className={styles.intro}><h1>Activity</h1><p>Your executions, from start to finish.</p></div><div className={styles.segment} aria-label="Execution filter">{(["all", "pending", "confirmed"] as const).map(value => <button key={value} aria-pressed={activityFilter === value} onClick={() => setActivityFilter(value)}>{value === "all" ? "All" : value === "pending" ? "Pending" : "Completed"}</button>)}</div>
-      <div className={styles.activityList}>{visibleRecords.length ? visibleRecords.map(renderExecution) : <EmptyState title={activityFilter === "all" ? "No STRK executions yet" : "No matching STRK executions"}>Shield and Unshield executions from this wallet session appear here.</EmptyState>}</div>
-      {selectedExecution && <section className={styles.panel}><SectionHeading title={txName(selectedExecution.label)}><button className={styles.iconButton} onClick={() => setSelectedHash(null)} aria-label="Close execution detail"><X size={16}/></button></SectionHeading><p className={styles.helper}>{selectedExecution.label}</p><div className={styles.rule}><span>Status</span><strong>{selectedExecution.status}</strong></div><div className={styles.rule}><span>Network</span><strong>{activeNetwork?.label ?? "Starknet"}</strong></div><p className={styles.hash}>{selectedExecution.hash}</p><a className={styles.secondary} href={`${activeNetwork?.explorerTx ?? SEPOLIA_EXPLORER_TX}${selectedExecution.hash}`} target="_blank" rel="noreferrer">View on explorer<ArrowUpRight size={16}/></a></section>}
-      <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("normal")}/>
+    const confirmed = records.filter(record => record.status === "confirmed").length;
+    const pending = records.length - confirmed;
+    return <div className={`${styles.narrowPage} ${activityUI.page}`}>
+      <div className={activityUI.hero}>
+        <div className={activityUI.eyebrow}><Activity size={14}/> CAREL ACTIVITY</div>
+        <h1>Execution history<span>.</span></h1>
+        <p>Track recorded STRK20 executions for your connected wallet, and Garden Bridge activity below.</p>
+        <div className={activityUI.walletScope}>
+          <WalletCards size={15}/>
+          <span>{wallet.connected && wallet.address ? shortAddress(wallet.address) : "Wallet not connected"}</span>
+          <span className={activityUI.scopeNetwork}>{wallet.connected ? activeNetwork?.label ?? "Starknet" : "Connect wallet"}</span>
+        </div>
+      </div>
+
+      <div className={activityUI.metrics}>
+        <div><span>Recorded</span><strong>{records.length}</strong></div>
+        <div><span>Confirmed</span><strong>{confirmed}</strong></div>
+        <div><span>In progress</span><strong>{pending}</strong></div>
+      </div>
+
+      <section className={activityUI.history} aria-label="STRK20 execution history">
+        <div className={activityUI.historyHead}>
+          <div><h2>STRK20 executions</h2><p>Saved for this wallet · Not a complete transaction index</p></div>
+        </div>
+        <div className={activityUI.filters} aria-label="Execution filter">
+          {(["all", "pending", "confirmed"] as const).map(value =>
+            <button type="button" key={value} aria-pressed={activityFilter === value}
+              onClick={() => setActivityFilter(value)}>
+              {value === "all" ? "All" : value === "pending" ? "In progress" : "Confirmed"}
+            </button>)}
+        </div>
+        <div className={activityUI.items}>
+          {visibleRecords.length
+            ? visibleRecords.map(renderExecution)
+            : <EmptyState title={activityFilter === "all" ? "No recorded STRK20 executions yet" : "No matching executions"}>
+                This list includes saved Shield and Unshield activity for this wallet. Other protocol history may appear in its own section.
+              </EmptyState>}
+        </div>
+      </section>
+
+      {selectedExecution && <section className={`${styles.panel} ${activityUI.detail}`} aria-label="Selected execution details">
+        <SectionHeading title={txName(selectedExecution.label)}>
+          <button className={styles.iconButton} type="button" onClick={() => setSelectedHash(null)} aria-label="Close execution detail"><X size={16}/></button>
+        </SectionHeading>
+        <p className={styles.helper}>{selectedExecution.label}</p>
+        <div className={styles.rule}><span>Status</span><strong>{selectedExecution.status}</strong></div>
+        <div className={styles.rule}><span>Network</span><strong>{activeNetwork?.label ?? "Starknet"}</strong></div>
+        <p className={styles.hash}>{selectedExecution.hash}</p>
+        <a className={styles.secondary}
+          href={`${activeNetwork?.explorerTx ?? SEPOLIA_EXPLORER_TX}${selectedExecution.hash}`}
+          target="_blank" rel="noreferrer">View on explorer <ArrowUpRight size={16}/></a>
+      </section>}
+
+      <div className={activityUI.bridgeSection}>
+        <div className={activityUI.bridgeHeading}><h2>Garden Bridge</h2><p>Bridge executions are tracked separately from STRK20 activity.</p></div>
+        <GardenBridge mode={mode} historyOnly activityFilter={activityFilter} onPublicMode={() => setMode("normal")}/>
+      </div>
     </div>;
   }
   function renderSettings() {
@@ -1561,11 +1878,11 @@ export function CarelApp() {
       <button type="button" className={styles.walletButton} disabled={wallet.connecting} onClick={wallet.connected ? openWallet : () => void run(() => wallet.connect())} aria-label={wallet.connected ? "Open wallet settings" : "Connect wallet"}>{wallet.connecting ? <LoaderCircle size={18}/> : <WalletCards size={18}/>}<span>{wallet.connected ? shortAddress(wallet.address) : wallet.connecting ? "Connecting…" : "Connect"}</span></button></div>
     </div></header>
     <main className={styles.main}>
-      <div className={styles.networkLine}>
+      {tab !== "portfolio" && <div className={styles.networkLine}>
         <span className={styles.dot}/>
         {activeNetwork?.label ?? "Starknet"}
         <span>{activeNetwork?.tag ?? "Network"}</span>
-      </div>
+      </div>}
       {wallet.connected && !activeNetwork && (
         <div className={styles.notice} role="status">
           CAREL supports Starknet Sepolia and Starknet Mainnet.

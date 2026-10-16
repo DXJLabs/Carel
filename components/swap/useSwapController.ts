@@ -90,16 +90,25 @@ export function useSwapController({
       wallet.chainId,
     );
 
+  /*
+   * Public Swap uses the registered Starknet asset catalogue.
+   * AVNU determines live pair availability at quote time.
+   *
+   * Private Swap flows stay on the existing narrow token set until
+   * asset-specific shield/unshield support is verified end to end.
+   */
   const swapAssets =
     useMemo(
       () =>
         network
-          ? [
-              network.assets.strk,
-              network.assets.usdc,
-            ]
+          ? mode === "normal"
+            ? [...network.assetList]
+            : [
+                network.assets.strk,
+                network.assets.usdc,
+              ]
           : [],
-      [network],
+      [network, mode],
     );
 
   const [
@@ -387,6 +396,26 @@ export function useSwapController({
     setSuccess("");
   }
 
+
+  // Keep selection valid when switching between public and private routes.
+  // In-flight Agent sessions are never rewritten.
+  useEffect(() => {
+    if (!network || flowLocked || swapAssets.length < 2) return;
+    const nextSell = swapAssets.some(asset => asset.symbol === sellSymbol)
+      ? sellSymbol
+      : swapAssets[0].symbol;
+    const nextBuy = swapAssets.some(asset => asset.symbol === buySymbol) && buySymbol !== nextSell
+      ? buySymbol
+      : swapAssets.find(asset => asset.symbol !== nextSell)?.symbol;
+    if (!nextBuy) return;
+    if (nextSell !== sellSymbol) setSellSymbol(nextSell);
+    if (nextBuy !== buySymbol) setBuySymbol(nextBuy);
+    if (nextSell !== sellSymbol || nextBuy !== buySymbol) {
+      setQuote(null);
+      setError("");
+      setSuccess("");
+    }
+  }, [network, flowLocked, swapAssets, sellSymbol, buySymbol]);
 
   useEffect(() => {
     if (
