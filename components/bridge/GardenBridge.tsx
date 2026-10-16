@@ -22,6 +22,7 @@ import {
 } from "@/lib/agent/garden-bridge-runtime";
 import { BITCOIN_TESTNET4 } from "@/lib/carel/ecosystems/bitcoin/chains";
 import { STARKNET_SEPOLIA } from "@/lib/carel/ecosystems/starknet/chains";
+import { CAREL_NETWORKS } from "@/lib/carel/networks";
 import { sepoliaProvider } from "@/lib/strk20/config";
 import { bitcoinAddress, felt, formatBitcoinAmount, parseBitcoinAmount, validateFundingCalls } from "@/lib/garden/protocol";
 import type {
@@ -150,6 +151,8 @@ function explorer(hash: string | null, bitcoin: boolean) {
 function BridgeToken({ symbol }: { symbol: string }) {
   const icon: Record<string, string> = {
     BTC: "btc", WBTC: "wbtc", STRKBTC: "strkbtc",
+    STRK: "strk", USDC: "usdc", ETH: "eth",
+    USDT: "usdt", XSTRK: "xstrk",
   };
   const name = icon[symbol.toUpperCase()];
   return name
@@ -1313,6 +1316,11 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
     null;
 
   const selectedAsset = catalog?.starknet.find(asset => asset.id === assetId);
+  // Separate public CAREL Mainnet asset registration from verified Garden testnet routes.
+  // These assets are informational only: no quote, order or wallet action is wired.
+  const otherCarelAssets = CAREL_NETWORKS.mainnet.assetList.filter(
+    asset => !catalog?.starknet.some(garden => garden.symbol.toUpperCase() === asset.symbol.toUpperCase()),
+  );
   const sourceSymbol = direction === "to-starknet" ? "BTC" : selectedAsset?.symbol || "BTC";
   const destinationSymbol = direction === "to-starknet" ? selectedAsset?.symbol || "BTC" : "BTC";
   const quoteExpired = quote !== null && now >= quote.expiresAt;
@@ -1360,6 +1368,21 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
             <BridgeToken symbol={asset.symbol}/><span>{asset.symbol}</span>
           </button>)}
         </div>
+      </div>
+      <div className={styles.otherAssets} aria-label="Other CAREL assets without a Garden testnet route">
+        <div className={styles.otherAssetsHeading}>
+          <strong>More assets in CAREL</strong>
+          <span>Mainnet only · No Garden testnet route</span>
+        </div>
+        <div className={styles.unavailableAssets}>
+          {otherCarelAssets.map(asset =>
+            <span key={asset.id} className={styles.unavailableAsset}
+              aria-label={asset.symbol + " has no enabled Garden testnet bridge route"}>
+              <BridgeToken symbol={asset.symbol}/><strong>{asset.symbol}</strong>
+              <small>Unavailable</small>
+            </span>)}
+        </div>
+        <p className={styles.assetNote}>Additional assets are registered in CAREL, but Garden cannot quote these tokens on this Testnet4 ↔ Sepolia bridge. Only the Garden-listed choices above are executable.</p>
       </div>
       {!catalog.starknet.some(asset => asset.symbol === "strkBTC") &&
         <p className={styles.assetNote}>strkBTC is not currently listed on this Garden Sepolia route. Only listed assets can be selected.</p>}
