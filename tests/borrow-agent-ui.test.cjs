@@ -37,11 +37,11 @@ test("Collateral is STRK only and debt candidates stay in the validated Vesu reg
 
 test("Vesu live market checks and stale risk reviews remain guarded", () => {
   assert.match(marketHook, /\/api\/vesu\/borrow\/markets/);
-  assert.match(marketHook, /setReviewed\(withEvaluation\)/);
+  assert.match(marketHook, /setReviewed\(\s*withEvaluation\s*,?\s*\)/);
   assert.match(marketHook, /setReviewed\(false\)/);
   assert.match(marketHook, /selectPool/);
   assert.match(controller, /invalidateReview\(\)/);
-  assert.match(view, /!reviewed/);
+  assert.match(view, /const evaluation =\s*reviewed\s*\?/);
   assert.match(view, /reviewBorrow\(\)/);
   assert.match(view, /evaluation\s*\.eligible/);
   assert.match(view, /evaluation\s*\.blockers\.map/);
@@ -82,6 +82,7 @@ test("CAREL Borrow keeps real submitted statuses and wallet approval path", () =
   assert.match(controller, /loadActiveAgentRecoveryPointer/);
   assert.match(controller, /executeAgentStage/);
   assert.match(view, /Current on-chain/);
+  assert.match(view, /CAREL risk assessment/);
   assert.match(view, /Review & Borrow/);
 });
 
