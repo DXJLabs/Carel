@@ -86,6 +86,16 @@ test("CAREL Borrow keeps real submitted statuses and wallet approval path", () =
   assert.match(view, /Review & Borrow/);
 });
 
+test("One-stage normal Borrow reduces Agent duplication but risk review remains", () => {
+  const workspace = fs.readFileSync(path.join(root, "components/CarelWorkspace.tsx"), "utf8");
+  assert.match(workspace, /CAREL prepared a one-step Borrow plan/);
+  assert.match(workspace, /selectedRuntimeSurface === "borrow" && mode === "normal" && agentPlan\.stages\.length === 1/);
+  assert.match(workspace, /LTV and liquidation risk must be reviewed/);
+  assert.match(workspace, /selectedRuntimeSurface === "lend" \|\| selectedRuntimeSurface === "borrow"/);
+  assert.match(view, /CAREL risk assessment/);
+  assert.match(view, /evaluation\.eligible/);
+});
+
 test("Mobile selector, input, and market layout classes are defined", () => {
   const classes = [...new Set([...view.matchAll(/ui\.([A-Za-z0-9_]+)/g)].map(m => m[1]))];
   for (const c of classes) {
