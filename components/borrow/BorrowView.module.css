@@ -1,0 +1,56 @@
+
+/* Borrow UX: keep Vesu validation and action components intact, while
+   placing collateral, requested debt, and on-chain risk together. */
+.shell{min-width:0;display:block;max-width:100%}
+.heading,.headingTitle{display:flex;align-items:center;gap:10px;min-width:0}
+.heading{justify-content:space-between;margin-bottom:16px}
+.headingTitle{flex:1}
+.headingTitle>div{min-width:0}
+.heading h3{margin:0;color:#faf4f0;font-size:18px;letter-spacing:-.025em;font-weight:715}
+.heading p{margin:3px 0 0;color:#b4a9a2;font-size:10px;line-height:1.5}
+.agentBadge{display:grid;place-items:center;flex-shrink:0;width:37px;height:37px;color:#ffa16c;border-radius:12px;background:#40271d;border:1px solid #795039}
+.provider{flex-shrink:0;border:1px solid #5a3e32;border-radius:10px;background:#31221e;color:#f2b88e;font-size:11px;font-weight:665;padding:7px 10px}
+.borrowComposer{min-width:0;padding:13px;border:1px solid #523e37;border-radius:16px;background:radial-gradient(ellipse at -20% -30%,#72371d44,transparent 75%),#1c1d1f}
+.fieldLabel,.balanceHint{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0}
+.fieldLabel span{color:#c8bdb5;font-size:11px}
+.fieldLabel small{color:#9f9692;font-size:10px;text-align:right}
+.amountRow{display:flex;align-items:center;gap:8px;min-width:0;margin:8px 0 12px}
+.amountInput{width:100%;flex:1;min-width:0;padding:0!important;margin:0;background:transparent!important;border:0!important;outline:none!important;box-shadow:none!important;color:#fff!important;font:inherit;font-size:clamp(27px,7.5vw,36px)!important;letter-spacing:-.04em;font-weight:720!important;font-variant-numeric:tabular-nums}
+.amountInput:focus-visible{outline:2px solid #fc9760!important;outline-offset:4px!important;border-radius:4px}
+.tokenPill{display:flex;align-items:center;gap:7px;flex-shrink:0;border:1px solid #4d4141;border-radius:999px;background:#2b292b;padding:4px 9px 4px 4px}
+.tokenPill strong{font-size:13px;color:#f7f2ef}
+.tokenIcon,.fallbackIcon{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:#403332;color:#fff;font-size:12px;font-weight:720}
+.balanceHint{border-top:1px solid #453a38;padding-top:9px;color:#a99f9a;font-size:10px}
+.balanceHint strong{color:#e4c8b7;font-size:11px;overflow-wrap:anywhere;text-align:right}
+.flowArrow{display:flex;align-items:center;gap:8px;padding:12px 0;color:#e69b6c;font-size:10px}
+.flowArrow svg{transform:rotate(90deg);color:#ff9258}
+.debtSection{margin:15px 0 12px}
+.sectionTop{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:9px}
+.sectionTop strong{font-size:12px;color:#f5eeea}
+.sectionTop span{color:#ada099;font-size:10px;text-align:right;line-height:1.4}
+.debtOptions{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-inline:contain;padding:2px 0 7px}
+.debtOptions::-webkit-scrollbar{display:none}
+.debtOption{display:flex;align-items:center;gap:7px;flex-shrink:0;min-height:43px;padding:6px 10px 6px 5px;background:#1e2022;border:1px solid #484143;border-radius:11px;color:#e5ddda;cursor:pointer}
+.debtOption span{font-size:11px;font-weight:680}
+.debtOption .tokenIcon,.debtOption .fallbackIcon{width:28px;height:28px}
+.debtOption[aria-pressed="true"]{border-color:#d17846;background:#3b281f;color:#fff}
+.debtOption:disabled,.poolOption:disabled{opacity:.55;cursor:not-allowed}
+.debtOption:focus-visible,.poolOption:focus-visible{outline:2px solid #ff9d61;outline-offset:2px}
+.marketPanel{background:#1b1c1f;border:1px solid #443b3a;border-radius:15px;padding:13px;margin:0 0 15px}
+.marketHead{display:flex;justify-content:space-between;align-items:center;gap:7px}
+.marketHead>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.marketHead strong{font-size:13px;color:#f4eae4;font-weight:700}
+.marketHead span{font-size:10px;color:#b5a59b;line-height:1.45}
+.marketStatus{font-size:10px;font-weight:650;white-space:nowrap;padding:6px 8px;color:#dbad90;background:#2e241f;border:1px solid #604334;border-radius:8px}
+.poolOptions{display:flex;gap:7px;overflow-x:auto;scrollbar-width:thin;padding:10px 0 2px}
+.poolOption{min-height:35px;white-space:nowrap;padding:6px 9px;color:#d7c5bd;border-radius:9px;border:1px solid #504143;background:#272529;font-size:11px;cursor:pointer}
+.poolOption[aria-pressed="true"]{color:#fff;border-color:#d17e4d;background:#3c271e}
+.poolTitle{font-size:12px;font-weight:650;color:#e6bfa6;margin:11px 0 8px}
+.riskStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.riskStats>div{display:flex;flex-direction:column;gap:7px;justify-content:space-between;min-height:66px;padding:9px 8px;border:1px solid #423838;border-radius:10px;background:#232325;min-width:0}
+.riskStats span{font-size:10px;color:#b2a29a;line-height:1.35}
+.riskStats strong{font-size:12px;color:#f9f3ef;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.riskNote,.marketEmpty{font-size:10px;line-height:1.55;color:#ada09a;margin:10px 1px 0}
+@media(max-width:420px){.borrowComposer{padding:12px}.marketPanel{padding:11px}.riskStats>div{padding:8px 6px}.riskStats strong{font-size:11px}}
+@media(max-width:360px){.riskStats{gap:5px}.riskStats span{font-size:9px}.riskStats strong{font-size:10px}.fieldLabel small{font-size:9px}.marketStatus{font-size:9px}}
+@media(prefers-reduced-motion:reduce){.shell *{animation:none!important;transition:none!important}}
