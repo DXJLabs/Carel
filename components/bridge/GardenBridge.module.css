@@ -127,6 +127,8 @@
 .progressSteps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:11px 0 14px}
 .progressSteps span{min-width:0;padding:9px 3px;border-radius:7px;text-align:center;font-size:9px;line-height:1.35;border:1px solid #3a3739}
 .progressActive{background:#4a2c21;border-color:#865139!important;color:#ffcb9d}
+.progressDone{background:#31291f;border-color:#66523b!important;color:#e5c2a5}
+.progressCurrent{background:#4a2c21;border-color:#e58b53!important;color:#fff1e4;box-shadow:inset 0 0 0 1px #d16d3b}
 .progressIdle{background:#232226;color:#8c8684}
 .orderException{border:1px solid #7c4934;background:#33251e;color:#fac098;font-size:11px;padding:10px;border-radius:10px}
 .bridge .deposit{border-radius:12px;background:#2b211d;border-color:#77503a;padding:13px}
