@@ -8,10 +8,8 @@ import {
 } from "react";
 
 import {
-  ArrowRight,
-  LoaderCircle,
-  RefreshCw,
-  WalletCards,
+  ArrowRight, CheckCircle2, EyeOff, Layers3, LoaderCircle,
+  RefreshCw, ShieldCheck, Sparkles, WalletCards,
 } from "lucide-react";
 
 import {
@@ -75,6 +73,7 @@ import {
 } from "@/lib/carel/ecosystems/starknet/protocols/vesu/lending";
 
 import styles from "../CarelWorkspace.module.css";
+import ui from "./VesuLend.module.css";
 
 
 type LendMode =
@@ -164,6 +163,17 @@ function percentFromBps(
   ).toFixed(2)}%`;
 }
 
+
+function LendAssetIcon({ symbol }: { symbol: string }) {
+  const icons: Record<string, string> = {
+    STRK: "strk", USDC: "usdc", ETH: "eth", USDT: "usdt",
+    WBTC: "wbtc", STRKBTC: "strkbtc",
+  };
+  const name = icons[symbol.toUpperCase()];
+  return name
+    ? <img className={ui.tokenIcon} src={`/token-icons/${name}.svg`} width={32} height={32} alt=""/>
+    : <span className={ui.fallbackIcon} aria-hidden="true">{symbol.slice(0, 1)}</span>;
+}
 
 export function VesuLend({
   mode,
@@ -1420,720 +1430,167 @@ export function VesuLend({
     privateBalance >=
       parsedAmount;
 
-  return (
-    <section
-      className={
-        styles.borrowPanel
-      }
-    >
-      {mode === "shield" && (
-        <div
-          className={
-            styles.borrowRisk
-          }
-        >
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Route
-            </span>
+  const lendingMode = mode === "normal" ? "CAREL Lend" : mode === "shield" ? "Shield Lend" : "Unshield Lend";
+  const sourceVisibility = mode === "unshield" ? "Private" : "Public";
+  const totalAvailable = mode === "unshield" ? privateBalance : publicBalance;
+  const formatBalance = (value: bigint | null) =>
+    value === null ? "Not available" : `${formatUnits(value, selectedAsset.decimals, 6)} ${selectedAsset.symbol}`;
 
-            <strong>
-              Public {
-                selectedAsset.symbol
-              }
-              {" → "}
-              STRK20
-              {" → "}
-              Vesu
-              {" → "}
-              Private vToken
-            </strong>
-          </div>
+  function chooseLendAsset(id: string) {
+    if (busy || flowLocked || selectedAssetId === id) return;
+    clearAgentFlow();
+    setSelectedAssetId(id);
+    setMarkets([]);
+    setSelectedPoolId("");
+    setError("");
+    setSuccess("");
+  }
 
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Public {
-                selectedAsset.symbol
-              }
-            </span>
+  return <section className={ui.shell} aria-label="CAREL Vesu lending workflow">
+    <div className={ui.heading}>
+      <div className={ui.headingTitle}>
+        <span className={ui.agentIcon}><Sparkles size={18} aria-hidden="true"/></span>
+        <div><h3>{lendingMode}</h3><p>Agent-prepared deposit · Wallet-approved execution</p></div>
+      </div>
+      <span className={ui.providerPill}>Vesu</span>
+    </div>
 
-            <strong>
-              {publicBalance === null
-                ? "—"
-                : `${formatUnits(
-                    publicBalance,
-                    selectedAsset.decimals,
-                    6,
-                  )} ${selectedAsset.symbol}`}
-            </strong>
-          </div>
+    <div className={ui.depositCard}>
+      <div className={ui.fieldTop}>
+        <label htmlFor="carel-lend-amount">{sourceVisibility} deposit</label>
+        <span>Starknet Mainnet</span>
+      </div>
+      <div className={ui.amountRow}>
+        <input id="carel-lend-amount" type="text" inputMode="decimal"
+          aria-label={`${selectedAsset.symbol} lend amount`} className={ui.amountInput}
+          value={amount} disabled={busy || flowLocked}
+          onChange={event => { setAmount(event.target.value); setError(""); setSuccess(""); }}/>
+        <span className={ui.activeAsset}><LendAssetIcon symbol={selectedAsset.symbol}/><strong>{selectedAsset.symbol}</strong></span>
+      </div>
+      <div className={ui.depositFoot}>
+        <span>Observed {sourceVisibility.toLowerCase()} balance</span>
+        <strong>{sourceVisibility === "Private" && !wallet.privateRevealed ? "Hidden · reveal first" : formatBalance(totalAvailable)}</strong>
+      </div>
+    </div>
 
-          <p
-            className={
-              styles.privacyNote
-            }
-          >
-            The Vesu lending
-            anonymizer supplies the
-            underlying asset to the
-            Vesu vault and returns
-            the minted vToken as a
-            private STRK20 note.
-          </p>
+    <div className={ui.assetSection}>
+      <div className={ui.subheading}>
+        <span>Deposit asset</span>
+        <small>Markets verified separately</small>
+      </div>
+      <div className={ui.assetList} role="group" aria-label="Choose Vesu lending asset">
+        {VESU_LEND_ASSETS.map(asset => <button type="button"
+          key={asset.id} className={ui.assetChoice} aria-pressed={selectedAssetId === asset.id}
+          disabled={busy || flowLocked}
+          onClick={() => chooseLendAsset(asset.id)}>
+          <LendAssetIcon symbol={asset.symbol}/><span>{asset.symbol}</span>
+        </button>)}
+      </div>
+    </div>
 
-          <button
-            type="button"
-            className={
-              styles.textButton
-            }
-            onClick={
-              onPublicMode
-            }
-          >
-            Use Normal mode
-            <ArrowRight
-              size={14}
-            />
-          </button>
-        </div>
-      )}
+    <section className={ui.marketPanel} aria-label="Vesu lending market">
+      <div className={ui.marketHeader}>
+        <div><strong>Vesu market</strong><span>{loading ? "Checking verified markets…" :
+          selectedMarket ? "Market context verified" : "No verified market available"}</span></div>
+        <button type="button" className={ui.refresh} aria-label="Refresh Vesu lending markets"
+          disabled={busy || flowLocked}
+          onClick={() => void loadMarkets().catch(cause => setError(cause instanceof Error ? cause.message : "Could not refresh Vesu markets."))}>
+          {loading ? <LoaderCircle size={17}/> : <RefreshCw size={17}/>}
+        </button>
+      </div>
 
-      {mode === "unshield" && (
-        <div
-          className={
-            styles.borrowRisk
-          }
-        >
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Route
-            </span>
+      {markets.length > 1 && <div className={ui.poolChoices} role="group" aria-label="Choose Vesu lending pool">
+        {markets.map(market => <button type="button" className={ui.poolChoice}
+          key={market.pool.id} aria-pressed={selectedMarket?.pool.id === market.pool.id}
+          disabled={busy || flowLocked}
+          onClick={() => { clearAgentFlow(); setSelectedPoolId(market.pool.id); setError(""); setSuccess(""); }}>
+          {market.pool.name}
+        </button>)}
+      </div>}
 
-            <strong>
-              Private {
-                selectedAsset.symbol
-              }
-              {" → "}
-              Public {
-                selectedAsset.symbol
-              }
-              {" → "}
-              Vesu
-            </strong>
-          </div>
-
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Private {
-                selectedAsset.symbol
-              }
-            </span>
-
-            <strong>
-              {!wallet.privateRevealed
-                ? "Hidden"
-                : privateBalance === null
-                  ? "—"
-                  : `${formatUnits(
-                      privateBalance,
-                      selectedAsset.decimals,
-                      6,
-                    )} ${selectedAsset.symbol}`}
-            </strong>
-          </div>
-
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Public {
-                selectedAsset.symbol
-              }
-            </span>
-
-            <strong>
-              {publicBalance === null
-                ? "—"
-                : `${formatUnits(
-                    publicBalance,
-                    selectedAsset.decimals,
-                    6,
-                  )} ${selectedAsset.symbol}`}
-            </strong>
-          </div>
-
-          {!wallet.strk20Capable ? (
-            <div
-              className={
-                styles.notice
-              }
-              role="alert"
-            >
-              <p>
-                Ready does not report
-                the STRK20 Wallet API
-                required for Unshield
-                Lend.
-              </p>
+      {selectedMarket
+        ? <>
+            <div className={ui.marketName}>{selectedMarket.pool.name}</div>
+            <div className={ui.marketStats}>
+              <div><span>Market utilization</span><strong>{percentFromBps(selectedMarket.market.utilizationBps)}</strong></div>
+              <div><span>Market pair</span><strong>{selectedMarket.asset.symbol} / {selectedMarket.counterpart.symbol}</strong></div>
+              <div><span>Supply APY</span><strong>Not available</strong></div>
             </div>
-          ) : !wallet.privateRevealed ? (
-            <button
-              type="button"
-              className={
-                styles.secondary
-              }
-              disabled={busy}
-              onClick={() =>
-                void wallet
-                  .revealPrivateBalance()
-              }
-            >
-              <RefreshCw
-                size={16}
-              />
-              Reveal private balance
-            </button>
-          ) : (
-            !privateEnough &&
-            parsedAmount !==
-              null && (
-              <div
-                className={
-                  styles.notice
-                }
-                role="alert"
-              >
-                <p>
-                  Private {
-                    selectedAsset.symbol
-                  } balance is below
-                  this Lend amount.
-                </p>
-              </div>
-            )
-          )}
-
-          <p
-            className={
-              styles.privacyNote
-            }
-          >
-            Agent Core keeps the Vesu
-            stage locked until the
-            exact Unshield amount is
-            confirmed in the public
-            balance. Vesu is freshly
-            prepared only after that
-            verification succeeds.
-          </p>
-        </div>
-      )}
-
-      {lendAgentSession &&
-        lendAgentSession
-          .run.stages.map(
-            (stage) => (
-              <div
-                key={
-                  stage.stageId
-                }
-                className={
-                  styles.rule
-                }
-              >
-                <span>
-                  {stageAction(
-                    stage.stageId,
-                  ) ??
-                    "stage"}
-                </span>
-
-                <strong>
-                  {stage.status}
-                  {stage.txHash
-                    ? ` · ${shortAddress(
-                        stage.txHash,
-                      )}`
-                    : ""}
-                </strong>
-              </div>
-            ),
-          )}
-
-      <div
-        className={
-          styles.borrowPair
-        }
-      >
-        <label
-          className={
-            styles.borrowField
-          }
-        >
-          <span>
-            Asset
-          </span>
-
-          <select
-            className={
-              styles.borrowSelect
-            }
-            value={
-              selectedAssetId
-            }
-            disabled={
-              busy ||
-              flowLocked
-            }
-            onChange={(
-              event,
-            ) => {
-              clearAgentFlow();
-
-              setSelectedAssetId(
-                event.target.value,
-              );
-
-              setMarkets([]);
-              setSelectedPoolId("");
-              setError("");
-              setSuccess("");
-            }}
-          >
-            {VESU_LEND_ASSETS.map(
-              (asset) => (
-                <option
-                  key={
-                    asset.id
-                  }
-                  value={
-                    asset.id
-                  }
-                >
-                  {
-                    asset.symbol
-                  }
-                </option>
-              ),
-            )}
-          </select>
-        </label>
-
-        <label
-          className={
-            styles.borrowField
-          }
-        >
-          <span>
-            Lend
-          </span>
-
-          <div
-            className={
-              styles.borrowInput
-            }
-          >
-            <input
-              inputMode="decimal"
-              value={amount}
-              disabled={
-                busy ||
-                flowLocked
-              }
-              onChange={(
-                event,
-              ) => {
-                setAmount(
-                  event.target
-                    .value,
-                );
-
-                setError("");
-                setSuccess("");
-              }}
-              aria-label={`${selectedAsset.symbol} lend amount`}
-            />
-
-            <strong>
-              {
-                selectedAsset
-                  .symbol
-              }
-            </strong>
-          </div>
-        </label>
-      </div>
-
-      <div
-        className={
-          styles.rule
-        }
-      >
-        <span>
-          Provider
-        </span>
-
-        <strong>
-          Vesu
-        </strong>
-      </div>
-
-      <div
-        className={
-          styles.rule
-        }
-      >
-        <span>
-          Pool
-        </span>
-
-        {markets.length > 1 ? (
-          <select
-            className={
-              styles.borrowSelect
-            }
-            value={
-              selectedMarket
-                ?.pool.id ??
-              ""
-            }
-            disabled={
-              busy ||
-              flowLocked
-            }
-            onChange={(
-              event,
-            ) => {
-              clearAgentFlow();
-
-              setSelectedPoolId(
-                event.target
-                  .value,
-              );
-            }}
-          >
-            {markets.map(
-              (market) => (
-                <option
-                  key={
-                    market.pool.id
-                  }
-                  value={
-                    market.pool.id
-                  }
-                >
-                  {
-                    market.pool
-                      .name
-                  }
-                </option>
-              ),
-            )}
-          </select>
-        ) : (
-          <strong>
-            {selectedMarket
-              ?.pool.name ??
-              (loading
-                ? "Checking…"
-                : "—")}
-          </strong>
-        )}
-      </div>
-
-      {selectedMarket && (
-        <>
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Verified context
-            </span>
-
-            <strong>
-              {
-                selectedMarket
-                  .asset.symbol
-              }{" "}
-              /{" "}
-              {
-                selectedMarket
-                  .counterpart
-                  .symbol
-              }
-            </strong>
-          </div>
-
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Utilization
-            </span>
-
-            <strong>
-              {percentFromBps(
-                selectedMarket
-                  .market
-                  .utilizationBps,
-              )}
-            </strong>
-          </div>
-
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Pool contract
-            </span>
-
-            <strong
-              className={
-                styles.borrowAddress
-              }
-            >
-              {shortAddress(
-                selectedMarket
-                  .pool.address,
-              )}
-            </strong>
-          </div>
-        </>
-      )}
-
-      <p
-        className={
-          styles.privacyNote
-        }
-      >
-        {mode === "shield"
-          ? "Shield Lend verifies the active Vesu pool and its vToken before the anonymizer transaction is sent to Ready."
-          : "The Vesu lending position is public. CAREL verifies an active pool context before execution."}
-      </p>
-
-      <button
-        type="button"
-        className={
-          styles.secondary
-        }
-        disabled={
-          busy ||
-          flowLocked
-        }
-        onClick={() =>
-          void loadMarkets()
-            .catch(
-              (cause) =>
-                setError(
-                  cause instanceof Error
-                    ? cause.message
-                    : "Could not refresh Vesu markets.",
-                ),
-            )
-        }
-      >
-        <RefreshCw
-          size={16}
-        />
-
-        {loading
-          ? "Checking markets…"
-          : "Refresh markets"}
-      </button>
-
-      {!flowLocked &&
-        (
-          !lendAgentSession ||
-          (
-            lendAgentSession
-              .run.status !==
-              "completed" &&
-            lendAgentSession
-              .run.status !==
-              "failed"
-          )
-        ) && (
-        <button
-          type="button"
-          className={
-            styles.primary
-          }
-          disabled={
-            busy ||
-            !selectedMarket ||
-            (
-              mode ===
-                "shield" &&
-              !wallet.strk20Capable
-            ) ||
-            (
-              mode ===
-                "unshield" &&
-              (
-                !wallet.strk20Capable ||
-                !wallet.privateRevealed ||
-                !privateEnough
-              )
-            )
-          }
-          onClick={() =>
-            void startAgentLend()
-          }
-        >
-          {executing ? (
-            <LoaderCircle
-              size={16}
-            />
-          ) : (
-            <ArrowRight
-              size={16}
-            />
-          )}
-
-          {executing
-            ? "Waiting for wallet…"
-            : mode === "shield"
-              ? `Review & Shield Lend ${selectedAsset.symbol}`
-              : mode === "unshield"
-                ? `Start Unshield Lend ${selectedAsset.symbol}`
-                : `Review & Lend ${selectedAsset.symbol}`}
-        </button>
-      )}
-
-
-      {flowLocked &&
-        submittedStage && (
-        <button
-          type="button"
-          className={
-            styles.primary
-          }
-          disabled={busy}
-          onClick={() =>
-            void confirmSubmitted()
-          }
-        >
-          {confirming ? (
-            <LoaderCircle
-              size={16}
-            />
-          ) : (
-            <RefreshCw
-              size={16}
-            />
-          )}
-
-          {confirming
-            ? "Checking confirmation…"
-            : "Check Agent confirmation"}
-        </button>
-      )}
-
-
-      {flowLocked &&
-        !submittedStage &&
-        reviewStage && (
-        <button
-          type="button"
-          className={
-            styles.primary
-          }
-          disabled={busy}
-          onClick={() =>
-            void executeNextStage()
-          }
-        >
-          {executing ? (
-            <LoaderCircle
-              size={16}
-            />
-          ) : (
-            <ArrowRight
-              size={16}
-            />
-          )}
-
-          {executing
-            ? "Waiting for wallet…"
-            : `Execute Vesu Lend ${selectedAsset.symbol}`}
-        </button>
-      )}
-
-
-      {lendAgentSession &&
-        (
-          lendAgentSession
-            .run.status ===
-            "completed" ||
-          lendAgentSession
-            .run.status ===
-            "failed"
-        ) && (
-        <button
-          type="button"
-          className={
-            styles.secondary
-          }
-          disabled={busy}
-          onClick={
-            resetAgentLend
-          }
-        >
-          <RefreshCw
-            size={16}
-          />
-
-          New Lend
-        </button>
-      )}
-
-
-      {error && (
-        <div
-          className={
-            styles.notice
-          }
-          role="alert"
-        >
-          <p>
-            {error}
-          </p>
-        </div>
-      )}
-
-      {success && (
-        <p
-          className={
-            styles.inlineStatus
-          }
-        >
-          {success}
-        </p>
-      )}
+            <p className={ui.marketHint}>Utilization is not APY. Yield is variable and not verified here. Pool {shortAddress(selectedMarket.pool.address)}.</p>
+          </>
+        : <p className={ui.empty}>CAREL requires a verified active Vesu market before preparing a deposit. Registered tokens alone do not guarantee an executable pool.</p>}
     </section>
-  );
+
+    {mode === "shield" && <section className={ui.privacyPanel}>
+      <ShieldCheck size={18} aria-hidden="true"/>
+      <div><strong>Shield Lend · private receipt</strong>
+        <span>Public {selectedAsset.symbol} → STRK20 anonymizer → Vesu → private vToken. CAREL verifies the pool and vToken before execution.</span>
+        <button type="button" onClick={onPublicMode}>Use public lending <ArrowRight size={13}/></button>
+      </div>
+    </section>}
+
+    {mode === "unshield" && <section className={ui.privacyPanel}>
+      <EyeOff size={18} aria-hidden="true"/>
+      <div><strong>Unshield first, then Lend</strong>
+        <span>Public Vesu deposit remains locked until the exact Unshield output is confirmed and verified.</span>
+        {!wallet.strk20Capable
+          ? <p role="alert" className={ui.privacyWarning}>Ready does not expose the required STRK20 Wallet API.</p>
+          : !wallet.privateRevealed
+            ? <button type="button" disabled={busy} onClick={() => void wallet.revealPrivateBalance()}>
+                Reveal private balance <ArrowRight size={13}/></button>
+            : !privateEnough && parsedAmount !== null
+              ? <p role="alert" className={ui.privacyWarning}>Private {selectedAsset.symbol} balance is below this Lend amount.</p>
+              : null}
+      </div>
+    </section>}
+
+    {lendAgentSession && <section className={ui.runPanel} aria-label="Agent lending execution progress">
+      <div className={ui.runHead}><strong>Agent execution</strong><span>{lendAgentSession.run.status.replaceAll("-", " ")}</span></div>
+      {lendAgentSession.run.stages.map((stage, i) => <div className={ui.runStage} key={stage.stageId}>
+        <span className={ui.runIndex}>{i + 1}</span>
+        <span>{stageAction(stage.stageId) ?? "stage"}</span>
+        <strong>{stage.status}{stage.txHash ? ` · ${shortAddress(stage.txHash)}` : ""}</strong>
+      </div>)}
+    </section>}
+
+    <div className={ui.actions}>
+      {!flowLocked && (!lendAgentSession || (lendAgentSession.run.status !== "completed" && lendAgentSession.run.status !== "failed")) &&
+        <button type="button" className={ui.primary}
+          disabled={busy || !selectedMarket || (mode === "shield" && !wallet.strk20Capable) ||
+            (mode === "unshield" && (!wallet.strk20Capable || !wallet.privateRevealed || !privateEnough))}
+          onClick={() => void startAgentLend()}>
+          {executing ? <LoaderCircle size={18}/> : <Sparkles size={18}/>}
+          <span>{executing ? "Waiting for wallet…" :
+            mode === "shield" ? `Review & Shield Lend ${selectedAsset.symbol}` :
+            mode === "unshield" ? `Start Unshield Lend ${selectedAsset.symbol}` :
+              `Review & Lend ${selectedAsset.symbol}`}</span>
+          <ArrowRight size={18}/>
+        </button>}
+      {flowLocked && submittedStage &&
+        <button type="button" className={ui.primary} disabled={busy}
+          onClick={() => void confirmSubmitted()}>
+          {confirming ? <LoaderCircle size={18}/> : <RefreshCw size={18}/>}
+          <span>{confirming ? "Checking confirmation…" : "Check Agent confirmation"}</span><ArrowRight size={18}/>
+        </button>}
+      {flowLocked && !submittedStage && reviewStage &&
+        <button type="button" className={ui.primary} disabled={busy}
+          onClick={() => void executeNextStage()}>
+          {executing ? <LoaderCircle size={18}/> : <ArrowRight size={18}/>}
+          <span>{executing ? "Waiting for wallet…" : `Execute Vesu Lend ${selectedAsset.symbol}`}</span><ArrowRight size={18}/>
+        </button>}
+      {lendAgentSession && (lendAgentSession.run.status === "completed" || lendAgentSession.run.status === "failed") &&
+        <button type="button" className={ui.secondary} disabled={busy} onClick={resetAgentLend}>
+          <RefreshCw size={16}/> New Lend
+        </button>}
+    </div>
+    <p className={ui.approval}><CheckCircle2 size={15} aria-hidden="true"/>
+      CAREL verifies the Vesu route. Your wallet approves each transaction.</p>
+
+    <div className={ui.positionInfo}>
+      <Layers3 size={16} aria-hidden="true"/>
+      <span>Your Vesu lending positions and vTokens can be reviewed in Portfolio. This deposit form does not estimate unverified balances, rewards, or APY.</span>
+    </div>
+    {error && <p className={ui.notice} role="alert">{error}</p>}
+    {success && <p className={ui.success} role="status">{success}</p>}
+  </section>;
 }
