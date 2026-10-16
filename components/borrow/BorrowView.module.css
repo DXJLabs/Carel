@@ -54,3 +54,11 @@
 @media(max-width:420px){.borrowComposer{padding:12px}.marketPanel{padding:11px}.riskStats>div{padding:8px 6px}.riskStats strong{font-size:11px}}
 @media(max-width:360px){.riskStats{gap:5px}.riskStats span{font-size:9px}.riskStats strong{font-size:10px}.fieldLabel small{font-size:9px}.marketStatus{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.shell *{animation:none!important;transition:none!important}}
+
+/* Preserve the original Vesu review gates and show the result as a proper card. */
+.shell{background:linear-gradient(155deg,#251b19,#17181a 58%,#141517);border-color:#493831;border-radius:19px;padding:16px;box-shadow:0 10px 28px #0003}
+.reviewPanel{margin-top:14px!important;padding:14px!important;border:1px solid #5c4136!important;border-radius:15px;background:linear-gradient(155deg,#29211d,#1c1b1e)}
+.reviewTitle{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px}
+.reviewTitle strong{font-size:13px;color:#fff2e9}
+.reviewTitle span{font-size:10px;color:#f5b48c;text-align:right}
+@media(max-width:420px){.shell{padding:13px}.reviewPanel{padding:12px!important}}
