@@ -1193,7 +1193,17 @@ export function CarelApp() {
         </div>
       )}
 
-      {agentPlan && !(selectedRuntimeSurface === "swap" && mode === "normal" && agentPlan.stages.length === 1) && (
+      {agentPlan && selectedRuntimeSurface === "staking" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Staking plan</strong><span>Provider route and wallet review below · No transaction submitted yet</span></div>
+        </div>
+      )}
+
+      {agentPlan && !(
+        mode === "normal" && agentPlan.stages.length === 1 &&
+        (selectedRuntimeSurface === "swap" || selectedRuntimeSurface === "staking")
+      ) && (
         <section className={styles.agentPlanSummary} aria-live="polite">
           <div className={styles.agentSummaryTitle}>
             <h2>Plan summary</h2>
