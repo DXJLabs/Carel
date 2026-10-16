@@ -133,9 +133,17 @@ test("Garden safety boundary retains the hardcoded executable testnet asset pars
   assert.match(view, /!ready \|\| mode !== "normal"/);
 });
 
-test("Agent bottom navigation caps oversized in-app wallet safe-area without touching wallet chrome", () => {
+test("In-app wallet navigation has no redundant safe-area gap beneath icons", () => {
   const navCss = fs.readFileSync(path.join(ROOT, "components/CarelWorkspace.module.css"), "utf8");
-  assert.match(navCss, /@media \(max-width: 699px\)/);
-  assert.match(navCss, /min\(env\(safe-area-inset-bottom, 0px\), 24px\)/);
-  assert.match(navCss, /\.app\[data-current-tab="agent"\] \.nav/);
+  const compact = navCss.slice(navCss.indexOf("/* Mobile in-app browsers"), navCss.indexOf("/* A truly standalone installed PWA"));
+  assert.match(compact, /@media \(max-width: 699px\)/);
+  assert.match(compact, /\.app \.nav,/);
+  assert.match(compact, /\.app\[data-current-tab="agent"\] \.nav/);
+  assert.match(compact, /padding:6px 8px 5px/);
+  assert.match(compact, /min-height:52px/);
+  assert.doesNotMatch(compact, /safe-area-inset-bottom/);
+  assert.doesNotMatch(compact, /min\(env\(/);
+  const standalone = navCss.slice(navCss.indexOf("/* A truly standalone installed PWA"));
+  assert.match(standalone, /display-mode: standalone/);
+  assert.match(standalone, /env\(safe-area-inset-bottom, 0px\)/);
 });
