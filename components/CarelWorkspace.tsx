@@ -1207,9 +1207,17 @@ export function CarelApp() {
         </div>
       )}
 
+      {agentPlan && selectedRuntimeSurface === "borrow" && mode === "normal" && agentPlan.stages.length === 1 && (
+        <div className={styles.agentSwapReady} role="status">
+          <Sparkles size={17} aria-hidden="true"/>
+          <div><strong>CAREL prepared a one-step Borrow plan</strong><span>Vesu LTV and liquidation risk must be reviewed below before wallet approval</span></div>
+        </div>
+      )}
+
       {agentPlan && !(
         mode === "normal" && agentPlan.stages.length === 1 &&
-        (selectedRuntimeSurface === "swap" || selectedRuntimeSurface === "staking" || selectedRuntimeSurface === "lend")
+        (selectedRuntimeSurface === "swap" || selectedRuntimeSurface === "staking" ||
+          selectedRuntimeSurface === "lend" || selectedRuntimeSurface === "borrow")
       ) && (
         <section className={styles.agentPlanSummary} aria-live="polite">
           <div className={styles.agentSummaryTitle}>
