@@ -108,3 +108,34 @@ test("Responsive bridge style references exist and reduced motion is respected",
   assert.match(css, /@media\(max-width:420px\)/);
   assert.match(css, /prefers-reduced-motion:reduce/);
 });
+
+test("Additional CAREL mainnet assets are informational only, never fabricated Garden routes", () => {
+  assert.match(view, /import \{ CAREL_NETWORKS \} from "@\/lib\/carel\/networks"/);
+  assert.match(view, /CAREL_NETWORKS\.mainnet\.assetList\.filter\(/);
+  assert.match(view, /catalog\?\.starknet\.some\(garden =>/);
+  assert.match(view, /otherCarelAssets\.map\(asset =>/);
+  assert.match(view, /More assets in CAREL/);
+  assert.match(view, /Mainnet only · No Garden testnet route/);
+  assert.match(view, /Only the Garden-listed choices above are executable/);
+  assert.match(view, /catalog\.starknet\.map\(asset => <button/);
+  const section = view.slice(view.indexOf('className={styles.otherAssets}'), view.indexOf('!catalog.starknet.some'));
+  assert.doesNotMatch(section, /<button|onClick=/);
+  for (const symbol of ["STRK", "USDC", "ETH", "USDT", "XSTRK"]) {
+    assert.match(view, new RegExp(symbol + ': "' + symbol.toLowerCase() + '"'));
+  }
+});
+
+test("Garden safety boundary retains the hardcoded executable testnet asset parser", () => {
+  const protocol = fs.readFileSync(path.join(ROOT, "lib/garden/protocol.ts"), "utf8");
+  assert.match(protocol, /starknet_sepolia:\(wbtc\|strkbtc\)/);
+  assert.match(protocol, /routeAssets\(catalog/);
+  assert.match(protocol, /catalog\.starknet\.find\(item => item\.id === assetId\)/);
+  assert.match(view, /!ready \|\| mode !== "normal"/);
+});
+
+test("Agent bottom navigation caps oversized in-app wallet safe-area without touching wallet chrome", () => {
+  const navCss = fs.readFileSync(path.join(ROOT, "components/CarelWorkspace.module.css"), "utf8");
+  assert.match(navCss, /@media \(max-width: 699px\)/);
+  assert.match(navCss, /min\(env\(safe-area-inset-bottom, 0px\), 24px\)/);
+  assert.match(navCss, /\.app\[data-current-tab="agent"\] \.nav/);
+});
