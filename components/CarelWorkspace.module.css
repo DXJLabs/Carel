@@ -1292,3 +1292,17 @@
 .homeQuickStart>p{font-size:10px;line-height:1.5;color:#a69a94;margin:9px 0 0}
 @media(max-width:420px){.homeQuickStart{padding:11px}.homeQuickActions button{min-height:36px;padding:7px 9px}}
 @media(prefers-reduced-motion:reduce){.homeQuickActions button{transition:none}}
+
+/* Some Android in-app wallet browsers expose an unusually large CSS
+   safe-area inset while also reserving their own bottom toolbar.
+   Cap CAREL's extra nav padding; we cannot modify native wallet chrome. */
+@media (max-width: 699px) {
+ .app[data-current-tab="agent"] .nav {
+   bottom:0;
+   padding:7px 8px calc(8px + min(env(safe-area-inset-bottom, 0px), 24px));
+   background:#111214;
+ }
+ .app[data-current-tab="agent"] .main {
+   padding-bottom:calc(120px + min(env(safe-area-inset-bottom, 0px), 24px));
+ }
+}
