@@ -33,7 +33,8 @@ test("Staking assets remain capability-driven, not the full Swap token list", ()
 });
 
 test("Staking APR and receipts are sourced from the provider, not invented", () => {
-  assert.match(view, /pool \? formatApr\(pool\.apr\) : "Unavailable"/);
+  assert.match(view, /mode === "normal" && pool \? formatApr\(pool\.apr\) : "Unavailable"/);
+  assert.match(view, /Public pool rates are not used as private yield estimates/);
   assert.match(view, /Pool \{shortAddress\(pool\.poolAddress\)\}/);
   assert.match(view, /APR is not assumed/);
   assert.match(view, /Private \{output\.symbol\} receipt/);
