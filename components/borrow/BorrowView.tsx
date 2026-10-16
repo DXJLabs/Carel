@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  ArrowRight, Check, ChevronRight, EyeOff, Layers3, LoaderCircle,
-  RefreshCw, ShieldAlert, ShieldCheck, Sparkles, WalletCards,
+  ArrowRight, Check, LoaderCircle, RefreshCw,
+  ShieldAlert, Sparkles, WalletCards,
 } from "lucide-react";
 
 import {
@@ -1158,11 +1158,11 @@ export function BorrowView({
 
       {evaluation &&
         selectedMarket && (
-          <div
-            className={
-              styles.borrowRisk
-            }
-          >
+          <div className={`${styles.borrowRisk} ${ui.reviewPanel}`}>
+            <div className={ui.reviewTitle}>
+              <strong>CAREL risk assessment</strong>
+              <span>{evaluation.eligible ? "Eligible for review" : "Constraints not met"}</span>
+            </div>
             <div
               className={
                 styles.rule
