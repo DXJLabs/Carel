@@ -1,12 +1,8 @@
 "use client";
 
 import {
-  ArrowRight,
-  Check,
-  LoaderCircle,
-  RefreshCw,
-  ShieldAlert,
-  WalletCards,
+  ArrowRight, Check, ChevronRight, EyeOff, Layers3, LoaderCircle,
+  RefreshCw, ShieldAlert, ShieldCheck, Sparkles, WalletCards,
 } from "lucide-react";
 
 import {
@@ -29,7 +25,19 @@ import type {
 } from "./useBorrowController";
 
 import styles from "../CarelWorkspace.module.css";
+import ui from "./BorrowView.module.css";
 
+
+function BorrowAssetIcon({ symbol }: { symbol: string }) {
+  const icons: Record<string, string> = {
+    STRK: "strk", USDC: "usdc", ETH: "eth",
+    USDT: "usdt", WBTC: "wbtc", STRKBTC: "strkbtc",
+  };
+  const icon = icons[symbol.toUpperCase()];
+  return icon
+    ? <img className={ui.tokenIcon} src={`/token-icons/${icon}.svg`} width={32} height={32} alt=""/>
+    : <span className={ui.fallbackIcon} aria-hidden="true">{symbol.slice(0, 1)}</span>;
+}
 
 export function BorrowView({
   mode,
@@ -295,11 +303,95 @@ export function BorrowView({
       : 0;
 
   return (
-    <section
-      className={
-        styles.borrowPanel
-      }
-    >
+    <section className={`${styles.borrowPanel} ${ui.shell}`} aria-label="CAREL Vesu Borrow">
+      <div className={ui.heading}>
+        <div className={ui.headingTitle}>
+          <span className={ui.agentBadge}><Sparkles size={18} aria-hidden="true"/></span>
+          <div><h3>{mode === "normal" ? "CAREL Borrow" : mode === "shield" ? "Shield Borrow" : "Unshield Borrow"}</h3>
+          <p>Collateral-backed borrowing · Wallet approved</p></div>
+        </div>
+        <span className={ui.provider}>Vesu</span>
+      </div>
+
+      <div className={ui.borrowComposer}>
+        <label className={ui.fieldLabel} htmlFor="carel-borrow-collateral">
+          <span>Provide collateral</span>
+          <small>{mode === "unshield" ? "Private STRK" : "Public STRK"}</small>
+        </label>
+        <div className={ui.amountRow}>
+          <input id="carel-borrow-collateral" className={ui.amountInput}
+            inputMode="decimal" value={collateralAmount} disabled={busy || borrowFlowLocked}
+            onChange={event => changeCollateral(event.target.value)}
+            aria-label="STRK collateral amount"/>
+          <span className={ui.tokenPill}><BorrowAssetIcon symbol="STRK"/><strong>STRK</strong></span>
+        </div>
+        <div className={ui.balanceHint}>
+          <span>Observed {mode === "unshield" ? "private" : "public"} balance</span>
+          <strong>{mode === "unshield"
+            ? !wallet.privateRevealed ? "Hidden · reveal first" : wallet.privateStrk === null
+              ? "Unavailable" : `${formatUnits(wallet.privateStrk, network.assets.strk.decimals, 6)} STRK`
+            : wallet.publicStrk === null ? "Unavailable"
+              : `${formatUnits(wallet.publicStrk, network.assets.strk.decimals, 6)} STRK`}</strong>
+        </div>
+        <div className={ui.flowArrow}><ArrowRight size={16} aria-hidden="true"/><span>Borrow against collateral</span></div>
+        <label className={ui.fieldLabel} htmlFor="carel-borrow-debt">
+          <span>Borrow amount</span>
+          <small>Requested debt</small>
+        </label>
+        <div className={ui.amountRow}>
+          <input id="carel-borrow-debt" className={ui.amountInput}
+            inputMode="decimal" value={borrowAmount} disabled={busy || borrowFlowLocked}
+            onChange={event => changeBorrow(event.target.value)}
+            aria-label={`${selectedDebtAsset.symbol} borrow amount`}/>
+          <span className={ui.tokenPill}><BorrowAssetIcon symbol={selectedDebtAsset.symbol}/>
+            <strong>{selectedDebtAsset.symbol}</strong></span>
+        </div>
+      </div>
+
+      <div className={ui.debtSection}>
+        <div className={ui.sectionTop}><strong>Borrow asset</strong><span>Registered candidates · live Vesu checks required</span></div>
+        <div className={ui.debtOptions} role="group" aria-label="Choose debt asset">
+          {VESU_BORROW_DEBT_ASSETS.map(asset =>
+            <button type="button" className={ui.debtOption} key={asset.id}
+              aria-pressed={asset.id === debtAssetId} disabled={busy || borrowFlowLocked}
+              onClick={() => {
+                if (asset.id === debtAssetId) return;
+                setDebtAssetId(asset.id);
+                resetMarkets();
+                setError("");
+                setSuccess("");
+              }}>
+              <BorrowAssetIcon symbol={asset.symbol}/><span>{asset.symbol}</span>
+            </button>)}
+        </div>
+      </div>
+
+      <section className={ui.marketPanel} aria-label="Vesu borrowing market">
+        <div className={ui.marketHead}>
+          <div><strong>Market & risk review</strong>
+            <span>{loading ? "Checking Vesu markets…" :
+              selectedMarket ? "Market discovered · risk review required" : "No verified market yet"}</span></div>
+          <span className={ui.marketStatus}>{reviewed ? "Reviewed" : "Not reviewed"}</span>
+        </div>
+        {markets.length > 1 && <div className={ui.poolOptions} role="group" aria-label="Choose borrowing pool">
+          {markets.map(market =>
+            <button type="button" key={market.pool.id} className={ui.poolOption}
+              aria-pressed={selectedMarket?.pool.id === market.pool.id}
+              disabled={busy || borrowFlowLocked}
+              onClick={() => { selectPool(market.pool.id); setSuccess(""); }}>
+              {market.pool.name}
+            </button>)}
+        </div>}
+        {selectedMarket ? <>
+          <div className={ui.poolTitle}>{selectedMarket.pool.name}</div>
+          <div className={ui.riskStats}>
+            <div><span>Pool max LTV</span><strong>{formatBps(selectedMarket.risk.maxLtvBps)}</strong></div>
+            <div><span>Available {selectedDebtAsset.symbol}</span><strong>{available}</strong></div>
+            <div><span>Utilization</span><strong>{formatBps(selectedMarket.risk.utilizationBps)}</strong></div>
+          </div>
+          <p className={ui.riskNote}>Collateral stays exposed to price changes and liquidation. Market utilization is not borrowing APR. Pool {shortAddress(selectedMarket.pool.address)}.</p>
+        </> : <p className={ui.marketEmpty}>CAREL must discover an active Vesu pool and verify the borrowing constraints before wallet review.</p>}
+      </section>
       {mode === "shield" && (
         <div
           className={
@@ -934,286 +1026,6 @@ export function BorrowView({
             }.
           </p>
         )}
-
-      <div
-        className={
-          styles.borrowPair
-        }
-      >
-        <label
-          className={
-            styles.borrowField
-          }
-        >
-          <span>
-            Collateral
-          </span>
-
-          <div
-            className={
-              styles.borrowInput
-            }
-          >
-            <input
-              inputMode="decimal"
-              value={
-                collateralAmount
-              }
-              disabled={
-                busy ||
-                borrowFlowLocked
-              }
-              onChange={(
-                event,
-              ) =>
-                changeCollateral(
-                  event.target
-                    .value,
-                )
-              }
-              aria-label="STRK collateral amount"
-            />
-
-            <strong>
-              STRK
-            </strong>
-          </div>
-        </label>
-
-        <span
-          className={
-            styles.borrowArrow
-          }
-          aria-hidden="true"
-        >
-          <ArrowRight
-            size={17}
-          />
-        </span>
-
-        <label
-          className={
-            styles.borrowField
-          }
-        >
-          <span>
-            Borrow
-          </span>
-
-          <div
-            className={
-              styles.borrowInput
-            }
-          >
-            <input
-              inputMode="decimal"
-              value={
-                borrowAmount
-              }
-              disabled={
-                busy ||
-                borrowFlowLocked
-              }
-              onChange={(
-                event,
-              ) =>
-                changeBorrow(
-                  event.target
-                    .value,
-                )
-              }
-              aria-label={`${selectedDebtAsset.symbol} borrow amount`}
-            />
-
-            <strong>
-              {selectedDebtAsset.symbol}
-            </strong>
-          </div>
-        </label>
-      </div>
-
-      <div
-        className={
-          styles.rule
-        }
-      >
-        <span>
-          Borrow asset
-        </span>
-
-        <select
-          className={
-            styles.borrowSelect
-          }
-          value={
-            debtAssetId
-          }
-          disabled={
-            busy ||
-            borrowFlowLocked
-          }
-          onChange={(
-            event,
-          ) => {
-            setDebtAssetId(
-              event.target
-                .value,
-            );
-
-            resetMarkets();
-            setError("");
-            setSuccess("");
-
-          }}
-        >
-          {VESU_BORROW_DEBT_ASSETS.map(
-            (asset) => (
-              <option
-                key={asset.id}
-                value={asset.id}
-              >
-                {asset.symbol}
-              </option>
-            ),
-          )}
-        </select>
-      </div>
-
-      <div
-        className={
-          styles.rule
-        }
-      >
-        <span>
-          Provider
-        </span>
-
-        <strong>
-          Vesu
-        </strong>
-      </div>
-
-      <div
-        className={
-          styles.rule
-        }
-      >
-        <span>
-          Pool
-        </span>
-
-        {markets.length >
-        1 ? (
-          <select
-            className={
-              styles.borrowSelect
-            }
-            value={
-              selectedMarket
-                ?.pool.id ??
-              ""
-            }
-            disabled={
-              busy ||
-              borrowFlowLocked
-            }
-            onChange={(
-              event,
-            ) => {
-              selectPool(
-                event.target
-                  .value,
-              );
-
-              setSuccess("");
-            }}
-          >
-            {markets.map(
-              (market) => (
-                <option
-                  key={
-                    market
-                      .pool.id
-                  }
-                  value={
-                    market
-                      .pool.id
-                  }
-                >
-                  {
-                    market
-                      .pool.name
-                  }
-                </option>
-              ),
-            )}
-          </select>
-        ) : (
-          <strong>
-            {selectedMarket
-              ?.pool.name ??
-              "Loading…"}
-          </strong>
-        )}
-      </div>
-
-      {selectedMarket && (
-        <>
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Pool contract
-            </span>
-
-            <strong
-              className={
-                styles.borrowAddress
-              }
-            >
-              {shortAddress(
-                selectedMarket
-                  .pool
-                  .address,
-              )}
-            </strong>
-          </div>
-
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Current utilization
-            </span>
-
-            <strong>
-              {formatBps(
-                selectedMarket
-                  .risk
-                  .utilizationBps,
-              )}
-            </strong>
-          </div>
-
-          <div
-            className={
-              styles.rule
-            }
-          >
-            <span>
-              Available {selectedDebtAsset.symbol}
-            </span>
-
-            <strong>
-              {available}
-            </strong>
-          </div>
-        </>
-      )}
 
       {mode === "normal" &&
         normalAgentBorrowStage
