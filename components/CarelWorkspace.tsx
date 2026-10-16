@@ -901,16 +901,26 @@ export function CarelApp() {
         <p className={styles.eyebrow}><span className={styles.dot}/>Your private DeFi agent</p>
         <div className={styles.heroArt}><CarelOrbit className={styles.orbit} paused={reduceMotion}/></div>
         <div className={styles.heroCopy}><h1>Your goals.<br/>Your control.</h1><p>One place to plan your next move.</p></div>
-        <button type="button" className={styles.primary} onClick={() => navigate("agent")}>Start with a goal<ArrowUpRight size={18}/></button>
+        <button type="button" className={styles.primary} onClick={() => navigate("agent")}>Ask CAREL <ArrowUpRight size={18}/></button>
+        <div className={styles.homeQuickStart}>
+          <span>Or start with a workflow</span>
+          <div className={styles.homeQuickActions}>
+            {TOOLS.map(tool => <button type="button" key={tool.name}
+              onClick={() => { setMode("normal"); chooseTool(tool); navigate("agent"); }}>
+              <tool.Icon size={15} aria-hidden="true"/>{tool.name}<ArrowRight size={13} aria-hidden="true"/>
+            </button>)}
+          </div>
+          <p>CAREL prepares a plan first. You review and sign with your wallet.</p>
+        </div>
       </section>
       <section className={styles.homePortfolio}>
         <SectionHeading title="Portfolio"><button className={styles.textButton} onClick={() => navigate("portfolio")}>View portfolio<ArrowRight size={14}/></button></SectionHeading>
-        <div className={styles.panel}><p className={styles.label}>Net portfolio</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p><p className={styles.helper}>{balanceHelp}</p>
+        <div className={styles.panel}><p className={styles.label}>Observed STRK balance</p><p className={styles.money}>{amount(visibleBalance, hideAmounts)}<span>STRK</span></p><p className={styles.helper}>{balanceHelp}</p>
           {wallet.connected && wallet.publicStrk === null && <button className={styles.textButton} disabled={!publicReady || busy} onClick={() => void refreshBalances()}><RefreshCw size={14}/>Load balance</button>}
         </div>
         <button type="button" className={styles.pointsCard} onClick={openPoints}><span className={styles.pointsIcon}><Sparkles size={19}/></span><span><strong>{pointsSummary.seasonTotal.toLocaleString()} PTS</strong><small>{wallet.connected ? `${pointsSummary.season.name} · +${pointsSummary.last7Days.toLocaleString()} last 7 days` : `${pointsSummary.season.name} · Connect wallet`}</small></span><ChevronRight size={17}/></button>
       </section>
-      <section className={styles.homeActivity}><SectionHeading title="Latest activity"><button className={styles.textButton} onClick={() => navigate("activity")}>View all<ArrowRight size={14}/></button></SectionHeading>{records.length ? records.slice(0, 2).map(renderExecution) : <EmptyState title="Your next move starts here">Completed and pending executions appear here.</EmptyState>}</section>
+      <section className={styles.homeActivity}><SectionHeading title="Latest STRK20 activity"><button className={styles.textButton} onClick={() => navigate("activity")}>View Activity<ArrowRight size={14}/></button></SectionHeading>{records.length ? records.slice(0, 2).map(renderExecution) : <EmptyState title="Your next move starts here">Recorded Shield and Unshield executions appear here. Other protocol activity is tracked separately.</EmptyState>}</section>
     </div>;
   }
   function renderPoints() {
