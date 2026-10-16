@@ -66,6 +66,10 @@ test("Garden order progress distinguishes deposit, delivery and refund", () => {
     assert.ok(view.includes(stage), "Missing real Garden stage " + stage);
   }
   assert.match(view, /aria-label="Bridge order progress"/);
+  assert.match(view, /index < stage \? styles\.progressDone/);
+  assert.match(view, /index === stage \? styles\.progressCurrent/);
+  assert.match(css, /\.progressCurrent/);
+  assert.match(css, /\.progressDone/);
   assert.match(view, /Order expired · do not deposit/);
   assert.match(view, /Refund is being processed/);
   assert.match(view, /Refund completed/);
