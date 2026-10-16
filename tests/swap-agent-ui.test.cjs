@@ -73,7 +73,8 @@ test("Original swap execution, recovery and verification actions remain wired", 
 
 test("Simple Swap eliminates redundant full Agent plan while multi-stage still shows it", () => {
   assert.match(workspace, /agentPlan && selectedRuntimeSurface === "swap" && mode === "normal" && agentPlan\.stages\.length === 1/);
-  assert.match(workspace, /agentPlan && !\(selectedRuntimeSurface === "swap" && mode === "normal" && agentPlan\.stages\.length === 1\)/);
+  assert.match(workspace, /mode === "normal" && agentPlan\.stages\.length === 1 &&/);
+  assert.match(workspace, /\(selectedRuntimeSurface === "swap" \|\| selectedRuntimeSurface === "staking"\)/);
   assert.match(workspace, /CAREL prepared a one-step Swap/);
   assert.match(workspace, /<AvnuSwap mode=\{mode\} goal=\{goalText\}/);
   assert.match(workspace, /carel-agent-execution/);
