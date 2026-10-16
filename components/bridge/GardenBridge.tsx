@@ -1429,7 +1429,10 @@ export function GardenBridge({ mode, onPublicMode, historyOnly = false, intent, 
           const stage = ["awaiting-deposit", "confirming", "exchanging", "settling", "completed"].indexOf(order.state);
           const exception = ["expired", "refunding", "refunded"].includes(order.state);
           const label = ["Fund", "Confirm", "Exchange", "Settle", "Received"][index];
-          return <span key={step} className={index <= stage && !exception ? styles.progressActive : styles.progressIdle}
+          const progressStyle = exception ? styles.progressIdle :
+            index < stage ? styles.progressDone :
+              index === stage ? styles.progressCurrent : styles.progressIdle;
+          return <span key={step} className={progressStyle}
             aria-current={!exception && order.state === step ? "step" : undefined}>{label}</span>;
         })}
       </div>}
